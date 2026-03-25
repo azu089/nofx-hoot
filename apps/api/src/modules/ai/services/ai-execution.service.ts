@@ -31,6 +31,9 @@ export interface AiDecision {
   currentPrice?: number;     // 可选：R3 已获取的最新价格，避免 executeDecision 内重复 getMarketPrice 调用
   btcEthMaxPositionValueRatio?: number;   // 策略级 BTC/ETH 仓位价值比例（默认 5.0）
   altcoinMaxPositionValueRatio?: number;  // 策略级山寨币仓位价值比例（默认 1.0）
+  // 周期级预获取数据（对齐 nofx：避免执行时重复调用交易所 API）
+  exchangePositionCount?: number;         // 交易所实时持仓数（优先于 DB 计数）
+  exchangeAvailableBalance?: number;      // 交易所实时可用余额（优先于执行时再次获取）
 }
 
 /**
@@ -126,9 +129,10 @@ export class AiExecutionService {
     userId: string,
     apiKeyId: string,
     allocatedCapital?: number,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<number> {
     try {
-      const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
       const balance = await this.retryCall('getBalance', () => adapter.getBalance());
       const exchangeBalance = balance.availableBalance;
       if (allocatedCapital && allocatedCapital > 0) {
@@ -148,8 +152,9 @@ export class AiExecutionService {
   async getFullBalance(
     userId: string,
     apiKeyId: string,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<{ totalEquity: number; availableBalance: number; usedMargin: number }> {
-    const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+    const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
     const balance = await this.retryCall('getBalance', () => adapter.getBalance());
     return {
       totalEquity: balance.totalEquity,
@@ -167,6 +172,7 @@ export class AiExecutionService {
     decision: AiDecision,
     source: AiSource,
     aiStrategyId?: string,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<ExecutionResult> {
     const { symbol, action } = decision;
 
@@ -186,8 +192,8 @@ export class AiExecutionService {
         return { success: true, symbol, action, error: undefined };
       }
 
-      // 创建适配器（统一 CEX/DEX 接口）
-      const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      // 创建适配器（优先复用外部传入，避免每周期重复创建）
+      const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
 
       // 路由到对应执行方法
       switch (action) {
@@ -242,26 +248,29 @@ export class AiExecutionService {
     const leverage = decision.leverage || (aiConfig?.maxLeverage ?? AI_SAFETY_DEFAULTS.defaultLeverage);
     const rawPositionSize = decision.positionSizeUSD || Number(aiConfig?.amountPerTrade ?? AI_SAFETY_DEFAULTS.defaultPositionSizeUSD);
 
-    // 1. 获取当前 AI 持仓数（隔离：只计当前策略，不混入其他策略）
-    const currentPositions = await this.prisma.position.count({
-      where: {
-        userId,
-        source: { in: ['ai_research', 'ai_strategy', 'ai_analysis'] },
-        status: 'open',
-        ...(aiStrategyId ? { aiStrategyId } : {}),
-      },
-    });
+    // 1. 获取当前持仓数（对齐 nofx：优先用交易所实时数据，避免 DB 脏数据误拦）
+    const currentPositions = decision.exchangePositionCount != null
+      ? decision.exchangePositionCount
+      : await this.prisma.position.count({
+          where: {
+            userId,
+            source: { in: ['ai_research', 'ai_strategy', 'ai_analysis'] },
+            status: 'open',
+            ...(aiStrategyId ? { aiStrategyId } : {}),
+          },
+        });
 
     // 2. 代码强制风控（使用用户配置，回退到默认值）
     this.logger.log(
-      `[AI执行] 风控检查: 当前持仓=${currentPositions}/${maxPositions}, 最小仓位=$${minPositionSize}`,
+      `[AI执行] 风控检查: 当前持仓=${currentPositions}/${maxPositions} (${decision.exchangePositionCount != null ? '交易所' : 'DB'}), 最小仓位=$${minPositionSize}`,
     );
     this.enforceMaxPositions(currentPositions, maxPositions);
 
-    // 3. 获取期货账户余额（通过适配器，带重试）
-    const balance = await this.retryCall('getBalance', () => adapter.getBalance());
-    const exchangeBalance = balance.availableBalance;
-    this.logger.log(`[AI执行] 交易所余额: $${exchangeBalance.toFixed(2)}`);
+    // 3. 获取期货账户余额（对齐 nofx：优先复用周期级预获取，避免重复 API 调用）
+    const exchangeBalance = decision.exchangeAvailableBalance != null
+      ? decision.exchangeAvailableBalance
+      : (await this.retryCall('getBalance', () => adapter.getBalance())).availableBalance;
+    this.logger.log(`[AI执行] 交易所余额: $${exchangeBalance.toFixed(2)} (${decision.exchangeAvailableBalance != null ? '周期缓存' : '实时获取'})`);
 
     // 3.2 AI 资金池限制
     // 用户设定 allocatedCapital（如 $500），百分比计算基于此值而非交易所全部余额
@@ -340,12 +349,8 @@ export class AiExecutionService {
     // 6. 最小仓位检查（使用用户配置）
     this.enforceMinPositionSize(adaptedSize, minPositionSize);
 
-    // 7. 开仓前取消该币种已有订单（防止重复下单）
-    try {
-      await adapter.cancelAllOrders(futuresSymbol);
-    } catch (e: any) {
-      this.logger.warn(`取消已有订单失败(非致命): ${e.message}`);
-    }
+    // 7. [已删除] cancelAllOrders — 对齐 nofx: 开仓前不取消挂单
+    // 多策略环境下 cancelAllOrders 会误杀其他策略的 SL/TP 条件单，nofx 无此操作
 
     // 8. 设置杠杆（先查当前杠杆，已匹配则跳过 API 调用，减少不必要请求）
     let actualLeverage = leverage;
@@ -649,31 +654,50 @@ export class AiExecutionService {
       orderBy: { createdAt: 'asc' }, // FIFO
     });
 
-    if (!position) {
-      this.logger.warn(`[AI执行] 未找到可平仓持仓: ${futuresSymbol} ${side}`);
-      // 对齐 nofx：不主动清理条件单。Algo Order 的 closePosition=true 在持仓为0时自动失效。
-      return {
-        success: false,
-        symbol: futuresSymbol,
-        action: `close_${side}`,
-        error: `未找到 ${side} 方向的开放持仓`,
-      };
-    }
+    // 对齐 nofx: DB 查不到时 fallback 到交易所 getPositions 确认
+    let entryPriceForPnl = position ? Number(position.entryPrice) : 0;
+    let closeAmount = position ? Number(position.amount) : 0;
 
-    // 通过适配器反向下单平仓
-    const amount = Number(position.amount);
+    if (!position) {
+      // Fallback: 从交易所查找该币种持仓（对齐 nofx executeCloseLong L293-309）
+      this.logger.warn(`[AI执行] DB 未找到持仓，fallback 交易所: ${futuresSymbol} ${side}`);
+      try {
+        const positions = await adapter.getPositions();
+        const matched = positions.find(
+          (p: any) => p.symbol === futuresSymbol && p.side === side,
+        );
+        if (matched) {
+          entryPriceForPnl = matched.entryPrice || 0;
+          closeAmount = Math.abs(matched.quantity || 0);
+          this.logger.log(`[AI执行] 交易所找到持仓: qty=${closeAmount}, entry=${entryPriceForPnl}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`[AI执行] 交易所 getPositions fallback 失败: ${e.message}`);
+      }
+
+      if (closeAmount <= 0) {
+        this.logger.warn(`[AI执行] DB + 交易所均未找到持仓: ${futuresSymbol} ${side}`);
+        return {
+          success: false,
+          symbol: futuresSymbol,
+          action: `close_${side}`,
+          error: `未找到 ${side} 方向的开放持仓（DB + 交易所）`,
+        };
+      }
+    }
 
     this.logger.log(
       `[AI执行] ======== 平仓 ========\n` +
       `  ${futuresSymbol} ${side.toUpperCase()}\n` +
-      `  数量=${amount} positionId=${position.id}\n` +
-      `  入场价=$${position.entryPrice} 杠杆=${position.leverage}x`,
+      `  数量=${closeAmount} positionId=${position?.id ?? 'exchange-only'}\n` +
+      `  入场价=$${entryPriceForPnl} 来源=${position ? 'DB' : '交易所fallback'}`,
     );
 
+    // 对齐 nofx: CloseLong(symbol, 0) — 0 表示平全部，防止 DB 数量与交易所不一致
     const result = await this.retryCall<OrderResult>('closePosition', () =>
       side === 'long'
-        ? adapter.closeLong(futuresSymbol, amount)
-        : adapter.closeShort(futuresSymbol, amount),
+        ? adapter.closeLong(futuresSymbol, 0)
+        : adapter.closeShort(futuresSymbol, 0),
     );
 
     const exitPrice = result.avgPrice || 0;
@@ -682,37 +706,47 @@ export class AiExecutionService {
       `[AI执行] 平仓订单结果: orderId=${result.orderId} exitPrice=$${exitPrice}`,
     );
 
-    // 对齐 nofx：不调用 cancelStopOrders。
-    // Algo Order 使用 closePosition=true，持仓平掉后条件单自动失效，无需手动清理。
-    // 避免 cancelAllOrders 误删网格策略的限价基础单。
+    // 对齐 nofx CloseLong/CloseShort (binance/futures.go L471/L527):
+    // 平仓后必须清理该 symbol 的 SL/TP 条件单（普通+Algo）
+    // 使用 cancelStopOrders 而非 cancelAllOrders，保留网格限价单
+    try {
+      await adapter.cancelStopOrders(futuresSymbol);
+      this.logger.log(`[AI执行] 平仓后已清理 SL/TP 条件单: ${futuresSymbol}`);
+    } catch (e: any) {
+      this.logger.warn(`[AI执行] 平仓后清理条件单失败(非致命): ${e.message}`);
+    }
 
     // 计算 PnL（含真实交易成本 — 极速策略增强 Task 5）
-    const entryPrice = Number(position.entryPrice);
+    // entryPriceForPnl / closeAmount 在上方根据 DB 或交易所 fallback 已确定
     let grossPnl: number;
     if (side === 'long') {
-      grossPnl = (exitPrice - entryPrice) * amount;
+      grossPnl = (exitPrice - entryPriceForPnl) * closeAmount;
     } else {
-      grossPnl = (entryPrice - exitPrice) * amount;
+      grossPnl = (entryPriceForPnl - exitPrice) * closeAmount;
     }
 
     // 交易所手续费: 平仓手续费从 CCXT order 获取，开仓手续费从 TradeExecutionLog 查询
     const closeFee = result.fee ?? 0;
     let openFee = 0;
-    try {
-      const openLog = await this.prisma.tradeExecutionLog.findFirst({
-        where: { positionId: position.id, status: 'filled' },
-        select: { feeAmount: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (openLog?.feeAmount) openFee = Number(openLog.feeAmount);
-    } catch { /* 非致命: 旧 position 可能无 TradeExecutionLog */ }
+    if (position) {
+      try {
+        const openLog = await this.prisma.tradeExecutionLog.findFirst({
+          where: { positionId: position.id, status: 'filled' },
+          select: { feeAmount: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (openLog?.feeAmount) openFee = Number(openLog.feeAmount);
+      } catch { /* 非致命: 旧 position 可能无 TradeExecutionLog */ }
+    }
     const tradingFees = openFee + closeFee;
 
     // Funding Fee: 从交易所查询持仓期间累计（降级: 失败返回 0）
     let fundingFees = 0;
-    try {
-      fundingFees = await this.fetchFundingFeeTotal(adapter, futuresSymbol, position.createdAt);
-    } catch { /* 非致命: funding history 不可用时跳过 */ }
+    if (position) {
+      try {
+        fundingFees = await this.fetchFundingFeeTotal(adapter, futuresSymbol, position.createdAt);
+      } catch { /* 非致命: funding history 不可用时跳过 */ }
+    }
 
     // 净 PnL = 毛利 - 交易所手续费 - Funding Fee
     const pnl = grossPnl - tradingFees - Math.abs(fundingFees);
@@ -723,52 +757,57 @@ export class AiExecutionService {
       );
     }
 
-    // 更新 Position 记录
-    await this.prisma.position.update({
-      where: { id: position.id },
-      data: {
-        status: 'closed',
-        closePrice: new Decimal(exitPrice).toFixed(8),
-        closedAt: new Date(),
-        closeReason: 'ai_decision',
-        pnl: new Decimal(pnl).toFixed(8),
-        realizedPnl: new Decimal(pnl).toFixed(8),
-        grossPnl: new Decimal(grossPnl).toFixed(8),
-        tradingFees: new Decimal(tradingFees).toFixed(8),
-        fundingFees: new Decimal(fundingFees).toFixed(8),
-        ...(result.txHash ? { txHash: result.txHash } : {}),
-      },
-    });
+    // 更新 Position 记录（仅 DB 有记录时更新）
+    if (position) {
+      await this.prisma.position.update({
+        where: { id: position.id },
+        data: {
+          status: 'closed',
+          exitPrice: new Decimal(exitPrice).toFixed(8),
+          closePrice: new Decimal(exitPrice).toFixed(8),
+          closedAt: new Date(),
+          closeReason: 'ai_decision',
+          pnl: new Decimal(pnl).toFixed(8),
+          realizedPnl: new Decimal(pnl).toFixed(8),
+          grossPnl: new Decimal(grossPnl).toFixed(8),
+          tradingFees: new Decimal(tradingFees).toFixed(8),
+          fundingFees: new Decimal(fundingFees).toFixed(8),
+          ...(result.txHash ? { txHash: result.txHash } : {}),
+        },
+      });
+    }
 
     // 平仓后移除持仓监控
-    if (this.positionMonitor) {
+    if (this.positionMonitor && position) {
       this.positionMonitor.untrackPosition(position.id);
     }
 
     // 推送 WebSocket 平仓更新（前端交易页实时刷新）
-    try {
-      this.tradingGateway?.sendPositionUpdate(userId, {
-        id: position.id,
-        symbol: futuresSymbol,
-        side,
-        entryPrice: position.entryPrice.toString(),
-        amount: position.amount.toString(),
-        pnl: new Decimal(pnl).toFixed(8),
-        status: 'closed',
-        action: 'closed',
-      });
-    } catch { /* 非致命 */ }
+    if (position) {
+      try {
+        this.tradingGateway?.sendPositionUpdate(userId, {
+          id: position.id,
+          symbol: futuresSymbol,
+          side,
+          entryPrice: position.entryPrice.toString(),
+          amount: position.amount.toString(),
+          pnl: new Decimal(pnl).toFixed(8),
+          status: 'closed',
+          action: 'closed',
+        });
+      } catch { /* 非致命 */ }
+    }
 
     // 存储 BM25 记忆（产品 A + 产品 B 均存储，极速策略增强 Task 3）
     try {
-      const marginVal = Number(position.margin);
+      const marginVal = position ? Number(position.margin) : (closeAmount * entryPriceForPnl / 10); // fallback 估算
       const pnlPercent = marginVal > 0 ? (pnl / marginVal) * 100 : 0;
 
       await this.memoryService.storeMemory({
         userId,
-        analysisId: position.id,
+        analysisId: position?.id ?? `exchange_close_${Date.now()}`,
         symbol: futuresSymbol,
-        sceneText: `${futuresSymbol} ${side} entry=${entryPrice} exit=${exitPrice}`,
+        sceneText: `${futuresSymbol} ${side} entry=${entryPriceForPnl} exit=${exitPrice}`,
         action: `close_${side}`,
         pnl,
         pnlPercent,
@@ -778,14 +817,14 @@ export class AiExecutionService {
     }
 
     this.logger.log(
-      `[AI执行] 平仓成功: ${futuresSymbol} ${side} PnL=$${pnl.toFixed(2)} positionId=${position.id}`,
+      `[AI执行] 平仓成功: ${futuresSymbol} ${side} PnL=$${pnl.toFixed(2)} positionId=${position?.id ?? 'exchange-only'}`,
     );
 
     // 推送 TG 平仓通知（fire-and-forget）
     const pnlSign = pnl >= 0 ? '+' : '';
     (async () => {
       let strategyName: string | undefined;
-      if (position.aiStrategyId) {
+      if (position?.aiStrategyId) {
         const strat = await this.prisma.aiStrategy.findUnique({
           where: { id: position.aiStrategyId },
           select: { name: true },
@@ -808,8 +847,8 @@ export class AiExecutionService {
       symbol: futuresSymbol,
       action: `close_${side}`,
       price: exitPrice,
-      amount,
-      positionId: position.id,
+      amount: closeAmount,
+      positionId: position?.id,
       pnl,
     };
   }
@@ -823,6 +862,7 @@ export class AiExecutionService {
     userId: string,
     strategyId: string,
     apiKeyId: string,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<void> {
     const openPositions = await this.prisma.position.findMany({
       where: {
@@ -842,9 +882,10 @@ export class AiExecutionService {
 
     this.logger.log(`[AI执行] 批量平仓启动: 策略 ${strategyId} 共 ${openPositions.length} 笔持仓`);
 
-    let adapter: ExchangeAdapter | null = null;
+    const ownsAdapter = !existingAdapter;
+    let adapter: ExchangeAdapter | null = existingAdapter ?? null;
     try {
-      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      if (!adapter) adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
       for (const pos of openPositions) {
         try {
           const r = await this.closePosition(adapter, userId, pos.symbol, pos.side as 'long' | 'short', 'ai_strategy');
@@ -860,7 +901,7 @@ export class AiExecutionService {
     } catch (e: any) {
       this.logger.error(`[AI执行] 批量平仓 adapter 创建失败: ${e.message}`);
     } finally {
-      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+      if (ownsAdapter && adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
     }
   }
 

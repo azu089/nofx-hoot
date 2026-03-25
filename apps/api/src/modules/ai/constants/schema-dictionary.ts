@@ -332,17 +332,7 @@ export const TradingRules = {
       reasonZH: '顺势加仓，不追亏损',
       reasonEN: 'Add to winners, never average down losers',
     },
-    ScaleOut: {
-      value: [
-        { atr_mult: 1.5, close_pct: 0.33 },
-        { atr_mult: 2.5, close_pct: 0.5 },
-        { atr_mult: 4.0, close_pct: 1.0 },
-      ],
-      descZH: '分批止盈(ATR倍数): +1.5×ATR平33%，+2.5×ATR平50%，+4×ATR全平',
-      descEN: 'Scale-out (ATR-based): Close 33% at +1.5×ATR, 50% at +2.5×ATR, 100% at +4×ATR',
-      reasonZH: 'ATR适配不同币种波动率，BTC和SOL用不同绝对距离',
-      reasonEN: 'ATR adapts to each asset\'s volatility, different absolute distances for BTC vs SOL',
-    },
+    // ScaleOut 已删除 — 止盈由 AI 决策 + 交易所 TP 条件单负责，代码层不抢先
   } as Record<string, BilingualRuleDef>,
 };
 

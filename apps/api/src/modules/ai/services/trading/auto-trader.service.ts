@@ -309,11 +309,19 @@ export class AutoTraderService {
         return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, result, startTime, locale);
       }
 
+      // ══ 周期级 Adapter（对齐 nofx：1个 trader 实例贯穿整个周期）══
+      // 所有交易所 API 调用复用此 adapter，避免重复创建 CCXT 实例 + loadMarkets
+      const cycleAdapter = this.adapterFactory
+        ? await this.adapterFactory.createAdapter(userId, effectiveExchangeApiKeyId)
+        : null;
+
+      try { // ← finally 中 dispose cycleAdapter
+
       // R2: 周期性持仓同步 — 交易所 SL/TP 触发平仓后同步 DB（仅用于非网格策略）
       // 架构原则：syncPositionsForUser 返回交易所实时持仓，后续所有决策基于此数据，DB 仅用于历史记录
       let liveExchangePositions: any[] = [];
       try {
-        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId, strategy.id);
+        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId, strategy.id, cycleAdapter);
         liveExchangePositions = syncResult.exchangePositions;
         if (syncResult.created > 0 || syncResult.closed > 0) {
           this.logger.log(
@@ -334,7 +342,7 @@ export class AutoTraderService {
         return result;
       }
 
-      // 2b: 日 PnL 预检（提前拦截，避免后续无效的 AI 调用消耗 token）
+      // 2b: 日 PnL 数据准备（实际回撤判断合并到 2b-Live 中，使用交易所权益更准确）
       const maxDailyDrawdown: number = riskControl.maxDailyDrawdown || Number(aiConfig.maxDailyDrawdown) || 100;
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -352,78 +360,6 @@ export class AutoTraderService {
       const closedPnl = closedToday.reduce(
         (sum, p) => sum + Number(p.realizedPnl || 0), 0,
       );
-
-      // 使用交易所实时持仓的 unrealizedPnl（不再查 DB 快照）
-      const unrealizedPnl = liveExchangePositions.reduce(
-        (sum: number, p: any) => sum + Number(p.unrealizedPnl || 0), 0,
-      );
-
-      const totalDailyPnl = closedPnl + unrealizedPnl;
-      if (totalDailyPnl < -maxDailyDrawdown) {
-        this.logger.warn(
-          `[自动交易] 策略 ${strategyId} 日回撤熔断: $${Math.abs(totalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`,
-        );
-
-        // 记录熔断事件到策略日志
-        const pauseReason = `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`;
-        await this.prisma.aiStrategyLog.create({
-          data: {
-            strategyId,
-            symbol: 'ALL',
-            decision: {
-              action: 'circuit_breaker',
-              reason: pauseReason,
-              closedPnl,
-              unrealizedPnl,
-              totalDailyPnl,
-              maxDailyDrawdown,
-            },
-            executed: false,
-          },
-        });
-
-        // 平仓：关闭该策略所有持仓，盈利部分在 closePosition 内自动扣燃油费
-        try {
-          await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId);
-        } catch (e: any) {
-          this.logger.error(`[自动交易] 日回撤熔断平仓失败(继续停策略): ${e.message}`);
-        }
-
-        // 风控暂停：停止策略 + 记录原因到 riskControlConfig._riskPause
-        await this.prisma.aiStrategy.update({
-          where: { id: strategyId },
-          data: {
-            isActive: false,
-            riskControlConfig: {
-              ...riskControl,
-              _riskPause: {
-                source: 'daily_drawdown',
-                reason: pauseReason,
-                pausedAt: new Date().toISOString(),
-                totalDailyPnl,
-                maxDailyDrawdown,
-              },
-            },
-          },
-        });
-
-        // 移除 BullMQ 定时任务
-        try {
-          await this.strategyEngine.removeStrategyJob(strategyId);
-        } catch { /* 忽略 */ }
-
-        // WebSocket 通知用户
-        this.gateway.sendAiStrategyStatus(userId, {
-          strategyId,
-          status: 'stopped',
-          error: pauseReason,
-        });
-
-        this.logger.warn(`[自动交易] 策略 ${strategyId} 日回撤风控暂停: ${pauseReason}`);
-
-        result.errors = 1;
-        return result;
-      }
 
       // Step 3: 扫描候选币种
       const coinSourceConfig = (strategy.coinSourceConfig as unknown as CoinSourceConfig) || {
@@ -525,13 +461,13 @@ export class AutoTraderService {
       this.logger.log(
         `📊 账户快照: 配置资金=$${(riskControl.allocatedCapital || 1000).toFixed(0)} USDT | ` +
         `当前持仓=${existingPositions.length}/${effectiveMaxPositions} | ` +
-        `今日已关=${closedToday.length}笔 | 今日PnL=$${totalDailyPnl.toFixed(2)}`,
+        `今日已关=${closedToday.length}笔 | closedPnl=$${closedPnl.toFixed(2)}`,
       );
 
       // Step 5.1: 拉取交易所真实余额（1次/周期，失败降级到 allocatedCapital）
       let exchangeBalance: { totalEquity: number; availableBalance: number; usedMargin: number } | null = null;
       try {
-        exchangeBalance = await this.aiExecution.getFullBalance(userId, effectiveExchangeApiKeyId);
+        exchangeBalance = await this.aiExecution.getFullBalance(userId, effectiveExchangeApiKeyId, cycleAdapter ?? undefined);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`[账户] 交易所余额获取失败，降级到 allocatedCapital: ${errMsg}`);
@@ -557,30 +493,48 @@ export class AutoTraderService {
         }
       }
 
-      // Step 2b-Live: 日回撤二次校验（使用交易所实时权益，补偿 DB unrealizedPnl 的快照延迟）
-      // 期货账户恒等式：totalEquity = availableBalance + usedMargin + liveUnrealizedPnl
-      // 故 liveUnrealizedPnl = totalEquity - availableBalance - usedMargin（含账户全部期货浮亏）
+      // 权益快照（对齐 nofx saveEquitySnapshot：在余额获取后、候选币检查前保存，确保始终记录）
       if (exchangeBalance) {
-        const liveUnrealizedPnl =
-          exchangeBalance.totalEquity - exchangeBalance.availableBalance - exchangeBalance.usedMargin;
-        const liveTotalDailyPnl = closedPnl + liveUnrealizedPnl;
-        if (liveTotalDailyPnl < -maxDailyDrawdown) {
-          this.logger.warn(
-            `[自动交易] 策略 ${strategyId} 日回撤熔断（实时）: 浮亏=$${Math.abs(liveUnrealizedPnl).toFixed(2)}，` +
-            `今日总PnL=$${liveTotalDailyPnl.toFixed(2)} < -$${maxDailyDrawdown}` +
-            `（DB快照=$${totalDailyPnl.toFixed(2)}，差值=$${Math.abs(liveTotalDailyPnl - totalDailyPnl).toFixed(2)}）`,
-          );
+        const snapshotUnrealizedPnl = liveExchangePositions.reduce(
+          (sum: number, p: any) => sum + Number(p.unrealizedPnl || 0), 0,
+        );
+        const snapshotMargin = liveExchangePositions.reduce(
+          (sum: number, p: any) => sum + Number(p.margin || 0), 0,
+        );
+        this.prisma.equitySnapshot.create({
+          data: {
+            strategyId: strategy.id,
+            equity: exchangeBalance.totalEquity.toString(),
+            availBalance: exchangeBalance.availableBalance.toString(),
+            positionValue: snapshotMargin.toString(),
+            unrealizedPnl: snapshotUnrealizedPnl.toString(),
+          },
+        }).catch(e => this.logger.warn(`权益快照保存失败(非致命): ${e.message}`));
+      }
+
+      // Step 2b: 日回撤检查（合并为 1 次，对齐 nofx 单次 dailyPnL 判断）
+      // 优先用交易所权益推算 unrealizedPnl，降级用持仓 unrealizedPnl 求和
+      const unrealizedPnl = exchangeBalance
+        ? exchangeBalance.totalEquity - exchangeBalance.availableBalance - exchangeBalance.usedMargin
+        : liveExchangePositions.reduce((sum: number, p: any) => sum + Number(p.unrealizedPnl || 0), 0);
+      const totalDailyPnl = closedPnl + unrealizedPnl;
+
+      if (totalDailyPnl < -maxDailyDrawdown) {
+        {
+          const pauseReason = `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`;
+          this.logger.warn(`[自动交易] 策略 ${strategyId} 日回撤熔断: ${pauseReason}`);
           await this.prisma.aiStrategyLog.create({
             data: {
               strategyId,
               symbol: 'ALL',
               decision: {
                 action: 'circuit_breaker',
-                reason: `日回撤实时校验 $${Math.abs(liveTotalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`,
+                reason: pauseReason,
                 closedPnl,
-                liveUnrealizedPnl,
-                liveTotalDailyPnl,
-                dbSnapshot: totalDailyPnl,
+                unrealizedPnl,
+                totalDailyPnl,
+                maxDailyDrawdown,
+                source: exchangeBalance ? 'exchange_equity' : 'position_sum',
               },
               executed: false,
             },
@@ -588,12 +542,11 @@ export class AutoTraderService {
 
           // 平仓 + 扣燃油费
           try {
-            await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId);
+            await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId, cycleAdapter ?? undefined);
           } catch (e: any) {
-            this.logger.error(`[自动交易] 日回撤熔断（实时）平仓失败(继续停策略): ${e.message}`);
+            this.logger.error(`[自动交易] 日回撤熔断平仓失败(继续停策略): ${e.message}`);
           }
 
-          // 本检查点之前的 DB 快照检查未触发，需在此处补全停策略逻辑
           await this.prisma.aiStrategy.update({
             where: { id: strategyId },
             data: {
@@ -601,10 +554,10 @@ export class AutoTraderService {
               riskControlConfig: {
                 ...riskControl,
                 _riskPause: {
-                  source: 'daily_drawdown_live',
-                  reason: `日回撤实时校验 $${Math.abs(liveTotalDailyPnl).toFixed(2)} > 限制 $${maxDailyDrawdown}`,
+                  source: 'daily_drawdown',
+                  reason: pauseReason,
                   pausedAt: new Date().toISOString(),
-                  liveTotalDailyPnl,
+                  totalDailyPnl,
                   maxDailyDrawdown,
                 },
               },
@@ -614,13 +567,18 @@ export class AutoTraderService {
           this.gateway.sendAiStrategyStatus(userId, {
             strategyId,
             status: 'stopped',
-            error: `日回撤熔断（实时）: $${Math.abs(liveTotalDailyPnl).toFixed(2)} 超限`,
+            error: pauseReason,
           });
 
           result.errors = 1;
           return result;
         }
       }
+
+      // Step 3: 扫描候选币种之前的状态摘要
+      this.logger.log(
+        `📊 日PnL: 已关=${closedPnl.toFixed(2)}, 浮动=${unrealizedPnl.toFixed(2)}, 合计=${totalDailyPnl.toFixed(2)} (限额=-${maxDailyDrawdown})`,
+      );
 
       // Step 5.2: 分类持仓 + 构建 accountInfo（注入 Prompt 让 LLM 看到真实余额/持仓）
       const allocCap = riskControl.allocatedCapital || 1000;
@@ -630,6 +588,32 @@ export class AutoTraderService {
       const thisMargin = thisStrategyPositions.reduce((sum, p) => sum + Number(p.margin || 0), 0);
       const thisUnrealizedPnl = thisStrategyPositions.reduce((sum, p) => sum + Number(p.unrealizedPnl || 0), 0);
       const otherMargin = otherPositions.reduce((sum, p) => sum + Number(p.margin || 0), 0);
+
+      // Step 5.25: 获取交易所活跃条件单（SL/TP），注入 AI prompt（非致命）
+      // 只取本策略持仓相关的 symbols，减少无关数据
+      const positionSymbolsForStop = thisStrategyPositions.map(p => p.symbol);
+      type StopOrderInfo = {
+        symbol: string;
+        type: 'stop_loss' | 'take_profit' | 'trailing_stop' | 'other';
+        triggerPrice: number;
+        side: string;
+        quantity: number;
+        orderId: string;
+      };
+      let activeStopOrders: StopOrderInfo[] = [];
+      if (positionSymbolsForStop.length > 0 && cycleAdapter) {
+        try {
+          activeStopOrders = await (cycleAdapter as any).getStopOrders(positionSymbolsForStop);
+          if (activeStopOrders.length > 0) {
+            this.logger.log(
+              `[条件单] 获取到 ${activeStopOrders.length} 个活跃 SL/TP 条件单: ` +
+              activeStopOrders.map(o => `${o.symbol.replace('/USDT:USDT', '')}@${o.triggerPrice}(${o.type})`).join(', '),
+            );
+          }
+        } catch (e: any) {
+          this.logger.debug(`[条件单] 获取条件单失败(非致命): ${e.message}`);
+        }
+      }
 
       const accountInfo = {
         exchangeTotalEquity: exchangeBalance?.totalEquity ?? allocCap,
@@ -641,7 +625,7 @@ export class AutoTraderService {
           symbol: p.symbol,
           side: p.side,
           entryPrice: Number(p.entryPrice),
-          size: Number(p.amount),
+          quantity: Number(p.amount),
           leverage: p.leverage ?? 1,
           pnlPercent: Number(p.margin) > 0 ? (Number(p.unrealizedPnl || 0) / Number(p.margin)) * 100 : 0,
           peakPnlPercent: p.highWaterMark ? Number(p.highWaterMark) : undefined,
@@ -653,6 +637,7 @@ export class AutoTraderService {
         })),
         otherStrategiesCount: otherPositions.length,
         otherStrategiesMargin: otherMargin,
+        stopOrders: activeStopOrders,
       };
 
       this.logger.log(
@@ -661,65 +646,75 @@ export class AutoTraderService {
         `其他策略持仓=${otherPositions.length} (保证金=$${otherMargin.toFixed(2)})`,
       );
 
-      // 权益快照（对齐 nofx saveEquitySnapshot，每个周期保存，含空转周期）
-      this.prisma.equitySnapshot.create({
-        data: {
-          strategyId: strategy.id,
-          equity: accountInfo.exchangeTotalEquity.toString(),
-          availBalance: accountInfo.exchangeAvailableBalance.toString(),
-          positionValue: thisMargin.toString(),
-          unrealizedPnl: thisUnrealizedPnl.toString(),
-        },
-      }).catch(e => this.logger.warn(`权益快照保存失败(非致命): ${e.message}`));
-
-      // Step 5.5: 查询最近交易记录 + 统计（RecentOrder 9字段 + TradingStats 8字段）
-      const recentPositions = await this.prisma.position.findMany({
-        where: {
-          userId,
-          source: { in: ['ai_research', 'ai_strategy'] },
-          status: 'closed',
-          aiStrategyId: strategy.id,
-          // 排除 syncPositionsForUser 产生的重复 close 记录
-          closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
-        },
-        orderBy: { closedAt: 'desc' },
-        take: 10,
-        select: {
-          symbol: true,
-          side: true,
-          entryPrice: true,
-          exitPrice: true,
-          realizedPnl: true,
-          margin: true,
-          createdAt: true,
-          closedAt: true,
-        },
-      });
-
-      const recentTrades: RecentTrade[] = recentPositions.map((p) => {
-        const entryTime = p.createdAt;
-        const exitTime = p.closedAt;
-        let holdDuration = 'N/A';
-        if (entryTime && exitTime) {
-          const diffMs = exitTime.getTime() - entryTime.getTime();
-          const hours = Math.floor(diffMs / 3600000);
-          const minutes = Math.floor((diffMs % 3600000) / 60000);
-          holdDuration = hours > 0 ? `${hours}h${minutes}m` : `${minutes}m`;
+      // Step 5.5: 查询最近交易记录（优先从交易所实时获取，确保数据最新完整）
+      let recentTrades: RecentTrade[] = [];
+      try {
+        if (cycleAdapter) {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000); // 最近 24h
+          const exchangeClosedPnl = await cycleAdapter.getClosedPnl(since, 10);
+          recentTrades = exchangeClosedPnl.map((r) => {
+            const entryTime = r.entryTime;
+            const exitTime = r.exitTime;
+            let holdDuration = 'N/A';
+            if (entryTime && exitTime) {
+              const diffMs = exitTime.getTime() - entryTime.getTime();
+              const hours = Math.floor(diffMs / 3600000);
+              const minutes = Math.floor((diffMs % 3600000) / 60000);
+              holdDuration = hours > 0 ? `${hours}h${minutes}m` : `${minutes}m`;
+            }
+            const margin = r.leverage > 0 ? (r.entryPrice * r.quantity) / r.leverage : 0;
+            return {
+              symbol: r.symbol,
+              side: r.side,
+              entryPrice: r.entryPrice,
+              exitPrice: r.exitPrice,
+              pnl: r.realizedPnl,
+              pnlPercent: margin > 0 ? (r.realizedPnl / margin) * 100 : 0,
+              entryTime: entryTime?.toISOString().slice(0, 16) || 'N/A',
+              closedAt: exitTime?.toISOString().slice(0, 16) || 'N/A',
+              holdDuration,
+            };
+          });
+          this.logger.log(`[交易记录] 从交易所获取 ${recentTrades.length} 条近期平仓记录`);
+        } else {
+          throw new Error('cycleAdapter 未创建');
         }
-        return {
-          symbol: p.symbol,
-          side: p.side,
-          entryPrice: Number(p.entryPrice || 0),
-          exitPrice: Number(p.exitPrice || 0),
-          pnl: Number(p.realizedPnl || 0),
-          pnlPercent: Number(p.margin) > 0
-            ? (Number(p.realizedPnl || 0) / Number(p.margin)) * 100
-            : 0,
-          entryTime: entryTime?.toISOString().slice(0, 16) || 'N/A',
-          closedAt: exitTime?.toISOString().slice(0, 16) || 'N/A',
-          holdDuration,
-        };
-      });
+      } catch (e: any) {
+        // 降级：交易所获取失败时从 DB 读取
+        this.logger.warn(`[交易记录] 交易所获取失败(${e.message})，降级 DB 查询`);
+        const recentPositions = await this.prisma.position.findMany({
+          where: {
+            userId,
+            source: { in: ['ai_research', 'ai_strategy'] },
+            status: 'closed',
+            aiStrategyId: strategy.id,
+            closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
+          },
+          orderBy: { closedAt: 'desc' },
+          take: 10,
+          select: { symbol: true, side: true, entryPrice: true, exitPrice: true, realizedPnl: true, margin: true, createdAt: true, closedAt: true },
+        });
+        recentTrades = recentPositions.map((p) => {
+          const entryTime = p.createdAt;
+          const exitTime = p.closedAt;
+          let holdDuration = 'N/A';
+          if (entryTime && exitTime) {
+            const diffMs = exitTime.getTime() - entryTime.getTime();
+            const hours = Math.floor(diffMs / 3600000);
+            const minutes = Math.floor((diffMs % 3600000) / 60000);
+            holdDuration = hours > 0 ? `${hours}h${minutes}m` : `${minutes}m`;
+          }
+          return {
+            symbol: p.symbol, side: p.side,
+            entryPrice: Number(p.entryPrice || 0), exitPrice: Number(p.exitPrice || 0),
+            pnl: Number(p.realizedPnl || 0),
+            pnlPercent: Number(p.margin) > 0 ? (Number(p.realizedPnl || 0) / Number(p.margin)) * 100 : 0,
+            entryTime: entryTime?.toISOString().slice(0, 16) || 'N/A',
+            closedAt: exitTime?.toISOString().slice(0, 16) || 'N/A',
+            holdDuration,
+          };
+        });
+      }
 
       // 聚合交易统计（TradingStats 8字段）
       // 限定最近 30 天的已平仓位，避免历史旧仓位污染 Sharpe/WinRate
@@ -797,15 +792,6 @@ export class AutoTraderService {
           `Sharpe=${tradingStats.sharpeRatio}, DD=${tradingStats.maxDrawdownPct}%`,
         );
       }
-
-      // 持久化统计到 AiStrategy 表（前端卡片展示）
-      // winRate 从 0-1 转为 0-100 存储（与 DB Decimal(5,2) 对齐）
-      void this.strategyEngine.updateStats(strategyId, {
-        totalTrades: tradingStats.totalTrades,
-        totalPnl: tradingStats.totalPnl,
-        winRate: Number((tradingStats.winRate * 100).toFixed(2)),
-        sharpe: tradingStats.sharpeRatio,
-      });
 
       // Step 5.7: 计算连续 wait/hold 周期数 + 提取上轮决策摘要（注入 Prompt）
       const recentStrategyLogs = await db.aiStrategyLog.findMany({
@@ -952,6 +938,7 @@ export class AutoTraderService {
                 maxDailyTrades: riskControl.maxDailyTrades,
                 cooldownMinutes: riskControl.cooldownMinutes,
                 circuitBreaker: riskControl.circuitBreaker,
+                maxMarginUsage: riskControl.maxMarginUsage,
               },
               intervalMinutes: strategy.intervalMinutes || 60,
               todayTrades: closedToday.length,
@@ -1145,6 +1132,7 @@ export class AutoTraderService {
               maxDailyTrades: riskControl.maxDailyTrades,
               cooldownMinutes: riskControl.cooldownMinutes,
               circuitBreaker: riskControl.circuitBreaker,
+              maxMarginUsage: riskControl.maxMarginUsage,
             },
             intervalMinutes: strategy.intervalMinutes || 60,
             todayTrades: closedToday.length,
@@ -1230,6 +1218,8 @@ export class AutoTraderService {
         systemPrompt?: string;
         userPrompt?: string;
       }> = [];
+      // 订单簿缓存（同币种同周期只获取 1 次，对齐 nofx 单次数据采集原则）
+      const orderBookCache = new Map<string, any>();
       // 共享的 prompt 数据（多币种模式下取第一个币种的）
       let sharedRawResponse: string | undefined;
       let sharedSystemPrompt: string | undefined;
@@ -1256,10 +1246,11 @@ export class AutoTraderService {
           let _logAiThinking: string | undefined;  // DeepSeek 思考链（response.thinking）
           let _logMarketSnapshot: any;
 
-          // R4: 提前获取订单簿数据供 AI 决策参考
+          // R4: 提前获取订单簿数据供 AI 决策参考（结果缓存供执行时滑点检查复用）
           let symbolLiquidityData: QuickAnalysisConfig['liquidityData'];
           try {
-            const book = await this.marketData.fetchOrderBook(symbol);
+            const book = orderBookCache.get(symbol) ?? await this.marketData.fetchOrderBook(symbol);
+            if (!orderBookCache.has(symbol)) orderBookCache.set(symbol, book);
             const refSize = (riskControl.allocatedCapital || 1000) * 0.1 * (riskControl.maxLeverage || 10); // 10%仓位×最大杠杆
             const slippageEst = this.marketData.estimateSlippage(book, 'buy', refSize);
             const bestBid = book.bids[0]?.[0] || 0;
@@ -1359,6 +1350,7 @@ export class AutoTraderService {
                   maxDailyTrades: riskControl.maxDailyTrades,
                   cooldownMinutes: riskControl.cooldownMinutes,
                   circuitBreaker: riskControl.circuitBreaker,
+                  maxMarginUsage: riskControl.maxMarginUsage,
                 },
                 intervalMinutes: strategy.intervalMinutes || 60,
                 todayTrades: closedToday.length,
@@ -1775,6 +1767,13 @@ export class AutoTraderService {
             executed: false,
             error: error.message,
           });
+          // 对齐 nofx: 失败也写入 cycleDecisions，确保 aiStrategyLog 有记录（前端可见失败原因）
+          cycleDecisions.push({
+            symbol,
+            decision: { action: 'error', confidence: 0, reasoning: error.message },
+            executed: false,
+            executionResult: { error: error.message },
+          });
         }
       }
 
@@ -1793,19 +1792,10 @@ export class AutoTraderService {
         );
       }
 
-      // Step 8.5: 获取交易所实际可用余额，用于 D6/E4 预检
-      // 避免 allocatedCapital=1000 但实际余额只有 $13 导致 E4 误放行
-      let realAvailableBalance: number | undefined;
-      if (sortedDecisions.some(d => d.decision.action === 'open_long' || d.decision.action === 'open_short')) {
-        try {
-          realAvailableBalance = await this.aiExecution.getAvailableBalance(
-            userId, effectiveExchangeApiKeyId, riskControl.allocatedCapital,
-          );
-          this.logger.log(`[自动交易] 实际可用余额: $${realAvailableBalance.toFixed(2)}`);
-        } catch (e) {
-          this.logger.warn(`[自动交易] 获取余额失败，E4 回退到 allocatedCapital`);
-        }
-      }
+      // Step 8.5: 复用 Step 5.1 已获取的余额（避免二次调用交易所 API，对齐 nofx 单次 GetBalance）
+      const realAvailableBalance: number | undefined = exchangeBalance
+        ? Math.min(exchangeBalance.availableBalance, riskControl.allocatedCapital || Infinity)
+        : undefined;
 
       // Step 9: 逐一执行
       for (const item of sortedDecisions) {
@@ -1958,10 +1948,10 @@ export class AutoTraderService {
           }
 
           // R4: 滑点安全顶（3% 绝对上限，AI 无法覆盖）
-          // 低于 3% 的滑点由 AI 自行判断（订单簿数据已在 prompt 中注入）
+          // 复用 pre-AI 缓存的订单簿，避免同币种重复获取
           if (decision.action === 'open_long' || decision.action === 'open_short') {
             try {
-              const book = await this.marketData.fetchOrderBook(symbol);
+              const book = orderBookCache.get(symbol) ?? await this.marketData.fetchOrderBook(symbol);
               const posUSD = decision.positionSizeUSD
                 ? decision.positionSizeUSD
                 : (decision.positionSizePercent / 100) * (riskControl.allocatedCapital || 1000) * decision.leverage;
@@ -2069,9 +2059,13 @@ export class AutoTraderService {
               currentPrice: freshPrice,
               btcEthMaxPositionValueRatio: riskControl.btcEthMaxPositionValueRatio,
               altcoinMaxPositionValueRatio: riskControl.altcoinMaxPositionValueRatio,
+              // 周期级预获取数据（对齐 nofx：避免执行时重复调用交易所 API）
+              exchangePositionCount: thisStrategyOpenPositions.length,
+              exchangeAvailableBalance: exchangeBalance?.availableBalance,
             },
             'ai_strategy',
             strategyId,
+            cycleAdapter ?? undefined,
           );
 
           if (execResult.success) {
@@ -2261,16 +2255,64 @@ export class AutoTraderService {
             symbol: primarySymbol,
             decision: {
               ...primaryDecision.decision,
-              // 顶层 reasoning = 整体市场分析（<reasoning>标签），给用户看
+              // 顶层 reasoning = 整体市场分析（CoTTrace，给用户看）
               ...(sharedAnalysis ? { reasoning: sharedAnalysis } : {}),
+              // 顶层 aiThinking = DeepSeek-Reasoner/Claude 思考链（调试用，前端折叠展示）
+              ...(primaryDecision.aiThinking ? { aiThinking: primaryDecision.aiThinking } : {}),
               allDecisions: cycleDecisions.map(d => ({
                 symbol: d.symbol,
                 ...d.decision,
-                // 每币 reasoning = JSON 短摘要（不被整体分析覆盖）
+                // 每币 reasoning = 完整分析+第一人称决策（prompt 已要求 ≥3 句）
                 reasoning: d.decision.reasoning !== sharedAnalysis ? d.decision.reasoning : '',
                 executed: d.executed,
                 executionResult: d.executionResult,
+                // 每币市场数据快照（前端展示用）
+                ...(d.marketSnapshot ? { marketSnapshot: d.marketSnapshot } : {}),
               })),
+              // 对齐 nofx DecisionRecord: 补充账户快照 + AI 耗时 + 候选币列表
+              // 对齐 nofx DecisionRecord.AccountState + Positions[]
+              accountSnapshot: {
+                totalEquity: accountInfo.exchangeTotalEquity,
+                availableBalance: accountInfo.exchangeAvailableBalance,
+                allocatedCapital: allocCap,
+                strategyMarginUsed: accountInfo.strategyMarginUsed,
+                strategyUnrealizedPnl: accountInfo.strategyUnrealizedPnl,
+                positionCount: thisStrategyPositions.length,
+                marginUsedPct: accountInfo.exchangeTotalEquity > 0
+                  ? (accountInfo.strategyMarginUsed / accountInfo.exchangeTotalEquity * 100)
+                  : 0,
+                dailyPnl: totalDailyPnl,
+                // 对齐 nofx DecisionRecord.Positions[]: 决策时的完整持仓快照
+                positions: thisStrategyPositions.map(p => ({
+                  symbol: p.symbol,
+                  side: p.side,
+                  entryPrice: Number(p.entryPrice),
+                  markPrice: Number(p.markPrice || 0),
+                  quantity: Number(p.amount),
+                  leverage: p.leverage ?? 1,
+                  unrealizedPnl: Number(p.unrealizedPnl || 0),
+                  margin: Number(p.margin || 0),
+                  holdMinutes: p.createdAt ? Math.round((Date.now() - new Date(p.createdAt).getTime()) / 60000) : undefined,
+                  liqPrice: Number((p as any).liquidationPrice || 0) || undefined,
+                })),
+              },
+              aiRequestDurationMs: result.totalLatencyMs > 0 ? Date.now() - startTime : undefined,
+              candidateCoins: activeCandidates,
+              // 全局决策上下文（前端展示用：AI 看到了哪些辅助数据）
+              globalContext: {
+                recentTradesCount: recentTrades.length,
+                tradingStats: tradingStats.totalTrades > 0 ? {
+                  trades: tradingStats.totalTrades,
+                  winRate: Number((tradingStats.winRate * 100).toFixed(1)),
+                  pf: tradingStats.profitFactor,
+                  sharpe: tradingStats.sharpeRatio,
+                  pnl: tradingStats.totalPnl,
+                  maxDD: tradingStats.maxDrawdownPct,
+                } : undefined,
+                stopOrdersCount: accountInfo.stopOrders?.length ?? 0,
+                lastDecisionsCount: lastDecisions.length,
+                btcRef: accountInfo.exchangeTotalEquity > 0, // 是否有 BTC 参考数据
+              },
             } as unknown as Prisma.InputJsonValue,
             executed: cycleDecisions.some(d => d.executed),
             executionResult: {
@@ -2288,40 +2330,18 @@ export class AutoTraderService {
       }
 
       // 更新策略统计 + lastCycleAt + cycleCount + 重置连续失败计数
+      // 复用 Step 5.5 已计算的 tradingStats（避免重复 DB 查询，对齐 nofx 单次 GetFullStats）
       result.totalLatencyMs = Date.now() - startTime;
-
-      // 重新计算该策略的交易统计（仅限本策略的已关闭持仓）
-      const strategyClosedPositions = await db.position.findMany({
-        where: {
-          aiStrategyId: strategyId,
-          status: 'closed',
-          realizedPnl: { not: null },
-        },
-        select: { realizedPnl: true, margin: true },
-      });
-      const sTotalTrades = strategyClosedPositions.length;
-      const sWins = strategyClosedPositions.filter((p) => Number(p.realizedPnl || 0) > 0);
-      const sWinRate = sTotalTrades > 0 ? (sWins.length / sTotalTrades) * 100 : 0;
-      const sTotalPnl = strategyClosedPositions.reduce((s, p) => s + Number(p.realizedPnl || 0), 0);
-      // 简化夏普率
-      const sPnlPcts = strategyClosedPositions.map((p) =>
-        Number(p.margin) > 0 ? (Number(p.realizedPnl || 0) / Number(p.margin)) * 100 : 0,
-      );
-      const sMean = sPnlPcts.length > 0 ? sPnlPcts.reduce((a, b) => a + b, 0) / sPnlPcts.length : 0;
-      const sVar = sPnlPcts.length > 1
-        ? sPnlPcts.reduce((s, v) => s + (v - sMean) ** 2, 0) / (sPnlPcts.length - 1)
-        : 0;
-      const sSharpe = Math.sqrt(sVar) > 0 ? (sMean / Math.sqrt(sVar)) * Math.sqrt(365) : 0;
 
       const updatedStrategy = await db.aiStrategy.update({
         where: { id: strategyId },
         data: {
           lastCycleAt: new Date(),
           cycleCount: { increment: 1 },
-          totalTrades: sTotalTrades,
-          totalPnl: Number(sTotalPnl.toFixed(8)),
-          winRate: Number(sWinRate.toFixed(2)),
-          sharpe: Number(sSharpe.toFixed(4)),
+          totalTrades: tradingStats.totalTrades,
+          totalPnl: tradingStats.totalPnl,
+          winRate: Number((tradingStats.winRate * 100).toFixed(2)),
+          sharpe: tradingStats.sharpeRatio,
           ...(strategy.consecutiveFailures > 0 ? { consecutiveFailures: 0 } : {}),
         },
       });
@@ -2340,7 +2360,7 @@ export class AutoTraderService {
       // 止盈/止损检查（基于策略总 PnL 与配置资金的百分比）
       if (!shouldStop && (stopCond.profitTargetPercent || stopCond.maxLossPercent)) {
         const allocCap = riskControl.allocatedCapital || 1000;
-        const pnlPercent = allocCap > 0 ? (sTotalPnl / allocCap) * 100 : 0;
+        const pnlPercent = allocCap > 0 ? (tradingStats.totalPnl / allocCap) * 100 : 0;
 
         if (stopCond.profitTargetPercent && stopCond.profitTargetPercent > 0 && pnlPercent >= stopCond.profitTargetPercent) {
           shouldStop = true;
@@ -2356,7 +2376,7 @@ export class AutoTraderService {
 
         // 平仓 + 结算燃油费（closePosition 内部：平仓后按实际盈利扣费，幂等）
         try {
-          await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId);
+          await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId, cycleAdapter ?? undefined);
         } catch (e: any) {
           this.logger.error(`[自动交易] 停止条件平仓失败(继续停策略): ${e.message}`);
         }
@@ -2388,27 +2408,22 @@ export class AutoTraderService {
         }
       }
 
-      // 交易所历史持仓同步 + 统一扣费（唯一入口）
-      if (this.closedPnlSyncService && this.adapterFactory) {
+      // 交易所历史持仓同步 + 统一扣费（唯一入口，复用 cycleAdapter）
+      if (this.closedPnlSyncService && cycleAdapter) {
         try {
-          const syncAdapter = await this.adapterFactory.createAdapter(userId, effectiveExchangeApiKeyId);
-          try {
-            const syncResult = await this.closedPnlSyncService.syncClosedPositions(
-              userId, effectiveExchangeApiKeyId, syncAdapter.exchangeType, syncAdapter,
-            );
-            if (syncResult.synced > 0 || syncResult.deleted > 0) {
-              this.logger.log(`[自动交易] 历史持仓同步: 新增=${syncResult.synced}, 删除=${syncResult.deleted}, 扣费=${syncResult.charged}`);
-            }
-            // 用 income API 的准确 PnL 更新策略记录（不依赖 position 表聚合）
-            if (syncResult.incomePnl24h !== undefined) {
-              await this.prisma.aiStrategy.update({
-                where: { id: strategyId },
-                data: { totalPnl: syncResult.incomePnlToday },
-              });
-              this.logger.debug(`[自动交易] income PnL: 今日=${syncResult.incomePnlToday.toFixed(4)}, 24h=${syncResult.incomePnl24h.toFixed(4)}`);
-            }
-          } finally {
-            try { await syncAdapter.dispose(); } catch { /* 忽略 */ }
+          const syncResult = await this.closedPnlSyncService.syncClosedPositions(
+            userId, effectiveExchangeApiKeyId, cycleAdapter.exchangeType, cycleAdapter,
+          );
+          if (syncResult.synced > 0 || syncResult.deleted > 0) {
+            this.logger.log(`[自动交易] 历史持仓同步: 新增=${syncResult.synced}, 删除=${syncResult.deleted}, 扣费=${syncResult.charged}`);
+          }
+          // 用 income API 的准确 PnL 更新策略记录（不依赖 position 表聚合）
+          if (syncResult.incomePnl24h !== undefined) {
+            await this.prisma.aiStrategy.update({
+              where: { id: strategyId },
+              data: { totalPnl: syncResult.incomePnlToday },
+            });
+            this.logger.debug(`[自动交易] income PnL: 今日=${syncResult.incomePnlToday.toFixed(4)}, 24h=${syncResult.incomePnl24h.toFixed(4)}`);
           }
         } catch (e: any) {
           this.logger.debug(`[自动交易] 历史持仓同步失败(非致命): ${e.message}`);
@@ -2436,6 +2451,12 @@ export class AutoTraderService {
       });
 
       return result;
+
+      } finally {
+        // ══ 周期级 Adapter 销毁（对齐 nofx：整个周期结束后统一释放）══
+        if (cycleAdapter) { try { await cycleAdapter.dispose(); } catch { /* 忽略 */ } }
+      }
+
     } catch (error) {
       this.logger.error(
         `[自动交易] 周期异常: 策略=${strategyId} - ${error.message}`,

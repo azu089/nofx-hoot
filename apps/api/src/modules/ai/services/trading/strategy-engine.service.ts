@@ -1057,8 +1057,9 @@ export class StrategyEngineService implements OnModuleInit {
     userId: string,
     apiKeyId: string,
     strategyId?: string,
+    existingAdapter?: any,
   ): Promise<{ created: number; closed: number; exchangePositions: any[] }> {
-    if (!this.adapterFactory) {
+    if (!this.adapterFactory && !existingAdapter) {
       return { created: 0, closed: 0, exchangePositions: [] };
     }
 
@@ -1066,7 +1067,8 @@ export class StrategyEngineService implements OnModuleInit {
     let closed = 0;
     let liveExchangePositions: any[] = [];
 
-    const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+    const ownsAdapter = !existingAdapter;
+    const adapter = existingAdapter ?? await this.adapterFactory!.createAdapter(userId, apiKeyId);
     try {
       const exchangePositions = await adapter.getPositions();
       liveExchangePositions = exchangePositions;
@@ -1087,12 +1089,12 @@ export class StrategyEngineService implements OnModuleInit {
           (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
         );
         if (matched) {
-          // DB 有且交易所有 → 同步最新 amount/entryPrice/unrealizedPnl
+          // 对齐 nofx: 只更新实时行情数据（unrealizedPnl/markPrice），不覆盖 entryPrice/amount
+          // nofx 的 entryPrice 只在 OrderSync→ProcessTrade（开仓成交）时写入，
+          // getPositions() 返回的 entryPrice 是交易所的加权均价（含加仓），会覆盖精确的开仓价导致 PnL 计算错误
           await this.prisma.position.update({
             where: { id: matched.id },
             data: {
-              amount: ep.quantity,
-              entryPrice: ep.entryPrice,
               unrealizedPnl: ep.unrealizedPnl,
               markPrice: ep.markPrice,
               lastSyncAt: new Date(),
@@ -1102,15 +1104,36 @@ export class StrategyEngineService implements OnModuleInit {
         // 交易所有 DB 无 → 不创建（由 ai-execution 负责创建）
       }
 
-      // 对齐 nofx: DB 有但交易所无 → 不自动关闭
-      // 持仓关闭的唯一入口是 ai-execution.closePosition()
-      // 交易所 SL/TP 条件单触发后，下一轮 ai-execution 会检测到持仓消失并处理
+      // 对齐 nofx OrderSync: DB open 但交易所无 → 标记 closed
+      // nofx 通过 SyncOrdersFromBinance → ProcessTrade(close_long/close_short) 自动关闭
+      // HOOT 等价：检测交易所已平仓（SL/TP 条件单触发），标记 DB closed
+      const exchangeSymbolSides = new Set(
+        exchangePositions.map((ep: any) => `${ep.symbol}::${ep.side}`),
+      );
+      for (const dbPos of dbPositions) {
+        const key = `${dbPos.symbol}::${dbPos.side}`;
+        if (!exchangeSymbolSides.has(key)) {
+          // 交易所接口正常返回但找不到此仓 = 已被条件单平仓
+          closed++;
+          await this.prisma.position.update({
+            where: { id: dbPos.id },
+            data: {
+              status: 'closed',
+              closedAt: new Date(),
+              closeReason: 'not_found_on_exchange',
+            },
+          });
+          this.logger.warn(
+            `[持仓同步] ${dbPos.symbol} ${dbPos.side} 交易所已无持仓（SL/TP 条件单触发），标记 closed`,
+          );
+        }
+      }
 
       if (created > 0 || closed > 0) {
         this.logger.log(`[持仓同步] user=${userId}: 新建${created}, 关闭${closed}`);
       }
     } finally {
-      await adapter.dispose();
+      if (ownsAdapter) await adapter.dispose();
     }
 
     return { created, closed, exchangePositions: liveExchangePositions };

@@ -79,7 +79,7 @@ export interface QuickAnalysisConfig {
       symbol: string;
       side: string;
       entryPrice: number;
-      size: number;
+      quantity: number;
       leverage: number;
       pnlPercent: number;
       peakPnlPercent?: number;
@@ -87,6 +87,15 @@ export interface QuickAnalysisConfig {
     }>;
     otherStrategiesCount: number;
     otherStrategiesMargin: number;
+    /** 交易所活跃条件单（SL/TP），按持仓 symbol 过滤后传入 */
+    stopOrders?: Array<{
+      symbol: string;
+      type: 'stop_loss' | 'take_profit' | 'trailing_stop' | 'other';
+      triggerPrice: number;
+      side: string;
+      quantity: number;
+      orderId: string;
+    }>;
   };
   /** 上轮 AI 决策摘要（注入 prompt 提供决策连续性） */
   lastDecisions?: Array<{
@@ -211,7 +220,7 @@ export class QuickAnalysisService {
 
     // Phase 9.0 T4: 多币种模式 — 使用预构建的市场数据，跳过 fetch
     let marketDataPrompt: string;
-    let existingPositions: Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number; leverage?: number }> = [];
+    let existingPositions: Array<{ side: string; entryPrice: number; quantity: number; pnlPercent: number; peakPnlPercent?: number; leverage?: number }> = [];
     // 风控数据: 提升到外层作用域，供 safety.service 使用
     let safetyIndicators: { rsi: number | null; atr3?: number | null; atr14?: number | null } | undefined;
     let safetyFundingRate: number | undefined;
@@ -437,6 +446,8 @@ export class QuickAnalysisService {
         indicators: flatIndicators,
         openInterest,
         fundingRate,
+        // 对齐 nofx: 注入最近 30 根原始 K 线（让 AI 看到价格形态）
+        ohlcv: ohlcv.slice(-30).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
         existingPositions,
         marketRanking: marketRanking || undefined,
         enhanced: enhancedData || undefined,
@@ -556,7 +567,7 @@ export class QuickAnalysisService {
           symbol: p.symbol,
           side: p.side,
           entryPrice: p.entryPrice,
-          size: p.size,
+          quantity: p.quantity,
           leverage: p.leverage,
           pnlPercent: p.pnlPercent,
           peakPnlPercent: p.peakPnlPercent,
@@ -570,7 +581,7 @@ export class QuickAnalysisService {
         symbol: config.symbol,
         side: p.side,
         entryPrice: p.entryPrice,
-        size: p.size,
+        quantity: p.quantity,
         leverage: p.leverage ?? 1,
         pnlPercent: p.pnlPercent,
         peakPnlPercent: p.peakPnlPercent,
@@ -600,6 +611,8 @@ export class QuickAnalysisService {
       coinSourceMode: config.coinSourceMode as any,
       candidateSymbols: config.candidateSymbols,
       currentSymbol: config.symbol,
+      // 交易所活跃条件单（SL/TP）— 让 AI 感知已有保护，避免重复下单
+      stopOrders: config.accountInfo?.stopOrders,
     };
 
     const userMessage = this.promptBuilder.buildUserPrompt(userPromptCtx);
@@ -633,8 +646,52 @@ export class QuickAnalysisService {
       `lev=${decision.leverage}x 耗时=${latencyMs}ms analysis=${marketAnalysis ? marketAnalysis.length + '字' : 'none'}`,
     );
 
+    // 对齐 nofx CoTTrace 统一策略：用户只看一个 analysis 字段
+    // 优先级：<reasoning>标签内容 → thinking（DeepSeek-Reasoner）→ 空
+    // 当 <reasoning> 太短（<50字）但 thinking 有完整推理时，用 thinking 替代
+    const MIN_ANALYSIS_LENGTH = 50;
+    let unifiedAnalysis = marketAnalysis;
+    if (response.thinking && (!unifiedAnalysis || unifiedAnalysis.length < MIN_ANALYSIS_LENGTH)) {
+      unifiedAnalysis = response.thinking;
+      this.logger.log(
+        `[CoTTrace统一] <reasoning>内容过短(${marketAnalysis?.length ?? 0}字)，使用 thinking(${response.thinking.length}字) 作为用户可见分析`,
+      );
+    }
+
+    // 后端补偿：如果 JSON reasoning 太短（<50字），从整体分析中提取该币段落填充
+    // 解决 DeepSeek-Reasoner content 极短、小模型忽略指令的问题
+    const MIN_REASONING_LENGTH = 50;
+    for (const d of allDecisions) {
+      if (!d.reasoning || d.reasoning.length < MIN_REASONING_LENGTH) {
+        const sym = (d.symbol || config.symbol).replace(/\/USDT.*$/, '').toUpperCase();
+        // 从整体分析中提取该币种相关段落
+        if (unifiedAnalysis) {
+          const lines = unifiedAnalysis.split('\n');
+          const coinLines = lines.filter(l => {
+            const upper = l.toUpperCase();
+            return upper.includes(sym) || upper.includes(`**${sym}`) || upper.startsWith(sym);
+          });
+          if (coinLines.length > 0) {
+            d.reasoning = coinLines.join(' ').trim();
+            continue;
+          }
+        }
+        // 最终兜底：用 marketSnapshot 构建简要描述
+        if (snapshot) {
+          const parts: string[] = [];
+          if (snapshot.rsi14 != null) parts.push(`RSI(14)=${snapshot.rsi14.toFixed(1)}`);
+          if (snapshot.emaTrend) parts.push(`EMA ${snapshot.emaTrend}`);
+          if (snapshot.oiQuadrant) parts.push(`OI: ${snapshot.oiQuadrant}`);
+          if (snapshot.fundingRate != null) parts.push(`FR=${(snapshot.fundingRate * 100).toFixed(3)}%`);
+          if (parts.length > 0) {
+            d.reasoning = `${sym}: ${parts.join(', ')}. ${d.reasoning || ''}`.trim();
+          }
+        }
+      }
+    }
+
     return {
-      decision,
+      decision: allDecisions[0] || decision, // 补偿后的决策
       allDecisions,
       rawResponse: response.content,
       cost: response.cost,
@@ -645,8 +702,9 @@ export class QuickAnalysisService {
       volume24h: safetyVolume24h,
       systemPrompt,
       userPrompt: userMessage,
-      // 字段职责唯一：analysis=整体市场分析（给用户看），aiThinking=DeepSeek思考链
-      analysis: marketAnalysis,
+      // 对齐 nofx: analysis = 用户看到的唯一分析（CoTTrace），所有模型统一
+      analysis: unifiedAnalysis,
+      // aiThinking 保留为调试字段（仅 DeepSeek-Reasoner/Claude 有）
       aiThinking: response.thinking,
       marketSnapshot: snapshot,
     };
@@ -734,6 +792,7 @@ export class QuickAnalysisService {
               indicators: flatIndicators,
               openInterest,
               fundingRate,
+              ohlcv: ohlcv.slice(-30).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
               marketRanking: marketRanking || undefined,
               enhanced: enhancedData || undefined,
             });
@@ -852,7 +911,7 @@ export class QuickAnalysisService {
         } : undefined,
         positions: ai ? ai.strategyPositions.map(p => ({
           symbol: p.symbol, side: p.side, entryPrice: p.entryPrice,
-          size: p.size, leverage: p.leverage, pnlPercent: p.pnlPercent,
+          quantity: p.quantity, leverage: p.leverage, pnlPercent: p.pnlPercent,
           peakPnlPercent: p.peakPnlPercent, margin: p.margin,
           holdMinutes: (p as any).holdMinutes, liqPrice: (p as any).liqPrice,
         })) : [],
@@ -864,6 +923,8 @@ export class QuickAnalysisService {
         // 多币种模式跳过 BM25 记忆（无单币指标上下文）
         liquidityData: configs.flatMap(c => c.liquidityData || []),
         locale: refConfig.promptConfig?.locale,
+        // 交易所活跃条件单（SL/TP）— 让 AI 感知已有保护，避免重复下单
+        stopOrders: refConfig.accountInfo?.stopOrders,
       };
 
       const userMessage = this.promptBuilder.buildUserPrompt(userPromptCtx);
@@ -880,8 +941,31 @@ export class QuickAnalysisService {
       // 5. 解析所有决策（对齐网格: 优先 {analysis, decisions} 格式）
       const { decisions: allDecisions, analysis: marketAnalysis } = parseDecisionsWithAnalysis(response.content);
 
+      // 对齐 nofx CoTTrace 统一：<reasoning> 太短时用 thinking 替代
+      let mcUnifiedAnalysis = marketAnalysis;
+      if (response.thinking && (!mcUnifiedAnalysis || mcUnifiedAnalysis.length < 50)) {
+        mcUnifiedAnalysis = response.thinking;
+      }
+
       const latencyMs = Date.now() - startTime;
       const costPerCoin = response.cost / validResults.length;
+
+      // 5.5 后端补偿：多币种模式下 JSON reasoning 太短时，从整体分析提取该币段落
+      for (const d of allDecisions) {
+        if (!d.reasoning || d.reasoning.length < 50) {
+          const sym = (d.symbol || '').replace(/\/USDT.*$/, '').toUpperCase();
+          if (mcUnifiedAnalysis && sym) {
+            const lines = mcUnifiedAnalysis.split('\n');
+            const coinLines = lines.filter(l => {
+              const upper = l.toUpperCase();
+              return upper.includes(sym) || upper.includes(`**${sym}`) || upper.startsWith(sym);
+            });
+            if (coinLines.length > 0) {
+              d.reasoning = coinLines.join(' ').trim();
+            }
+          }
+        }
+      }
 
       // 6. 按 symbol 映射结果（symbol 归一化：去除 /USDT 后缀，大写比较）
       const normalizeSymbol = (s?: string) => (s || '').replace(/\/USDT$/i, '').replace(/USDT$/i, '').toUpperCase();
@@ -937,12 +1021,39 @@ export class QuickAnalysisService {
             indicators: mr.indicators, fundingRate: mr.fundingRate,
             currentPrice: mr.currentPrice, volume24h: mr.volume24h,
             systemPrompt, userPrompt: userMessage,
-            analysis: marketAnalysis,
+            analysis: mcUnifiedAnalysis,
             aiThinking: response.thinking,
             marketSnapshot: mcSnapshot,
           });
         } else {
-          this.logger.warn(`[多币种分析] ${mr.symbol} 未在 AI 响应中找到决策，降级逐币分析`);
+          // 对齐 nofx: AI 未输出该币决策 = 隐含 wait（无持仓）或 hold（有持仓）
+          // 禁止降级逐币分析（会导致 reasoning 和 decision 来自不同 LLM 调用，前端展示与执行不一致）
+          const hasPosition = userPromptCtx.positions?.some(p => p.symbol === mr.symbol);
+          const fallbackAction = hasPosition ? 'hold' : 'wait';
+          this.logger.warn(
+            `[多币种分析] ${mr.symbol} 未在 AI 响应中找到决策，对齐 nofx 设为 ${fallbackAction}（不降级逐币）`,
+          );
+          const fallbackDecision: AiTradeDecision = {
+            symbol: mr.symbol,
+            action: fallbackAction as any,
+            confidence: 0,
+            reasoning: `AI 多币种分析中未输出该币决策，默认 ${fallbackAction}`,
+            leverage: 0,
+            positionSizePercent: 0,
+            stopLoss: 0,
+            takeProfit: 0,
+          };
+          resultMap.set(mr.symbol, {
+            decision: fallbackDecision,
+            allDecisions: [...allDecisions, fallbackDecision],
+            rawResponse: response.content,
+            cost: costPerCoin, latencyMs,
+            indicators: mr.indicators, fundingRate: mr.fundingRate,
+            currentPrice: mr.currentPrice, volume24h: mr.volume24h,
+            systemPrompt, userPrompt: userMessage,
+            analysis: mcUnifiedAnalysis,
+            aiThinking: response.thinking,
+          });
         }
       }
 
@@ -950,17 +1061,6 @@ export class QuickAnalysisService {
         `[多币种分析] 完成: ${resultMap.size}/${validResults.length} 个币种成功, ` +
         `耗时=${latencyMs}ms, 成本=$${response.cost.toFixed(6)}`,
       );
-
-      // 7. 对未匹配的币种降级到逐币分析
-      for (const config of configs) {
-        if (!resultMap.has(config.symbol)) {
-          try {
-            resultMap.set(config.symbol, await this.analyze(config));
-          } catch (e: any) {
-            this.logger.warn(`[多币种分析] ${config.symbol} 降级分析也失败: ${e.message}`);
-          }
-        }
-      }
 
       return resultMap;
     } catch (error: any) {
@@ -1115,7 +1215,7 @@ export class QuickAnalysisService {
     userId: string,
     symbol: string,
   ): Promise<
-    Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number; leverage?: number }>
+    Array<{ side: string; entryPrice: number; quantity: number; pnlPercent: number; peakPnlPercent?: number; leverage?: number }>
   > {
     try {
       const positions = await this.prisma.position.findMany({
@@ -1138,7 +1238,7 @@ export class QuickAnalysisService {
       return positions.map((p) => ({
         side: p.side,
         entryPrice: Number(p.entryPrice),
-        size: Number(p.amount),
+        quantity: Number(p.amount),
         // 盈亏百分比 = 未实现盈亏(美元) / 保证金(美元) × 100
         pnlPercent: Number(p.margin) > 0
           ? (Number(p.unrealizedPnl || 0) / Number(p.margin)) * 100

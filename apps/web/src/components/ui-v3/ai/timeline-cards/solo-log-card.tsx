@@ -794,12 +794,28 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {adEr?.blocked && (
                   <div className="text-[10px] text-[#F59E0B] ml-[40px] mt-0.5">{adEr.reason || adEr.blockedBy}</div>
                 )}
-                {/* 每币reasoning（对齐nofx: 短信号摘要，不重复整体分析） */}
+                {/* 每币市场数据面板（确认 AI 看到的数据） */}
+                {ad.marketSnapshot && (() => {
+                  const ms = ad.marketSnapshot as any;
+                  if (!ms?.price) return null;
+                  const atrPct = ms.atr14 && ms.price > 0 ? (ms.atr14 / ms.price * 100) : null;
+                  return (
+                    <div className="text-[10px] font-mono text-[#9090A0] ml-[40px] mt-0.5 flex flex-wrap gap-x-2">
+                      <span className="text-[#F8F8FC]">${ms.price?.toFixed(2)}</span>
+                      {ms.rsi14 != null && <span>RSI {ms.rsi14.toFixed(0)}</span>}
+                      {ms.macdHist != null && <span>MACD {ms.macdHist > 0 ? '+' : ''}{ms.macdHist.toFixed(3)}</span>}
+                      {atrPct != null && <span>ATR {atrPct.toFixed(1)}%</span>}
+                      {ms.fundingRate != null && <span>FR {(ms.fundingRate * 100).toFixed(3)}%</span>}
+                      {ms.oiChange != null && <span>OI {ms.oiChange}</span>}
+                      {ms.emaTrend && <span className={ms.emaTrend.includes('多') || ms.emaTrend.includes('↑') ? 'text-[#10B981]' : ms.emaTrend.includes('空') || ms.emaTrend.includes('↓') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}
+                    </div>
+                  );
+                })()}
+                {/* 每币分析+决策（完整分析+第一人称"我决定..."） */}
                 {ad.reasoning && !adEr?.blocked && (() => {
                   const r = String(ad.reasoning);
-                  // 跳过：与整体分析相同 或 包含全局账户信息（非该币独立分析）
+                  // 跳过：仅当与整体分析完全相同时（避免重复）
                   if (r === reasoning) return null;
-                  if (r.length > 200 && (r.includes('账户') || r.includes('保证金使用率') || r.includes('策略权益'))) return null;
                   return <CoinReasoning text={r} />;
                 })()}
               </div>
@@ -981,6 +997,39 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           {d.aiThinking && (
             <AiThinkingSection text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
+
+          {/* 对齐 nofx DecisionRecord: 账户快照 + AI 耗时 + 候选币 */}
+          {(d.accountSnapshot || d.aiRequestDurationMs || d.candidateCoins) && (
+            <div className="mt-2 text-[10px] text-[#64748B] flex flex-wrap gap-x-3 gap-y-0.5">
+              {d.aiRequestDurationMs && <span>⏱ {(d.aiRequestDurationMs / 1000).toFixed(1)}s</span>}
+              {d.accountSnapshot && (
+                <>
+                  <span>💰 ${d.accountSnapshot.totalEquity?.toFixed(0)}</span>
+                  <span>📊 {d.accountSnapshot.positionCount ?? 0}仓</span>
+                  {d.accountSnapshot.dailyPnl != null && (
+                    <span className={d.accountSnapshot.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]'}>
+                      日PnL {d.accountSnapshot.dailyPnl >= 0 ? '+' : ''}{d.accountSnapshot.dailyPnl.toFixed(2)}
+                    </span>
+                  )}
+                </>
+              )}
+              {d.candidateCoins && d.candidateCoins.length > 0 && (
+                <span>🎯 {(d.candidateCoins as string[]).map((c: string) => c.replace(/\/USDT.*$/, '')).join('/')}</span>
+              )}
+            </div>
+          )}
+          {/* 全局决策上下文（AI 看到的辅助数据摘要） */}
+          {(d as any).globalContext && (() => {
+            const gc = (d as any).globalContext;
+            return (
+              <div className="mt-1 text-[10px] text-[#505060] flex flex-wrap gap-x-3 gap-y-0.5">
+                {gc.recentTradesCount > 0 && <span>📋 近期{gc.recentTradesCount}笔交易</span>}
+                {gc.tradingStats && <span>📈 {gc.tradingStats.trades}笔 胜率{gc.tradingStats.winRate}% PF={gc.tradingStats.pf}</span>}
+                {gc.stopOrdersCount > 0 && <span>🛡 {gc.stopOrdersCount}个SL/TP</span>}
+                {gc.lastDecisionsCount > 0 && <span>🔄 上轮{gc.lastDecisionsCount}条决策</span>}
+              </div>
+            );
+          })()}
         </div>
       )}
 

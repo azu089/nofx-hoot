@@ -23,9 +23,6 @@ import { TradingGateway } from '../../../gateways/trading.gateway';
 export class DrawdownMonitorProcessor extends WorkerHost {
   private readonly logger = new Logger(DrawdownMonitorProcessor.name);
 
-  /** 分批止盈阶段追踪（内存，重启清零，不影响正确性） */
-  private readonly scaleOutMap = new Map<string, { stage: 0 | 1 | 2; originalAmount: number }>();
-
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => TradingService))
@@ -39,40 +36,52 @@ export class DrawdownMonitorProcessor extends WorkerHost {
 
   async process(job: Job): Promise<{ checked: number; closed: number }> {
     this.logger.debug('[AI监控] 开始检查 AI 持仓回撤...');
+    this.logger.warn('[AI监控] process() 进入');
 
     // 查询所有 AI 来源的开放持仓（排除网格策略 — 网格有自己的 hardStopLoss 机制）
-    // 先获取所有网格策略ID，避免回撤监控干预网格持仓
-    const gridStrategyIds = await this.prisma.aiStrategy.findMany({
-      where: { strategyType: 'grid' },
-      select: { id: true },
-    }).then(rows => rows.map(r => r.id));
+    let gridStrategyIds: string[] = [];
+    try {
+      gridStrategyIds = await this.prisma.aiStrategy.findMany({
+        where: { strategyType: 'grid' },
+        select: { id: true },
+      }).then(rows => rows.map(r => r.id));
+    } catch (e: any) {
+      this.logger.error(`[AI监控] 查询 grid 策略失败: ${e.message}`);
+    }
 
-    const positions = await this.prisma.position.findMany({
-      where: {
-        status: 'open',
-        source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
-        // 封印：排除网格策略的持仓，网格有独立的止损/风控机制
-        ...(gridStrategyIds.length > 0 ? { aiStrategyId: { notIn: gridStrategyIds } } : {}),
-      },
-      select: {
-        id: true,
-        userId: true,
-        apiKeyId: true,
-        symbol: true,
-        side: true,
-        entryPrice: true,
-        amount: true,
-        margin: true,
-        highWaterMark: true,
-        peakPnlPercent: true,
-        leverage: true,
-        aiStrategyId: true,
-        exchange: true,
-        source: true,
-        exchangeRef: true,
-      },
-    });
+    let positions: any[];
+    try {
+      positions = await this.prisma.position.findMany({
+        where: {
+          status: 'open',
+          source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
+          // 封印：排除网格策略的持仓，网格有独立的止损/风控机制
+          ...(gridStrategyIds.length > 0 ? { aiStrategyId: { notIn: gridStrategyIds } } : {}),
+        },
+        select: {
+          id: true,
+          userId: true,
+          apiKeyId: true,
+          symbol: true,
+          side: true,
+          entryPrice: true,
+          amount: true,
+          margin: true,
+          highWaterMark: true,
+          peakPnlPercent: true,
+          leverage: true,
+          aiStrategyId: true,
+          exchange: true,
+          source: true,
+          exchangeRef: true,
+        },
+      });
+    } catch (e: any) {
+      this.logger.error(`[AI监控] 查询 open 持仓失败: ${e.message}`);
+      return { checked: 0, closed: 0 };
+    }
 
+    this.logger.warn(`[AI监控] 查到 ${positions.length} 个 open 持仓: ${positions.map(p => `${p.symbol}:${p.side}`).join(', ')}`);
     if (positions.length === 0) {
       return { checked: 0, closed: 0 };
     }
@@ -91,20 +100,25 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     }
 
     // 按用户+APIKey 分组获取交易所持仓（批量，减少 API 调用次数）
+    // adapter 缓存：复用给后续 checkScaleOut / autoClosePosition，最后统一 dispose
     const exchangePosCache = new Map<string, any[]>();
+    const adapterCache = new Map<string, ExchangeAdapter>();
     if (this.adapterFactory) {
       const keys = [...new Set(positions.filter(p => p.apiKeyId).map(p => `${p.userId}:${p.apiKeyId}`))];
       for (const key of keys) {
         const [userId, apiKeyId] = key.split(':');
         try {
           const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+          adapterCache.set(key, adapter);
           const eps = await adapter.getPositions();
           exchangePosCache.set(key, eps as any);
         } catch (e: any) {
-          this.logger.debug(`[AI监控] 获取交易所持仓失败(${key.slice(0, 16)}): ${e.message}`);
+          this.logger.warn(`[AI监控] 获取交易所持仓失败(${key.slice(0, 16)}): ${e.message}`);
         }
       }
     }
+
+    try { // ← finally 中统一 dispose 所有 adapter
 
     let closedCount = 0;
 
@@ -121,6 +135,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         let liveUnrealizedPnl: number | undefined;
 
         if (exchangePositions) {
+          this.logger.warn(`[AI监控] DB持仓 ${pos.symbol} ${pos.side} vs 交易所 ${exchangePositions.length} 个: [${exchangePositions.map((e: any) => `${e.symbol}:${e.side}`).join(', ')}]`);
           const ep = exchangePositions.find(
             (e: any) => isSameSymbol(e.symbol, pos.symbol) && e.side === pos.side,
           );
@@ -130,8 +145,19 @@ export class DrawdownMonitorProcessor extends WorkerHost {
             liveMarkPrice = ep.markPrice;
             liveUnrealizedPnl = ep.unrealizedPnl;
           } else {
-            // 交易所持仓已加载但找不到此仓 = 已平仓，跳过（防止 -2022 ReduceOnly 无限重试）
-            this.scaleOutMap.delete(pos.id);
+            // 对齐 nofx OrderSync: 交易所已平仓（SL/TP 条件单触发），标记 DB closed
+            await this.prisma.position.update({
+              where: { id: pos.id },
+              data: {
+                status: 'closed',
+                closedAt: new Date(),
+                closeReason: 'not_found_on_exchange',
+              },
+            });
+            this.logger.warn(
+              `[AI监控] ${pos.symbol} ${pos.side} 交易所已无持仓（SL/TP 条件单触发），标记 closed`,
+            );
+            closedCount++;
             continue;
           }
         }
@@ -185,12 +211,10 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           });
         }
 
-        // 分批止盈检查（pnlPercent ≥ +3% 时触发；全平后 continue 跳过追踪止损）
-        const scaledOut = await this.checkScaleOut(pos, pnlPercent, currentPrice, unrealizedPnl);
-        if (scaledOut) {
-          closedCount++;
-          continue;
-        }
+        // [已删除] 分批止盈 — 与交易所 TP 条件单冲突 + AI 不知情会补仓循环
+        // 止盈由 AI 决策 + 交易所 TP 条件单负责，代码层不抢先
+
+        const cachedAdapter = adapterCache.get(cacheKey);
 
         // 绝对亏损保护：不依赖高水位，当前亏损超过阈值直接平仓
         // 高杠杆（≥5x）收紧到 -20%，低杠杆维持 -30%（减少高杠杆滑动窗口风险）
@@ -205,6 +229,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
             `绝对亏损保护：当前亏损 ${pnlPercent.toFixed(1)}% 超过 ${ABSOLUTE_LOSS_THRESHOLD}% 阈值 (杠杆 ${lev}x)`,
             currentPrice,
             'absolute_loss',
+            cachedAdapter,
           );
           closedCount++;
           continue; // 跳过高水位检查
@@ -212,7 +237,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
 
         // Peak-Drawdown 紧急平仓（对齐 nofx checkPositionDrawdown）
         // 规则：当前盈利>5% 且从峰值回撤>=40% → 紧急全平
-        const peakClosed = await this.checkPeakDrawdown(pos, pnlPercent, currentPrice, unrealizedPnl);
+        const peakClosed = await this.checkPeakDrawdown(pos, pnlPercent, currentPrice, unrealizedPnl, cachedAdapter);
         if (peakClosed) {
           closedCount++;
           continue;
@@ -231,131 +256,17 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     }
 
     return { checked: positions.length, closed: closedCount };
-  }
 
-  /**
-   * 分批止盈检测
-   * 阶段：+3%→平 33%、+5%→平至原 50%、+8%→全平
-   * @returns true = 已全部平仓，应 continue 跳过后续止损检查
-   */
-  private async checkScaleOut(
-    pos: {
-      id: string;
-      userId: string;
-      apiKeyId: string | null;
-      symbol: string;
-      side: string;
-      amount: any;
-      entryPrice?: any;
-      leverage?: number | null;
-      exchange?: string | null;
-      source?: string | null;
-      aiStrategyId?: string | null;
-      exchangeRef?: string | null;
-    },
-    pnlPercent: number,
-    currentPrice: number,
-    unrealizedPnl: number,
-  ): Promise<boolean> {
-    if (pnlPercent < 3 || !pos.apiKeyId) return false;
-
-    const existing = this.scaleOutMap.get(pos.id);
-    const entry = existing ?? { stage: 0 as const, originalAmount: Number(pos.amount) };
-    if (!existing) this.scaleOutMap.set(pos.id, entry);
-
-    const orig = entry.originalAmount;
-    let closeQty = 0;
-    let newStage: 0 | 1 | 2 | 3 = entry.stage;
-
-    if (entry.stage === 0 && pnlPercent >= 3) {
-      closeQty = orig * 0.33;
-      newStage = 1;
-    } else if (entry.stage === 1 && pnlPercent >= 5) {
-      closeQty = orig * 0.17; // 原仓 50% - 已平 33% = 再平 17%
-      newStage = 2;
-    } else if (entry.stage === 2 && pnlPercent >= 8) {
-      closeQty = Number(pos.amount); // 剩余全部
-      newStage = 3;
-    }
-
-    if (closeQty <= 0) return false;
-
-    this.logger.log(
-      `[AI监控] 分批止盈: ${pos.symbol} ${pos.side} stage ${entry.stage}→${newStage} 平仓 ${closeQty.toFixed(4)} (pnl=${pnlPercent.toFixed(2)}%)`,
-    );
-
-    if (!this.adapterFactory) {
-      this.logger.warn('[AI监控] 分批止盈: adapterFactory 未注入，跳过');
-      return false;
-    }
-
-    let adapter: ExchangeAdapter | undefined;
-    try {
-      // 直接使用 adapter.closeLong/closeShort（传入 SOL 数量），
-      // 避免 tradingService.executeOrder 把数量当 USDT 再除以价格导致下单量缩水 100x
-      adapter = await this.adapterFactory.createAdapter(pos.userId, pos.apiKeyId);
-      if (pos.side === 'long') {
-        await adapter.closeLong(pos.symbol, closeQty);
-      } else {
-        await adapter.closeShort(pos.symbol, closeQty);
-      }
-
-      // 按比例计算本次止盈的盈利（用于历史持仓记录）
-      const closedPnl = unrealizedPnl * (closeQty / entry.originalAmount);
-
-      // 写入历史持仓记录
-      const entryPriceNum = parseFloat(pos.entryPrice?.toString() || '0');
-      const margin = closeQty > 0 && (pos.leverage || 1) > 0
-        ? (entryPriceNum * closeQty) / (pos.leverage || 1)
-        : 0;
-      this.prisma.position.create({
-        data: {
-          userId: pos.userId,
-          exchange: pos.exchange || 'unknown',
-          symbol: pos.symbol,
-          side: pos.side as string,
-          entryPrice: pos.entryPrice?.toString() || '0',
-          exitPrice: currentPrice.toString(),
-          closePrice: currentPrice.toString(),
-          amount: closeQty.toString(),
-          tradingType: 'futures',
-          leverage: pos.leverage || 1,
-          margin: margin.toString(),
-          realizedPnl: closedPnl.toString(),
-          pnl: closedPnl.toString(),
-          status: 'closed',
-          closeReason: `scale_out_s${entry.stage}`,
-          closedAt: new Date(),
-          source: pos.source || 'ai_research',
-          aiStrategyId: pos.aiStrategyId || undefined,
-          exchangeRef: pos.exchangeRef || undefined,
-          createdAt: new Date(),
-        },
-      }).catch((e: any) => this.logger.warn(`[AI监控] 分批止盈历史持仓写入失败(忽略): ${e.message}`));
-
-      if (newStage === 3) {
-        await this.prisma.position.update({
-          where: { id: pos.id },
-          data: {
-            status: 'closed',
-            closedAt: new Date(),
-            closeReason: 'scale_out_complete',
-            exitPrice: new Decimal(currentPrice),
-          },
-        });
-        this.scaleOutMap.delete(pos.id);
-        return true; // 全部平仓
-      } else {
-        entry.stage = newStage as 0 | 1 | 2;
-        return false; // 部分平仓，继续持有
-      }
-    } catch (e: any) {
-      this.logger.warn(`[AI监控] 分批止盈执行失败(stage=${entry.stage}不推进，下轮重试): ${e.message}`);
-      return false;
     } finally {
-      await adapter?.dispose?.();
+      // 统一 dispose 所有 adapter（对齐 nofx：单个 trader 实例贯穿整个周期）
+      for (const adapter of adapterCache.values()) {
+        try { await adapter.dispose(); } catch { /* 忽略 */ }
+      }
     }
   }
+
+  // [已删除] checkScaleOut 分批止盈 — 与交易所 TP 条件单冲突 + AI 不知情会补仓循环
+  // 止盈由 AI 决策（close_long/close_short）+ 交易所 TP 条件单负责
 
   /**
    * Peak-Drawdown 紧急平仓检测（对齐 nofx auto_trader_risk.go:checkPositionDrawdown）
@@ -379,6 +290,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     currentPnlPct: number,
     currentPrice: number,
     unrealizedPnl: number,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<boolean> {
     if (!pos.apiKeyId) return false;
 
@@ -409,6 +321,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         `Peak-Drawdown 紧急平仓：盈利 ${currentPnlPct.toFixed(1)}%，峰值 ${peakPnlPct.toFixed(1)}%，回撤 ${drawdownPct.toFixed(1)}%`,
         currentPrice,
         'peak_drawdown',
+        existingAdapter,
       );
 
       return true;
@@ -440,25 +353,25 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     reason: string,
     currentPrice: number,
     closeReason: string = 'trailing_stop',
+    existingAdapter?: ExchangeAdapter,
   ): Promise<void> {
     if (!pos.apiKeyId) return;
 
-    if (!this.adapterFactory) {
-      this.logger.warn('[AI监控] 自动平仓: adapterFactory 未注入，跳过');
+    if (!existingAdapter && !this.adapterFactory) {
+      this.logger.warn('[AI监控] 自动平仓: 无可用 adapter，跳过');
       return;
     }
 
-    let adapter: ExchangeAdapter | undefined;
+    const ownsAdapter = !existingAdapter;
+    let adapter: ExchangeAdapter | undefined = existingAdapter;
     try {
-      // 直接使用 adapter.closeLong/closeShort（传入 SOL 数量），
-      // 避免 tradingService.executeOrder 把数量当 USDT 再除以价格导致只平一小部分
-      adapter = await this.adapterFactory.createAdapter(pos.userId, pos.apiKeyId);
-      const closeAmount = parseFloat(pos.amount.toString());
+      if (!adapter) adapter = await this.adapterFactory!.createAdapter(pos.userId, pos.apiKeyId);
+      // 对齐 nofx emergencyClosePosition: closeLong(symbol, 0) — 0 表示平全部
       let result;
       if (pos.side === 'long') {
-        result = await adapter.closeLong(pos.symbol, closeAmount);
+        result = await adapter.closeLong(pos.symbol, 0);
       } else {
-        result = await adapter.closeShort(pos.symbol, closeAmount);
+        result = await adapter.closeShort(pos.symbol, 0);
       }
 
       const exitPrice = result.avgPrice || currentPrice;
@@ -477,6 +390,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         data: {
           status: 'closed',
           exitPrice: new Decimal(exitPrice),
+          closePrice: new Decimal(exitPrice),   // 双写兼容：exitPrice 供前端读取，closePrice 供历史查询
           realizedPnl: new Decimal(pnl),
           closedAt: new Date(),
           closeReason,
@@ -498,7 +412,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         });
       } catch { /* 非致命 */ }
 
-      // 对齐 nofx：不清理条件单。Algo Order closePosition=true 在持仓为0时自动失效。
+      // 对齐 nofx CloseLong/CloseShort: 平仓后清理 SL/TP 条件单（Algo+普通）
+      try { await adapter!.cancelStopOrders(pos.symbol); } catch { /* 非致命 */ }
 
       this.logger.log(
         `[AI监控] 自动平仓成功: ${pos.id} ${pos.symbol} ${pos.side} PnL: ${pnl > 0 ? '+' : ''}${pnl.toFixed(4)} USDT，原因: ${reason}`,
@@ -511,7 +426,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         `[AI监控] 自动平仓失败: ${pos.id} ${pos.symbol} - ${error.message}`,
       );
     } finally {
-      await adapter?.dispose?.();
+      if (ownsAdapter) await adapter?.dispose?.();
     }
   }
 

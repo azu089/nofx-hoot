@@ -23,7 +23,7 @@ export function formatMarketDataPrompt(data: {
   indicators?: Record<string, any>;
   openInterest?: number;
   fundingRate?: number;
-  existingPositions?: Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number }>;
+  existingPositions?: Array<{ side: string; entryPrice: number; quantity: number; pnlPercent: number; peakPnlPercent?: number }>;
   marketRanking?: {
     topGainers?: Array<{ symbol: string; change24h: number }>;
     topLosers?: Array<{ symbol: string; change24h: number }>;
@@ -218,6 +218,23 @@ export function formatMarketDataPrompt(data: {
   // 现有持仓已在 prompt-builder.service.ts [5] Current Positions 段统一展示
   // 此处不再重复，避免 "No open positions" 与 Current Positions 矛盾误导 AI
 
+  // 对齐 nofx formatter.go: 注入最近 30 根 K 线原始数据（让 AI 看到价格形态）
+  if (data.ohlcv && data.ohlcv.length > 0) {
+    const candles = data.ohlcv.slice(-30); // 最多 30 根
+    lines.push('', `--- K-line Data (×${candles.length}, oldest→latest) ---`);
+    lines.push('# Open     High     Low      Close    Volume');
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const idx = String(i + 1).padStart(2, ' ');
+      lines.push(
+        `${idx} ${c.open.toFixed(priceDp).padStart(8)} ${c.high.toFixed(priceDp).padStart(8)} ` +
+        `${c.low.toFixed(priceDp).padStart(8)} ${c.close.toFixed(priceDp).padStart(8)} ` +
+        `${(c.volume || 0).toFixed(1).padStart(10)}`,
+      );
+    }
+    lines.push('    <- current');
+  }
+
   return lines.join('\n');
 }
 
@@ -305,34 +322,18 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 - 止损: SL distance = max(1.5 × ATR14 / price, 0.5%) / leverage
   - 多仓: stop_loss = entryPrice × (1 - SL_distance)
   - 空仓: stop_loss = entryPrice × (1 + SL_distance)
-- 止盈目标: take_profit 对应 +3-8% 盈利区间（系统代码在 +3%/+5%/+8% 自动分批平仓）
+- 止盈目标: 根据技术面和风险回报比自主设定 take_profit
 - **分批建仓 (Scale-in)**: 首次开仓不超过目标仓位的 50%；只在盈利仓位上加仓，永远不追亏损
 
 ### 4.2 平仓规则 (有持仓时)
 可选: close_long / close_short / hold
 
-**你需要综合以下因素自主决策，没有固定公式:**
-
-- 当前 PnL% 与 PeakPnL% 的关系（利润是否在回撤）
+**你需要综合技术面和市场数据自主决策:**
 - 趋势指标是否仍支持持仓方向（EMA排列、MACD方向、RSI水平）
 - 波动率变化（ATR(3)/ATR(14) 是否异常放大）
-- 止损/止盈目标是否已触及
 - 持仓时间与市场结构变化
 
-**参考因素（非强制，根据具体情况灵活运用）:**
-- PeakPnL 较高但正在快速回撤时，考虑保护利润
-- 趋势明确反转（多指标确认）时，考虑平仓
-- **单个持仓亏损达到 -5% 时必须止损**，优先保护资本，再考虑盈利
-
-**Trailing Stop（跟踪止盈）:**
-- 持仓 PnL 从峰值回撤 ≥ 30% 时，考虑部分或全部止盈
-  示例: PeakPnL=+5%, 当前 PnL=+3.5% → 回撤 30% → 应止盈
-  示例: PeakPnL=+8%, 当前 PnL=+5.6% → 回撤 30% → 应止盈
-
-**分批止盈 (Scale-out，系统代码自动执行):**
-- 盈利 +3%: 平仓 33%
-- 盈利 +5%: 平仓至原仓 50%
-- 盈利 +8%: 全部平仓
+**注意: 止盈/止损/风控由系统代码自动执行，你只需关注交易决策。**
 
 平仓时不需要设置 stop_loss/take_profit（可填 null）
 
@@ -1430,4 +1431,67 @@ export function buildTradingRolePrompts(): Partial<Record<string, string>> {
     risk_manager: RISK_MANAGER_TRADING_PROMPT,
   };
 }
+
+// ============================================================================
+// 备用路径 — 对齐 nofx kernel/prompt_builder.go
+// ============================================================================
+// nofx 有两套 prompt 构建：
+//   主路径: engine.go BuildSystemPrompt() — 策略引擎配置驱动，当前生产使用
+//   备用路径: prompt_builder.go buildSystemPromptZH/EN() — 独立 PromptBuilder，包含详细决策原则
+//
+// HOOT 主路径 = prompt-builder.service.ts（当前生产使用）
+// HOOT 备用路径 = 以下常量（保留但不注入主路径，与 nofx 架构对齐）
+//
+// ⚠️ 这些规则曾被混入主路径，导致 AI 用"保护资本""控制风险"滥用平仓
+//    历史教训：2026-03-23 确认并移除，只保留在备用路径中
+// ============================================================================
+
+/**
+ * 备用路径：决策原则（对齐 nofx prompt_builder.go L56-76）
+ * 当前不使用，保留供未来独立 PromptBuilder 模式使用
+ */
+export const BACKUP_DECISION_PRINCIPLES_ZH = `
+## 决策原则
+
+### 风险优先
+- 保证金使用率不得超过30%
+- 单个持仓亏损达到-5%必须止损
+- 优先保护资本，再考虑盈利
+
+### 跟踪止盈
+- 当持仓盈亏从峰值回撤30%时，考虑部分或全部止盈
+- 例如：Peak PnL +5%，Current PnL +3.5% → 回撤了30%，应该止盈
+
+### 顺势交易
+- 只在多个时间框架趋势一致时进场
+- 结合持仓量(OI)变化判断资金流向真实性
+- OI增加+价格上涨 = 强多头趋势
+- OI减少+价格上涨 = 空头平仓（可能反转）
+
+### 分批操作
+- 分批建仓：第一次开仓不超过目标仓位的50%
+- 分批止盈：盈利3%平33%，盈利5%平50%，盈利8%全平
+- 只在盈利仓位上加仓，永远不要追亏损
+`;
+
+/**
+ * 备用路径：平仓规则（对齐 nofx prompt_builder.go 备用路径）
+ * 当前不使用，保留供未来独立 PromptBuilder 模式使用
+ */
+export const BACKUP_EXIT_RULES_ZH = `
+### 平仓规则 (有持仓时)
+- 当前 PnL% 与 PeakPnL% 的关系（利润是否在回撤）
+- PeakPnL 较高但正在快速回撤时，考虑保护利润
+- 趋势明确反转（多指标确认）时，考虑平仓
+- 单个持仓亏损达到 -5% 时必须止损，优先保护资本
+
+**Trailing Stop（跟踪止盈）:**
+- 持仓 PnL 从峰值回撤 ≥ 30% 时，考虑部分或全部止盈
+  示例: PeakPnL=+5%, 当前 PnL=+3.5% → 回撤 30% → 应止盈
+
+**分批止盈 (Scale-out):**
+- 盈利 +3%: 平仓 33%
+- 盈利 +5%: 平仓至原仓 50%
+- 盈利 +8%: 全部平仓
+`;
 

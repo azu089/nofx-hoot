@@ -37,6 +37,7 @@ export interface AiTradeDecision {
   // R3: SL/TP 百分比（执行时用最新价格重算绝对值）
   stopLossPct?: number;   // 如 0.03 = 3%
   takeProfitPct?: number; // 如 0.06 = 6%
+  riskUsd?: number;       // 对齐 nofx Decision.RiskUSD: AI 预计的最大美元风险
   symbol?: string;        // 多币种模式: LLM 输出的 symbol (用于逐币匹配)
 }
 
@@ -172,19 +173,31 @@ export interface IndicatorConfig {
 export interface RiskControlConfig {
   maxPositions: number;
   minPositionSize: number; // USDT
-  maxLeverage: number;
+  maxLeverage: number;     // 通用杠杆上限（fallback）
   maxDailyDrawdown: number; // USDT
   maxDailyTrades: number;
   cooldownMinutes: number;
   circuitBreaker: number;
   maxTradeAmountUSD?: number; // 单笔交易金额上限（USDT），不设则由 AI + 余额自动计算
   allocatedCapital?: number; // AI 资金池上限（USDT），仓位百分比基于此值计算而非交易所全部余额
+  // 分类杠杆（对齐 nofx RiskControlConfig.BTCETHMaxLeverage / AltcoinMaxLeverage）
+  btcEthMaxLeverage?: number;      // BTC/ETH 杠杆上限（AI GUIDED），默认 5
+  altcoinMaxLeverage?: number;     // 山寨币杠杆上限（AI GUIDED），默认 5
   // 仓位价值比例控制:
   btcEthMaxPositionValueRatio?: number;  // BTC/ETH 仓位价值倍数上限，默认 5.0
   altcoinMaxPositionValueRatio?: number; // 山寨币仓位价值倍数上限，默认 1.0
   excludedCoins?: string[]; // 排除币种列表（不开仓）
   // R4: 仓位百分比上限，默认 20（保守风控），用户可按策略调大
   maxPositionPct?: number;
+  // 最大保证金使用率（对齐 nofx RiskControlConfig.MaxMarginUsage），默认 0.9
+  maxMarginUsage?: number;
+  // 最低风险收益比（AI GUIDED），默认 3.0
+  minRiskRewardRatio?: number;
+  // 最低开仓置信度（AI GUIDED），默认 60
+  minConfidence?: number;
+  // 平仓最低置信度（AI 输出 close 的 confidence 低于此值时拦截为 hold）
+  // 默认 0 = 不检查（向后兼容）。建议设置 70，让 SL/TP 条件单处理低置信度平仓
+  minCloseConfidence?: number;
 }
 
 /**

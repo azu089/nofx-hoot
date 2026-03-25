@@ -171,33 +171,9 @@ export class SafetyService {
       }
     }
 
-    // L4: 仓位与杠杆限制（平仓跳过）
-    if (isClose) {
-      checks.push({
-        layer: 'L4',
-        name: '仓位与杠杆',
-        passed: true,
-        detail: '平仓操作，跳过仓位/杠杆检查',
-      });
-    } else {
-      const l4 = await this.checkL4(input);
-      checks.push({
-        layer: 'L4',
-        name: '仓位与杠杆',
-        passed: l4.passed,
-        detail: l4.detail,
-      });
-      if (!l4.passed && !blockedBy) {
-        blockedBy = 'L4';
-        blockedReason = l4.detail;
-      }
-      if (l4.clippedPositionSizePct !== undefined) {
-        adjustedPositionSizePct = l4.clippedPositionSizePct;
-      }
-      if (l4.clippedLeverage !== undefined) {
-        adjustedLeverage = l4.clippedLeverage;
-      }
-    }
+    // L4: [已精简] 仓位+杠杆 clip 由 auto-trader E2（杠杆）+ ai-execution enforcePositionValueRatio（仓位比）负责
+    // 避免同一个决策被 3 层重复 clip（E2→L4→ai-execution），减少逻辑冲突
+    checks.push({ layer: 'L4', name: '仓位与杠杆', passed: true, detail: '由执行层统一处理' });
 
     // L5: 熔断机制（平仓跳过）
     if (isClose) {
@@ -221,27 +197,8 @@ export class SafetyService {
       }
     }
 
-    // L6: 冷却期检查（平仓跳过）
-    if (isClose) {
-      checks.push({
-        layer: 'L6',
-        name: '冷却期检查',
-        passed: true,
-        detail: '平仓操作，跳过冷却期检查',
-      });
-    } else {
-      const l6 = await this.checkL6(input);
-      checks.push({
-        layer: 'L6',
-        name: '冷却期检查',
-        passed: l6.passed,
-        detail: l6.detail,
-      });
-      if (!l6.passed && !blockedBy) {
-        blockedBy = 'L6';
-        blockedReason = l6.detail;
-      }
-    }
+    // L6: [已精简] 冷却期检查由 auto-trader L2075 统一负责（用 position.closedAt 查询，比 aiAnalysis 更准确）
+    checks.push({ layer: 'L6', name: '冷却期', passed: true, detail: '由主循环统一处理' });
 
     // L7: Drawdown 软警告（不拦截，仅注入 warning）
     const l7 = await this.checkL7(input);
@@ -584,53 +541,8 @@ export class SafetyService {
       };
     }
 
-    // 3. 检查每日最大回撤（策略级优先，fallback 全局 aiConfig，默认 $100）
-    const maxDailyDrawdown =
-      input.strategyRiskConfig?.maxDailyDrawdown ??
-      (aiConfig.maxDailyDrawdown ? Number(aiConfig.maxDailyDrawdown) : 100);
-
-    // 3a. 查询今日已平仓 AI 交易的实现盈亏（按策略独立计算）
-    // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange）
-    const closedPositions = await this.prisma.position.findMany({
-      where: {
-        userId: input.userId,
-        source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
-        status: 'closed',
-        closedAt: { gte: todayStart },
-        closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
-        ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
-      },
-      select: { realizedPnl: true },
-    });
-    const closedPnl = closedPositions.reduce(
-      (sum, p) => sum + Number(p.realizedPnl || 0),
-      0,
-    );
-
-    // 3b. 查询未平仓 AI 持仓的浮动盈亏（按策略独立计算）
-    const openPositions = await this.prisma.position.findMany({
-      where: {
-        userId: input.userId,
-        source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
-        status: 'open',
-        ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
-      },
-      select: { unrealizedPnl: true },
-    });
-    const unrealizedPnl = openPositions.reduce(
-      (sum, p) => sum + Number(p.unrealizedPnl || 0),
-      0,
-    );
-
-    // 3c. 总回撤 = 已实现亏损 + 浮动亏损
-    const totalDailyPnl = closedPnl + unrealizedPnl;
-
-    if (totalDailyPnl < -maxDailyDrawdown) {
-      return {
-        passed: false,
-        detail: `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限额 $${maxDailyDrawdown}${input.strategyId ? ' (本策略)' : ''}`,
-      };
-    }
+    // 3. [已精简] 日回撤检查由 auto-trader 周期开始时统一执行（用交易所权益更准确，L5 用 DB 快照有延迟）
+    // 保留: 日交易次数(上方) + 连续亏损(下方)
 
     // 4. 连续亏损检查（基于已实现 PnL，按策略隔离，防止跨策略误触发熔断）
     // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange）
@@ -663,7 +575,7 @@ export class SafetyService {
 
     return {
       passed: true,
-      detail: `熔断通过: 失败=${failedCount}, 今日=${todayTradeCount}/${effectiveMaxDailyTrades || '无限制'}, 日盈亏=$${totalDailyPnl.toFixed(2)}`,
+      detail: `熔断通过: 失败=${failedCount}, 今日=${todayTradeCount}/${effectiveMaxDailyTrades || '无限制'}`,
     };
   }
 
@@ -917,62 +829,8 @@ export class SafetyService {
         };
       }
 
-      // 1. 最大持仓数检查（按策略独立计算）
-      const positionWhere: { userId: string; status: string; aiStrategyId?: string } = {
-        userId: input.userId,
-        status: 'open',
-      };
-      if (input.strategyId) {
-        positionWhere.aiStrategyId = input.strategyId;
-      }
-      const openPositionCount = await this.prisma.position.count({
-        where: positionWhere,
-      });
-
-      if (openPositionCount >= maxPositions) {
-        return {
-          passed: false,
-          detail: `持仓数上限: ${openPositionCount}/${maxPositions}${input.strategyId ? ' (本策略)' : ''}`,
-        };
-      }
-
-      // 2. 同一 symbol 不开反向仓检查
-      const direction = input.direction.toLowerCase();
-      const oppositeSize = direction === 'buy' ? 'short' : 'long';
-
-      const conflictingPosition = await this.prisma.position.findFirst({
-        where: {
-          userId: input.userId,
-          symbol: input.symbol,
-          side: oppositeSize,
-          status: 'open',
-        },
-      });
-
-      if (conflictingPosition) {
-        return {
-          passed: false,
-          detail: `${input.symbol} 存在 ${oppositeSize} 持仓，不能开反向仓`,
-        };
-      }
-
-      // 3. 同一 symbol 不重复开仓检查
-      const sameSide = direction === 'buy' ? 'long' : 'short';
-      const existingPosition = await this.prisma.position.findFirst({
-        where: {
-          userId: input.userId,
-          symbol: input.symbol,
-          side: sameSide,
-          status: 'open',
-        },
-      });
-
-      if (existingPosition) {
-        return {
-          passed: false,
-          detail: `${input.symbol} 已有 ${sameSide} 持仓，不能重复开仓`,
-        };
-      }
+      // 1-3. [已精简] 持仓数/反向仓/重复开仓检查由 auto-trader E1+hasPosition + ai-execution enforceMaxPositions 负责
+      // safety 层用 DB 计数（可能有延迟），auto-trader 用交易所实时数据更准确
 
       // 4. 开仓动作：SL/TP 强制验证 + 方向检查 + R:R 检查（仅对 open_long/open_short 执行）
       const isOpenAction = input.action === 'open_long' || input.action === 'open_short';
@@ -1043,7 +901,7 @@ export class SafetyService {
 
       return {
         passed: true,
-        detail: `硬限制通过: 持仓 ${openPositionCount}/${maxPositions}，无冲突${atrInfo}`,
+        detail: `硬限制通过: SL/TP/R:R 验证OK${atrInfo}`,
       };
     } catch (error) {
       this.logger.warn(`L9 硬限制检查出错: ${error.message}`);

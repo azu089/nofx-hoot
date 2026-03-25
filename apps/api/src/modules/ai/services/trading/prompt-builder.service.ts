@@ -50,6 +50,7 @@ export interface PromptConfig {
     cooldownMinutes?: number;  // 冷却期分钟数（L6 强制）
     circuitBreaker?: number;   // 连续亏损熔断阈值（L5 强制）
     minCloseConfidence?: number; // 平仓最低置信度（低于此值的 close 被拦截为 hold）
+    maxMarginUsage?: number;   // 最大保证金使用率（CODE ENFORCED，默认 0.9）
   };
   /** 策略运行间隔（分钟） */
   intervalMinutes?: number;
@@ -119,7 +120,7 @@ export interface UserPromptContext {
     symbol: string;
     side: string;
     entryPrice: number;
-    size: number;
+    quantity: number;
     leverage: number;
     pnlPercent: number;
     peakPnlPercent?: number;
@@ -177,6 +178,15 @@ export interface UserPromptContext {
   candidateSymbols?: string[];
   /** 当前正在分析的币种 */
   currentSymbol?: string;
+  /** 交易所活跃条件单（SL/TP）列表（getStopOrders 获取，按持仓 symbol 过滤） */
+  stopOrders?: Array<{
+    symbol: string;
+    type: 'stop_loss' | 'take_profit' | 'trailing_stop' | 'other';
+    triggerPrice: number;
+    side: string;
+    quantity: number;
+    orderId: string;
+  }>;
 }
 
 // ========================= Service =========================
@@ -371,8 +381,8 @@ export class PromptBuilderService {
       for (let i = 0; i < ctx.positions.length; i++) {
         const p = ctx.positions[i];
         const currentPrice = p.markPrice ? `Current $${p.markPrice.toFixed(4)} | ` : '';
-        const qty = p.size ? `Qty: ${p.size} | ` : '';
-        const posValue = (p.size && (p.markPrice || p.entryPrice)) ? `Value: $${(p.size * (p.markPrice || p.entryPrice)).toFixed(2)} | ` : '';
+        const qty = p.quantity ? `Qty: ${p.quantity} | ` : '';
+        const posValue = (p.quantity && (p.markPrice || p.entryPrice)) ? `Value: $${(p.quantity * (p.markPrice || p.entryPrice)).toFixed(2)} | ` : '';
         const marginStr = p.margin ? `Margin: $${p.margin.toFixed(2)} | ` : '';
         const pnlAmt = p.pnlAmount !== undefined ? ` | PnL Amount: ${p.pnlAmount >= 0 ? '+' : ''}${p.pnlAmount.toFixed(2)} USDT` : '';
         const peak = p.peakPnlPercent !== undefined ? ` | Peak PnL: ${p.peakPnlPercent > 0 ? '+' : ''}${p.peakPnlPercent.toFixed(2)}%` : '';
@@ -405,6 +415,22 @@ export class PromptBuilderService {
       lines.push('');
       lines.push('=== Current Positions ===');
       lines.push('  No open positions');
+    }
+
+    // [5.1] Active Conditional Orders — SL/TP 条件单（AI 需要感知，避免重复下单）
+    if (ctx.stopOrders && ctx.stopOrders.length > 0) {
+      lines.push('');
+      lines.push('=== Active Conditional Orders (SL/TP) ===');
+      for (let i = 0; i < ctx.stopOrders.length; i++) {
+        const o = ctx.stopOrders[i];
+        const typeLabel = o.type === 'stop_loss' ? 'Stop Loss'
+          : o.type === 'take_profit' ? 'Take Profit'
+          : o.type === 'trailing_stop' ? 'Trailing Stop'
+          : 'Conditional';
+        const sideUpper = o.side.toUpperCase();
+        lines.push(`  ${i + 1}. ${o.symbol} ${sideUpper} @ $${o.triggerPrice.toFixed(4)} [${typeLabel}] qty=${o.quantity}`);
+      }
+      lines.push('  NOTE: These conditional orders are already active on the exchange. Do NOT place duplicate SL/TP orders.');
     }
 
     // [5.3] Last Cycle Decisions（上轮 AI 决策摘要，避免重复分析）
@@ -554,19 +580,25 @@ Your task is to make trading decisions based on provided market data.`;
 - Max Positions: ${maxPos} coins simultaneously
 - Position Value Limit (Altcoins): max ${(equity * altPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${altPVR}x)
 - Position Value Limit (BTC/ETH): max ${(equity * btcEthPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${btcEthPVR}x)
+- Max Margin Usage: ≤${Math.round((rc.maxMarginUsage ?? 0.9) * 100)}%
 - Min Position Size: >= ${minPosSize} USDT
 
 ## AI GUIDED (Recommended, you should follow):
 - Trading Leverage: Altcoins max ${altLev}x | BTC/ETH max ${btcLev}x
 - Risk-Reward Ratio: >= 1:${minRR} (take_profit / stop_loss)
-- Min Confidence to OPEN: >= ${minConf}
-${(rc.minCloseConfidence && rc.minCloseConfidence > 0) ? `- Min Confidence to CLOSE: >= ${rc.minCloseConfidence} (low confidence closes will be held, let SL/TP execute)` : ''}
+- Confidence: Must genuinely reflect signal quality. DO NOT inflate confidence to force trades.
+  - Low (single indicator, no resonance): 30-50
+  - Medium (2 indicators aligned, partial confirmation): 50-70
+  - High (multi-timeframe + OI + volume resonance): 70-90
+  - Very High (extreme setup, all signals aligned): 90+
+  The system tracks your historical accuracy. Inflated confidence → poor trades → lower trust score.
 
 ## Position Sizing Guidance
 Calculate position_size_usd based on your confidence and the Position Value Limits above:
-- High confidence (>=85): Use 80-100% of max position value limit
-- Medium confidence (70-84): Use 50-80% of max position value limit
-- Low confidence (60-69): Use 30-50% of max position value limit
+- Very high confidence (>=90): Use 80-100% of max position value limit
+- High confidence (75-89): Use 50-80% of max position value limit
+- Medium confidence (60-74): Use 30-50% of max position value limit
+- Low confidence: Do NOT open positions, output "wait" instead
 - Example: With equity ${equity.toFixed(0)} and BTC/ETH ratio ${btcEthPVR}x, max is ${(equity * btcEthPVR).toFixed(0)} USDT
 - **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!`;
   }
@@ -607,7 +639,7 @@ If you find yourself trading every period → standards too low; if closing posi
 Only open positions when multiple signals resonate. You have:
 ${indicatorLines.join('\n')}
 
-Feel free to use any effective analysis method, but **confidence ≥ ${conf}** required to open positions; avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.
+Feel free to use any effective analysis method. Only open positions when your genuine confidence is HIGH (multiple signals resonate). Avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.
 
 # 📋 Decision Process
 
@@ -632,16 +664,23 @@ Feel free to use any effective analysis method, but **confidence ≥ ${conf}** r
 ## Format Requirements
 
 <reasoning>
-Write your analysis and end with your final decision in first person.
+Step 1: Analyze EACH coin separately (cite specific indicator values), then state your decision in first person ("I decide to...").
+
+Example structure:
+**BTC**: EMA(7)=96450 < EMA(25)=96800 bearish alignment. RSI(14)=45 neutral. OI +1.3% with price falling = bearish quadrant. R:R=1.86 below 3:1 threshold. I decide to wait for RSI below 30 before shorting.
+**SOL**: Price broke $170 resistance with volume spike. OI +3.2% with price rising = bullish quadrant. EMA(7)>EMA(25) confirmed. I decide to open long SOL, 5x leverage $500, SL $160 TP $185, R:R=3.2:1.
 </reasoning>
 
 <decision>
-Step 2: JSON decision array
+Step 2: JSON decision array — each coin's "reasoning" field MUST contain:
+1. Key indicator values cited (RSI, EMA, OI, MACD etc.)
+2. Your analysis conclusion
+3. First-person decision statement starting with "I decide to..." (or "我决定...")
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头+OI↑Price↓空头主导"},
-  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "论点失效，止损"}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. OI +2.1% price falling = bearish quadrant. RSI(14)=38 approaching oversold. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}, SL $97000 TP $91000, R:R=3.2:1."},
+  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. I decide to hold current position, waiting for BTC direction to clarify."}
 ]
 \`\`\`
 </decision>
@@ -649,8 +688,9 @@ Step 2: JSON decision array
 ## Field Description
 
 - \`action\`: open_long | open_short | close_long | close_short | hold | wait
-- \`confidence\`: 0-100 (opening ≥ ${minConf}${(rc.minCloseConfidence && rc.minCloseConfidence > 0) ? `, closing ≥ ${rc.minCloseConfidence}` : ''} required)
+- \`confidence\`: 0-100 (must genuinely reflect signal quality, NOT inflated to force trades)
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
+- \`reasoning\`: **MUST be ≥3 sentences** with indicator values + analysis + "I decide to..." statement
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use \`27.76\` not \`3000 * 0.01\`)`;
   }
 }

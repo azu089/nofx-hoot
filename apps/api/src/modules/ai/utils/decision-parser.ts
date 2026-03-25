@@ -425,6 +425,7 @@ function convertRawDecision(
     stopLoss: stopLoss && stopLoss > 0 ? stopLoss : null,
     takeProfit: takeProfit && takeProfit > 0 ? takeProfit : null,
     reasoning: r.reasoning ?? '',
+    ...(r.risk_usd && r.risk_usd > 0 ? { riskUsd: r.risk_usd } : {}),
     ...(r.symbol ? { symbol: r.symbol } : {}),
   };
 }

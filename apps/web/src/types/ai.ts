@@ -24,6 +24,7 @@ export interface AiConfig {
   rolePrompts: Record<string, string> | null;
   roleModels: Record<string, string> | null;
   minConfidence: number;
+  minCloseConfidence?: number;
   maxPositionSize: number;
   maxLeverage: number;
   maxPositions: number;
@@ -52,6 +53,7 @@ export interface UpdateAiConfigBody {
   rolePrompts?: Record<string, string>;
   roleModels?: Record<string, string>;
   minConfidence?: number;
+  minCloseConfidence?: number;
   maxPositionSize?: number;
   maxLeverage?: number;
   maxPositions?: number;
@@ -328,6 +330,7 @@ export interface StartResearchBody {
     circuitBreaker?: number;
     minPositionSize?: number;
     minConfidence?: number;
+    minCloseConfidence?: number;
     minRiskRewardRatio?: number;
   };
 }
@@ -722,6 +725,45 @@ export interface StrategyLog {
     minConfFilter?: boolean; // wait: minConfidence 过滤
     actual?: number;        // wait: 实际置信度
     required?: number;      // wait: 要求置信度
+    // 对齐 nofx DecisionRecord: 账户快照 + 持仓快照 + AI 耗时 + 候选币
+    accountSnapshot?: {
+      totalEquity: number;
+      availableBalance: number;
+      allocatedCapital: number;
+      strategyMarginUsed: number;
+      strategyUnrealizedPnl: number;
+      positionCount: number;
+      marginUsedPct: number;
+      dailyPnl: number;
+      // 对齐 nofx DecisionRecord.Positions[]: 决策时的完整持仓快照
+      positions?: Array<{
+        symbol: string;
+        side: string;
+        entryPrice: number;
+        markPrice: number;
+        quantity: number;
+        leverage: number;
+        unrealizedPnl: number;
+        margin: number;
+      }>;
+    };
+    aiRequestDurationMs?: number;
+    candidateCoins?: string[];
+    // 全局决策上下文（AI 看到的辅助数据摘要）
+    globalContext?: {
+      recentTradesCount?: number;
+      tradingStats?: {
+        trades: number;
+        winRate: number;
+        pf: number;
+        sharpe: number;
+        pnl: number;
+        maxDD: number;
+      };
+      stopOrdersCount?: number;
+      lastDecisionsCount?: number;
+      btcRef?: boolean;
+    };
   };
   executed: boolean;
   executionResult: {
