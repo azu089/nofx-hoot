@@ -938,9 +938,14 @@ export class QuickAnalysisService {
         newsPrompt: mcNewsPrompt || undefined,
         fearGreedPrompt: mcFearGreedPrompt || undefined,
         socialSentimentPrompt: mcSocialPrompt || undefined,
-        // 多币种模式跳过 BM25 记忆（无单币指标上下文）
+        // 多币种模式跳过 BM25 记忆（无单币指标上下文，无法匹配场景）
         liquidityData: configs.flatMap(c => c.liquidityData || []),
         locale: refConfig.promptConfig?.locale,
+        // 上轮 AI 决策（提供决策连续性，避免重复分析）
+        lastDecisions: refConfig.lastDecisions,
+        // 币种来源配置
+        coinSourceMode: refConfig.coinSourceMode as any,
+        candidateSymbols: refConfig.candidateSymbols,
         // 交易所活跃条件单（SL/TP）— 让 AI 感知已有保护，避免重复下单
         stopOrders: refConfig.accountInfo?.stopOrders,
       };
