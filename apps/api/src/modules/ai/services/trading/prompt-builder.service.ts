@@ -589,7 +589,7 @@ Your task is to make trading decisions based on provided market data.`;
 - Max Positions: ${maxPos} coins simultaneously
 - Position Value Limit (Altcoins): max ${(equity * altPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${altPVR}x)
 - Position Value Limit (BTC/ETH): max ${(equity * btcEthPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${btcEthPVR}x)
-- Max Margin Usage: ≤${Math.round((rc.maxMarginUsage ?? 0.9) * 100)}%
+- Max Margin Usage: ≤${(rc.maxMarginUsage ?? 90) > 1 ? Math.round(rc.maxMarginUsage ?? 90) : Math.round((rc.maxMarginUsage ?? 0.9) * 100)}%
 - Min Position Size: >= ${minPosSize} USDT
 
 ## AI GUIDED (Recommended, you should follow):
@@ -602,8 +602,13 @@ Your task is to make trading decisions based on provided market data.`;
   - Very High (extreme setup, all signals aligned): 90+
   The system tracks your historical accuracy. Inflated confidence → poor trades → lower trust score.
 
-## Position Sizing
-Scale position_size_usd proportionally to your confidence within the Position Value Limits above. Do NOT use available_balance directly.`;
+## Position Sizing Guidance
+Calculate position_size_usd based on your confidence and the Position Value Limits above:
+- High confidence (≥85): Use 80-100% of max position value limit
+- Medium confidence (70-84): Use 50-80% of max position value limit
+- Low confidence (60-69): Use 30-50% of max position value limit
+- Example: With equity ${equity.toFixed(0)} and Altcoin ratio ${altPVR}x, max is ${(equity * altPVR).toFixed(0)} USDT
+- DO NOT just use available_balance as position_size_usd. Use the Position Value Limits!`;
   }
 
   // buildAIGuidance 已删除（对齐 nofx engine.go 主路径：不注入"决策原则"段）
