@@ -218,21 +218,143 @@ export function formatMarketDataPrompt(data: {
   // 现有持仓已在 prompt-builder.service.ts [5] Current Positions 段统一展示
   // 此处不再重复，避免 "No open positions" 与 Current Positions 矛盾误导 AI
 
-  // 对齐 nofx formatter.go: 注入最近 30 根 K 线原始数据（让 AI 看到价格形态）
+  // K-line 分析摘要：预计算关键形态，替代原始 OHLCV 表格（LLM 无法从数字表中识别形态）
   if (data.ohlcv && data.ohlcv.length > 0) {
-    const candles = data.ohlcv.slice(-30); // 最多 30 根
-    lines.push('', `--- K-line Data (×${candles.length}, oldest→latest) ---`);
-    lines.push('# Open     High     Low      Close    Volume');
-    for (let i = 0; i < candles.length; i++) {
-      const c = candles[i];
-      const idx = String(i + 1).padStart(2, ' ');
-      lines.push(
-        `${idx} ${c.open.toFixed(priceDp).padStart(8)} ${c.high.toFixed(priceDp).padStart(8)} ` +
-        `${c.low.toFixed(priceDp).padStart(8)} ${c.close.toFixed(priceDp).padStart(8)} ` +
-        `${(c.volume || 0).toFixed(1).padStart(10)}`,
-      );
+    const summary = computeKlineSummary(data.ohlcv.slice(-30), priceDp);
+    if (summary) {
+      lines.push('', summary);
     }
-    lines.push('    <- current');
+  }
+
+  return lines.join('\n');
+}
+
+// ==================== K-line 摘要预计算 ====================
+
+/**
+ * 从 K-line 原始数据预计算关键形态摘要（替代原始 OHLCV 数字表格）
+ *
+ * LLM 无法从 30 行数字中识别价格形态，但可以理解文字描述的：
+ * - 支撑/阻力位
+ * - 连续涨跌趋势
+ * - 成交量异常
+ * - 关键K线形态（锤子线/十字星/吞没）
+ * - 波动范围
+ */
+export function computeKlineSummary(
+  candles: Array<{ open: number; high: number; low: number; close: number; volume: number }>,
+  priceDp: number = 2,
+): string | null {
+  if (!candles || candles.length < 5) return null;
+  const fp = (v: number) => v.toFixed(priceDp);
+  const lines: string[] = [`--- K-line Analysis (${candles.length} bars) ---`];
+
+  const closes = candles.map(c => c.close);
+  const highs = candles.map(c => c.high);
+  const lows = candles.map(c => c.low);
+  const volumes = candles.map(c => c.volume || 0);
+  const latest = candles[candles.length - 1];
+
+  // 1. 价格范围 & 当前位置
+  const rangeHigh = Math.max(...highs);
+  const rangeLow = Math.min(...lows);
+  const rangeWidth = rangeHigh - rangeLow;
+  const posInRange = rangeWidth > 0 ? ((latest.close - rangeLow) / rangeWidth * 100).toFixed(0) : '50';
+  lines.push(`Range: ${fp(rangeLow)} — ${fp(rangeHigh)} | Current at ${posInRange}% of range`);
+
+  // 2. 支撑/阻力位（简化：近期高低点聚集区）
+  // 取最近 10 根 K 线的低点作为支撑参考，高点作为阻力参考
+  const recent10 = candles.slice(-10);
+  const recentLows = recent10.map(c => c.low).sort((a, b) => a - b);
+  const recentHighs = recent10.map(c => c.high).sort((a, b) => b - a);
+  // 支撑：最近低点的中位数
+  const support = recentLows[Math.floor(recentLows.length / 3)]; // 下 1/3 位
+  // 阻力：最近高点的中位数
+  const resistance = recentHighs[Math.floor(recentHighs.length / 3)]; // 上 1/3 位
+  lines.push(`Support zone: ~${fp(support)} | Resistance zone: ~${fp(resistance)}`);
+
+  // 3. 连续涨跌趋势
+  let streak = 0;
+  const lastDir = latest.close >= latest.open ? 'bullish' : 'bearish';
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const isBull = c.close >= c.open;
+    if ((lastDir === 'bullish' && isBull) || (lastDir === 'bearish' && !isBull)) {
+      streak++;
+    } else break;
+  }
+  if (streak >= 3) {
+    lines.push(`Trend: ${streak} consecutive ${lastDir} bars`);
+  }
+
+  // 4. 成交量异常检测
+  const avgVol = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+  const lastVol = volumes[volumes.length - 1];
+  const prevVol = volumes.length >= 2 ? volumes[volumes.length - 2] : avgVol;
+  if (avgVol > 0) {
+    const volRatio = lastVol / avgVol;
+    if (volRatio > 2.0) {
+      lines.push(`Volume: SPIKE ${volRatio.toFixed(1)}x average (${lastVol > prevVol ? 'increasing' : 'decreasing'} price action)`);
+    } else if (volRatio > 1.5) {
+      lines.push(`Volume: Above average ${volRatio.toFixed(1)}x`);
+    } else if (volRatio < 0.5) {
+      lines.push(`Volume: LOW ${volRatio.toFixed(1)}x average (weak conviction)`);
+    }
+  }
+
+  // 5. 最近 3 根 K 线形态
+  const patterns: string[] = [];
+  for (let i = Math.max(0, candles.length - 3); i < candles.length; i++) {
+    const c = candles[i];
+    const body = Math.abs(c.close - c.open);
+    const fullRange = c.high - c.low;
+    if (fullRange === 0) continue;
+    const bodyRatio = body / fullRange;
+    const upperWick = c.high - Math.max(c.open, c.close);
+    const lowerWick = Math.min(c.open, c.close) - c.low;
+
+    // 十字星：body < 10% of range
+    if (bodyRatio < 0.1) {
+      patterns.push('Doji (indecision)');
+    }
+    // 锤子线：下影线 > 2x body，上影线小
+    else if (lowerWick > body * 2 && upperWick < body * 0.5) {
+      patterns.push(c.close > c.open ? 'Hammer (bullish reversal)' : 'Hanging Man (bearish warning)');
+    }
+    // 射击之星：上影线 > 2x body，下影线小
+    else if (upperWick > body * 2 && lowerWick < body * 0.5) {
+      patterns.push('Shooting Star (bearish reversal)');
+    }
+    // 大阳线/大阴线：body > 70% of range
+    else if (bodyRatio > 0.7) {
+      patterns.push(c.close > c.open ? 'Strong bullish bar' : 'Strong bearish bar');
+    }
+  }
+
+  // 吞没形态：最后两根
+  if (candles.length >= 2) {
+    const prev = candles[candles.length - 2];
+    const curr = candles[candles.length - 1];
+    if (prev.close < prev.open && curr.close > curr.open && curr.close > prev.open && curr.open < prev.close) {
+      patterns.push('Bullish Engulfing');
+    } else if (prev.close > prev.open && curr.close < curr.open && curr.close < prev.open && curr.open > prev.close) {
+      patterns.push('Bearish Engulfing');
+    }
+  }
+
+  if (patterns.length > 0) {
+    lines.push(`Patterns: ${[...new Set(patterns)].join(', ')}`);
+  }
+
+  // 6. 价格动量（最近 5 根 vs 前 5 根平均价）
+  if (candles.length >= 10) {
+    const recent5Avg = closes.slice(-5).reduce((a, b) => a + b, 0) / 5;
+    const prev5Avg = closes.slice(-10, -5).reduce((a, b) => a + b, 0) / 5;
+    if (prev5Avg > 0) {
+      const momentum = ((recent5Avg - prev5Avg) / prev5Avg * 100);
+      const dir = momentum > 0 ? 'accelerating up' : 'decelerating down';
+      lines.push(`Momentum (5-bar): ${momentum > 0 ? '+' : ''}${momentum.toFixed(2)}% (${dir})`);
+    }
   }
 
   return lines.join('\n');

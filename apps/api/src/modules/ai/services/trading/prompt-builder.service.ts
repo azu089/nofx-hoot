@@ -277,11 +277,21 @@ export class PromptBuilderService {
     lines.push(`Time: ${now.toISOString()}${periodStr}${runtimeStr}`);
     if (ctx.btcPrice) {
       lines.push('');
-      lines.push('=== BTC Reference ===');
+      lines.push('=== BTC Reference (Market Leader) ===');
       lines.push(`BTC Price: $${ctx.btcPrice.toFixed(2)}`);
       if (ctx.btcChange1h !== undefined) lines.push(`BTC 1h Change: ${ctx.btcChange1h > 0 ? '+' : ''}${ctx.btcChange1h.toFixed(2)}%`);
       if (ctx.btcChange4h !== undefined) lines.push(`BTC 4h Change: ${ctx.btcChange4h > 0 ? '+' : ''}${ctx.btcChange4h.toFixed(2)}%`);
       if (ctx.btcRsi !== undefined) lines.push(`BTC RSI(14): ${ctx.btcRsi.toFixed(1)}`);
+      // BTC 趋势摘要 + 相关性提示（让 AI 必须考虑 BTC 方向）
+      const btc1h = ctx.btcChange1h ?? 0;
+      const btc4h = ctx.btcChange4h ?? 0;
+      let btcTrend = 'sideways';
+      if (btc4h > 1) btcTrend = 'bullish (+' + btc4h.toFixed(1) + '% 4h)';
+      else if (btc4h < -1) btcTrend = 'bearish (' + btc4h.toFixed(1) + '% 4h)';
+      else if (btc1h > 0.5) btcTrend = 'short-term bullish';
+      else if (btc1h < -0.5) btcTrend = 'short-term bearish';
+      lines.push(`BTC Trend: ${btcTrend}`);
+      lines.push(`NOTE: Altcoins are highly correlated with BTC. Consider BTC direction when making altcoin decisions.`);
     }
 
     // [2] Account Info
@@ -636,8 +646,10 @@ Feel free to use any effective analysis method. Only open positions when your ge
 # 📋 Decision Process
 
 1. Check positions → Should we take profit/stop-loss
-2. Scan candidate coins + multi-timeframe → Are there strong signals
-3. Write chain of thought first, then output structured JSON`;
+2. Read market environment: BTC direction + Fear & Greed + K-line patterns
+3. Scan candidate coins + indicators → Are there strong signals resonating
+4. Compare with recent similar trades on same coin → Avoid repeating mistakes
+5. Write chain of thought first, then output structured JSON`;
   }
 
   /**
@@ -655,27 +667,34 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Write your analysis as a trader talking naturally. Structure your thinking in this order:
+Write your analysis as a trader talking naturally. You MUST cover ALL of the following in order:
 
-1. Start with account status and current positions (equity, balance, margin, what you're holding, P&L)
-2. Briefly review recent trade history (reference specific recent wins/losses and what you learned)
-3. Analyze each candidate coin with specific indicator values (RSI, EMA, OI, FR, MACD etc.)
-4. For each coin, compare with recent similar trades if relevant
-5. End each coin's analysis with "I decide to..." in first person
+1. **Account & Positions**: equity, balance, margin usage, current holdings and P&L
+2. **Market Environment**: Fear & Greed Index level + BTC trend direction + what this implies for altcoins
+3. **Recent Trade Review**: reference specific recent wins/losses on the SAME coin if any exist, what you learned
+4. **Per-Coin Analysis** (for each candidate):
+   a. K-line patterns: support/resistance levels, candle formations, volume signals from the K-line analysis
+   b. Core indicators: RSI, EMA alignment, MACD momentum, OI quadrant, Funding Rate
+   c. BTC correlation: is this coin likely to follow or diverge from BTC's current direction?
+   d. Sentiment check: what does the Fear & Greed Index suggest for this setup? (contrarian or confirming?)
+   e. End with "I decide to..." in first person
 
 Separate each coin's analysis with a blank line. Write like a human trader thinking out loud, not a report.
+If Fear & Greed or BTC Reference data is provided, you MUST reference them — do not skip any available data.
 </reasoning>
 
 <decision>
 Step 2: JSON decision array — each coin's "reasoning" field MUST contain:
-1. Key indicator values cited (RSI, EMA, OI, MACD etc.)
-2. Your analysis conclusion
-3. First-person decision statement starting with "I decide to..." (or "我决定...")
+1. Key indicator values cited (RSI, EMA, OI, MACD, K-line patterns etc.)
+2. BTC correlation context (is BTC supporting or opposing this trade?)
+3. Market sentiment factor (Fear & Greed level and its implication)
+4. Your analysis conclusion
+5. First-person decision statement starting with "I decide to..." (or "我决定...")
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. OI +2.1% price falling = bearish quadrant. RSI(14)=38 approaching oversold. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}, SL $97000 TP $91000, R:R=3.2:1."},
-  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. I decide to hold current position, waiting for BTC direction to clarify."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. K-line shows 3 consecutive bearish bars with resistance at $96500. OI +2.1% price falling = bearish quadrant. Fear & Greed at 28 (Fear) supports downside. RSI(14)=38 not yet oversold. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}, SL $97000 TP $91000, R:R=3.2:1."},
+  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. BTC trending bearish but ETH showing relative strength. F&G=28 Fear but no oversold signal yet. I decide to hold current position, waiting for BTC direction to clarify."}
 ]
 \`\`\`
 </decision>
@@ -685,7 +704,7 @@ Step 2: JSON decision array — each coin's "reasoning" field MUST contain:
 - \`action\`: open_long | open_short | close_long | close_short | hold | wait
 - \`confidence\`: 0-100 (must genuinely reflect signal quality, NOT inflated to force trades)
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- \`reasoning\`: **MUST be ≥3 sentences** with indicator values + analysis + "I decide to..." statement
+- \`reasoning\`: **MUST be ≥4 sentences** with: indicator values + K-line patterns + BTC/sentiment context + "I decide to..." statement
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use \`27.76\` not \`3000 * 0.01\`)`;
   }
 }

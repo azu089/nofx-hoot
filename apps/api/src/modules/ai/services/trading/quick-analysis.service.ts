@@ -476,10 +476,17 @@ export class QuickAnalysisService {
       newsPrompt = `=== Recent News Events ===\n${newsLines.join('\n')}`;
     }
 
-    // Task 2: Fear & Greed Index 格式化
+    // Task 2: Fear & Greed Index 格式化（增强：加入分级决策引导）
     let fearGreedPrompt = '';
     if (fearGreed) {
-      fearGreedPrompt = `=== Market Sentiment ===\nFear & Greed Index: ${fearGreed.value}/100 (${fearGreed.classification})\nNOTE: Extreme Fear often = buying opportunity; Extreme Greed often = caution.`;
+      const fgVal = fearGreed.value;
+      let fgGuidance = '';
+      if (fgVal <= 20) fgGuidance = 'Extreme Fear: historically a strong contrarian BUY signal. Consider accumulating quality setups.';
+      else if (fgVal <= 35) fgGuidance = 'Fear: market is cautious. Look for oversold bounces with volume confirmation.';
+      else if (fgVal <= 55) fgGuidance = 'Neutral: no sentiment edge. Rely purely on technical signals.';
+      else if (fgVal <= 75) fgGuidance = 'Greed: market is optimistic. Tighten stops and be cautious with new longs.';
+      else fgGuidance = 'Extreme Greed: historically a WARNING signal. Avoid chasing, consider reducing exposure.';
+      fearGreedPrompt = `=== Market Sentiment (MUST reference in reasoning) ===\nFear & Greed Index: ${fgVal}/100 (${fearGreed.classification})\n${fgGuidance}`;
     }
 
     // Task 4: LunarCrush 社媒情绪格式化
@@ -870,7 +877,14 @@ export class QuickAnalysisService {
       }
       let mcFearGreedPrompt = '';
       if (mcFearGreed) {
-        mcFearGreedPrompt = `=== Market Sentiment ===\nFear & Greed Index: ${mcFearGreed.value}/100 (${mcFearGreed.classification})\nNOTE: Extreme Fear often = buying opportunity; Extreme Greed often = caution.`;
+        const fgVal = (mcFearGreed as any).value;
+        let fgGuidance = '';
+        if (fgVal <= 20) fgGuidance = 'Extreme Fear: historically a strong contrarian BUY signal. Consider accumulating quality setups.';
+        else if (fgVal <= 35) fgGuidance = 'Fear: market is cautious. Look for oversold bounces with volume confirmation.';
+        else if (fgVal <= 55) fgGuidance = 'Neutral: no sentiment edge. Rely purely on technical signals.';
+        else if (fgVal <= 75) fgGuidance = 'Greed: market is optimistic. Tighten stops and be cautious with new longs.';
+        else fgGuidance = 'Extreme Greed: historically a WARNING signal. Avoid chasing, consider reducing exposure.';
+        mcFearGreedPrompt = `=== Market Sentiment (MUST reference in reasoning) ===\nFear & Greed Index: ${fgVal}/100 (${(mcFearGreed as any).classification})\n${fgGuidance}`;
       }
       let mcSocialPrompt = '';
       if (mcSocial) {
