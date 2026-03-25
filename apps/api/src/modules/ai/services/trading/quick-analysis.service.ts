@@ -665,6 +665,17 @@ export class QuickAnalysisService {
       );
     }
 
+    // 清理 markdown 格式（DeepSeek R1 thinking 模式顽固输出 **bold**/##/编号列表）
+    if (unifiedAnalysis) {
+      unifiedAnalysis = unifiedAnalysis
+        .replace(/\*\*/g, '')                     // 去掉 **bold**
+        .replace(/^#{1,4}\s+/gm, '')              // 去掉 ## 标题
+        .replace(/^\d+\.\s+/gm, '')               // 去掉 "1. " 编号开头
+        .replace(/^\s*[a-e]\.\s+/gm, '')          // 去掉 "a. " 子编号
+        .replace(/^[-*]\s+/gm, '')                 // 去掉 "- " 列表项
+        .replace(/\n{3,}/g, '\n\n');               // 多余空行压缩
+    }
+
     // 后端补偿：如果 JSON reasoning 太短（<50字），从整体分析中提取该币段落填充
     // 解决 DeepSeek-Reasoner content 极短、小模型忽略指令的问题
     const MIN_REASONING_LENGTH = 50;
@@ -694,6 +705,18 @@ export class QuickAnalysisService {
             d.reasoning = `${sym}: ${parts.join(', ')}. ${d.reasoning || ''}`.trim();
           }
         }
+      }
+    }
+
+    // 清理每个 decision 的 reasoning 中的 markdown 格式
+    for (const d of allDecisions) {
+      if (d.reasoning) {
+        d.reasoning = d.reasoning
+          .replace(/\*\*/g, '')
+          .replace(/^#{1,4}\s+/gm, '')
+          .replace(/^\d+\.\s+/gm, '')
+          .replace(/^[-*]\s+/gm, '')
+          .trim();
       }
     }
 
