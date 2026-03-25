@@ -2025,6 +2025,10 @@
       "localeTitle": "AI 출력 언어",
       "localeSaved": "출력 언어가 저장되었습니다"
     },
+    "strategy": {
+      "minCloseConfidence": "청산 최소 신뢰도",
+      "minCloseConfidenceDesc": "AI 청산 결정의 최소 신뢰도. 이 값 미만의 청산 신호는 보유로 전환됩니다"
+    },
     "dashboard": {
       "title": "AI 트레이딩",
       "subtitle": "AI 리서치 및 트레이딩",
@@ -2233,6 +2237,7 @@
       "sysGridExecFailed": "{count}건 주문 거부 · {categories}",
       "sysGridInitialized": "그리드 초기화: {gridCount}단 [{lower}–{upper}]",
       "sysMinConfFiltered": "신뢰도 {actual}% < 최소 {required}%",
+      "sysCloseConfFiltered": "청산 신뢰도 부족 {actual}%<{required}%, 보유 유지",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "증거금",

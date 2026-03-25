@@ -2026,6 +2026,10 @@
       "localeTitle": "Ngôn ngữ đầu ra AI",
       "localeSaved": "Đã lưu ngôn ngữ đầu ra"
     },
+    "strategy": {
+      "minCloseConfidence": "Độ tin cậy đóng lệnh tối thiểu",
+      "minCloseConfidenceDesc": "Độ tin cậy tối thiểu cho quyết định đóng lệnh của AI; tín hiệu dưới ngưỡng này sẽ được giữ nguyên"
+    },
     "dashboard": {
       "title": "AI Trading",
       "subtitle": "AI Research & Trading",
@@ -2234,6 +2238,7 @@
       "sysGridExecFailed": "{count} lệnh bị từ chối · {categories}",
       "sysGridInitialized": "Khởi tạo grid: {gridCount} mức [{lower}–{upper}]",
       "sysMinConfFiltered": "Độ tin cậy {actual}% < tối thiểu {required}%",
+      "sysCloseConfFiltered": "Độ tin cậy đóng lệnh không đủ {actual}%<{required}%, duy trì giữ",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "Ký quỹ",

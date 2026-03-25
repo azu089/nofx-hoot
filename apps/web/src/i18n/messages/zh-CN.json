@@ -2035,6 +2035,10 @@
       "localeTitle": "AI 输出语言",
       "localeSaved": "输出语言已保存"
     },
+    "strategy": {
+      "minCloseConfidence": "平仓最低置信度",
+      "minCloseConfidenceDesc": "AI 平仓决策的最低信心度，低于此值的平仓将被拦截为持有"
+    },
     "dashboard": {
       "title": "AI 交易",
       "subtitle": "AI 研究与交易",
@@ -2232,6 +2236,7 @@
       "sysGridExecFailed": "{count} 笔下单被拒 · {categories}",
       "sysGridInitialized": "网格初始化: {gridCount} 格 [{lower}–{upper}]",
       "sysMinConfFiltered": "信心度 {actual}% < 最低 {required}%",
+      "sysCloseConfFiltered": "平仓置信度不足 {actual}%<{required}%，维持持有",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "保证金",

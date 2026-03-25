@@ -2010,6 +2010,10 @@
       "localeTitle": "AI Output Language",
       "localeSaved": "Output language saved"
     },
+    "strategy": {
+      "minCloseConfidence": "Min Close Confidence",
+      "minCloseConfidenceDesc": "Minimum confidence for AI close decisions; below this threshold, close signals will be held instead"
+    },
     "dashboard": {
       "title": "AI Trading",
       "subtitle": "AI Research & Trading",
@@ -2218,6 +2222,7 @@
       "sysGridExecFailed": "{count} orders rejected · {categories}",
       "sysGridInitialized": "Grid init: {gridCount} levels [{lower}–{upper}]",
       "sysMinConfFiltered": "Confidence {actual}% < min {required}%",
+      "sysCloseConfFiltered": "Close confidence insufficient {actual}%<{required}%, holding position",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "Margin",

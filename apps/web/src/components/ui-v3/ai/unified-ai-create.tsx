@@ -101,7 +101,7 @@ const STRATEGY_PRESETS = {
     params: {
       allocatedCapital: 10000, maxLeverage: 3, maxPositions: 2,
       dailyDrawdown: 5, maxDailyTrades: 5, cooldownMinutes: 30,
-      maxPosition: 30, minConfidence: 80, minRR: 3,
+      maxPosition: 30, minConfidence: 80, minCloseConfidence: 80, minRR: 3,
       maxMarginUsage: 60, maxPerTrade: 10, circuitBreaker: 3,
       btcEthMaxPositionValueRatio: 3, altcoinMaxPositionValueRatio: 0.5,
       mainTimeframe: '4h', auxTimeframe: '1h',
@@ -115,7 +115,7 @@ const STRATEGY_PRESETS = {
     params: {
       allocatedCapital: 10000, maxLeverage: 5, maxPositions: 3,
       dailyDrawdown: 10, maxDailyTrades: 10, cooldownMinutes: 15,
-      maxPosition: 50, minConfidence: 70, minRR: 2,
+      maxPosition: 50, minConfidence: 70, minCloseConfidence: 70, minRR: 2,
       maxMarginUsage: 80, maxPerTrade: 20, circuitBreaker: 5,
       btcEthMaxPositionValueRatio: 5, altcoinMaxPositionValueRatio: 1.0,
       mainTimeframe: '1h', auxTimeframe: '15m',
@@ -129,7 +129,7 @@ const STRATEGY_PRESETS = {
     params: {
       allocatedCapital: 10000, maxLeverage: 10, maxPositions: 5,
       dailyDrawdown: 15, maxDailyTrades: 20, cooldownMinutes: 5,
-      maxPosition: 70, minConfidence: 60, minRR: 1.5,
+      maxPosition: 70, minConfidence: 60, minCloseConfidence: 60, minRR: 1.5,
       maxMarginUsage: 90, maxPerTrade: 30, circuitBreaker: 7,
       btcEthMaxPositionValueRatio: 8, altcoinMaxPositionValueRatio: 2.0,
       mainTimeframe: '15m', auxTimeframe: '5m',
@@ -398,6 +398,7 @@ export function UnifiedAiCreate() {
             cooldownMinutes: customParams.cooldownMinutes,
             minPositionSize,
             minConfidence: customParams.minConfidence,
+            minCloseConfidence: customParams.minCloseConfidence,
             minRiskRewardRatio: customParams.minRR,
           },
         });
@@ -439,6 +440,7 @@ export function UnifiedAiCreate() {
           maxLeverage: isGrid ? gridLeverage : customParams.maxLeverage,
           maxPositionPercent: customParams.maxPosition,
           minConfidence: customParams.minConfidence,
+          minCloseConfidence: customParams.minCloseConfidence,
           minRiskRewardRatio: customParams.minRR,
           amountPerTrade: customParams.allocatedCapital * (customParams.maxPerTrade / 100),
           maxDailyDrawdown: maxDailyDrawdownDollar,  // 直接$金额，非百分比换算
@@ -1232,6 +1234,19 @@ export function UnifiedAiCreate() {
                       <input type="number" min={0} max={100}
                         value={customParams.minConfidence || ''}
                         onChange={(e) => setCustomParams((p) => ({ ...p, minConfidence: parseInt(e.target.value) || 0 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">%</span>
+                    </div>
+                  </div>
+                  {/* 平仓最低置信度 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('strategy.minCloseConfidence')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={0} max={100}
+                        value={customParams.minCloseConfidence || ''}
+                        placeholder="0"
+                        onChange={(e) => setCustomParams((p) => ({ ...p, minCloseConfidence: parseInt(e.target.value) || 0 }))}
                         className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                       />
                       <span className="text-[#606070] text-xs">%</span>

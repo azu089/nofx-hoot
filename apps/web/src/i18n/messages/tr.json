@@ -2025,6 +2025,10 @@
       "localeTitle": "AI Çıktı Dili",
       "localeSaved": "Çıktı dili kaydedildi"
     },
+    "strategy": {
+      "minCloseConfidence": "Min. Kapatma Güveni",
+      "minCloseConfidenceDesc": "AI kapatma kararları için minimum güven; bu eşiğin altındaki sinyaller tutulmaya devam edilecek"
+    },
     "dashboard": {
       "title": "AI Trading",
       "subtitle": "AI Research & Trading",
@@ -2233,6 +2237,7 @@
       "sysGridExecFailed": "{count} emir reddedildi · {categories}",
       "sysGridInitialized": "Grid başlatıldı: {gridCount} seviye [{lower}–{upper}]",
       "sysMinConfFiltered": "Güven {actual}% < min {required}%",
+      "sysCloseConfFiltered": "Kapatma güveni yetersiz {actual}%<{required}%, pozisyon tutulmaya devam",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "Teminat",

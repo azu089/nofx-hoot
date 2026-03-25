@@ -2025,6 +2025,10 @@
       "localeTitle": "Язык вывода AI",
       "localeSaved": "Язык вывода сохранён"
     },
+    "strategy": {
+      "minCloseConfidence": "Мин. уверенность для закрытия",
+      "minCloseConfidenceDesc": "Минимальная уверенность для решений AI о закрытии; сигналы ниже порога будут удерживаться"
+    },
     "dashboard": {
       "title": "AI Trading",
       "subtitle": "AI Research & Trading",
@@ -2233,6 +2237,7 @@
       "sysGridExecFailed": "{count} ордеров отклонено · {categories}",
       "sysGridInitialized": "Сетка инициализирована: {gridCount} уровней [{lower}–{upper}]",
       "sysMinConfFiltered": "Уверенность {actual}% < мин. {required}%",
+      "sysCloseConfFiltered": "Уверенность закрытия недостаточна {actual}%<{required}%, позиция удерживается",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "Маржа",

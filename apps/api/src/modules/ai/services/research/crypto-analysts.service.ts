@@ -39,7 +39,7 @@ export interface AnalystContext {
   existingPositions?: Array<{
     side: string;
     entryPrice: number;
-    size: number;
+    quantity: number;
     pnlPercent: number;
   }>;
   /** Phase 11: 增强市场数据（多空比/清算/期权/稳定币/ETF/宏观/COT） */
@@ -530,7 +530,7 @@ ${langInst}`;
     if (ctx.existingPositions && ctx.existingPositions.length > 0) {
       lines.push('', '--- Existing Positions ---');
       for (const pos of ctx.existingPositions) {
-        lines.push(`  ${pos.side.toUpperCase()} @ ${pos.entryPrice} | Size: ${pos.size} | PnL: ${pos.pnlPercent.toFixed(2)}%`);
+        lines.push(`  ${pos.side.toUpperCase()} @ ${pos.entryPrice} | Qty: ${pos.quantity} | PnL: ${pos.pnlPercent.toFixed(2)}%`);
       }
     }
 

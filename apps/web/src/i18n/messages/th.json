@@ -2025,6 +2025,10 @@
       "localeTitle": "ภาษาผลลัพธ์ AI",
       "localeSaved": "บันทึกภาษาผลลัพธ์แล้ว"
     },
+    "strategy": {
+      "minCloseConfidence": "ความเชื่อมั่นการปิดขั้นต่ำ",
+      "minCloseConfidenceDesc": "ความเชื่อมั่นขั้นต่ำสำหรับการตัดสินใจปิดของ AI สัญญาณที่ต่ำกว่าค่านี้จะถูกคงไว้แทน"
+    },
     "dashboard": {
       "title": "AI Trading",
       "subtitle": "AI Research & Trading",
@@ -2233,6 +2237,7 @@
       "sysGridExecFailed": "{count} คำสั่งถูกปฏิเสธ · {categories}",
       "sysGridInitialized": "เริ่มต้นกริด: {gridCount} ระดับ [{lower}–{upper}]",
       "sysMinConfFiltered": "ความมั่นใจ {actual}% < ขั้นต่ำ {required}%",
+      "sysCloseConfFiltered": "ความเชื่อมั่นการปิดไม่เพียงพอ {actual}%<{required}% คงตำแหน่ง",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "มาร์จิน",

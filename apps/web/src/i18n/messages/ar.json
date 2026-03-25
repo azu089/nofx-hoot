@@ -2006,6 +2006,10 @@
       "localeTitle": "لغة إخراج الذكاء الاصطناعي",
       "localeSaved": "تم حفظ لغة الإخراج"
     },
+    "strategy": {
+      "minCloseConfidence": "الحد الأدنى لثقة الإغلاق",
+      "minCloseConfidenceDesc": "الحد الأدنى من الثقة لقرارات الإغلاق بالذكاء الاصطناعي؛ الإشارات دون هذا الحد ستُبقي على المركز"
+    },
     "dashboard": {
       "title": "تداول ذكي",
       "subtitle": "بحث وتداول بالذكاء الاصطناعي",
@@ -2214,6 +2218,7 @@
       "sysGridExecFailed": "{count} أوامر مرفوضة · {categories}",
       "sysGridInitialized": "تهيئة الشبكة: {gridCount} مستوى [{lower}–{upper}]",
       "sysMinConfFiltered": "الثقة {actual}% < الحد الأدنى {required}%",
+      "sysCloseConfFiltered": "ثقة الإغلاق غير كافية {actual}%<{required}%، الاحتفاظ بالمركز",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "هامش",

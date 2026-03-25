@@ -2025,6 +2025,10 @@
       "localeTitle": "Bahasa Output AI",
       "localeSaved": "Bahasa output tersimpan"
     },
+    "strategy": {
+      "minCloseConfidence": "Kepercayaan Tutup Minimum",
+      "minCloseConfidenceDesc": "Kepercayaan minimum untuk keputusan tutup AI; sinyal di bawah ambang ini akan dipertahankan"
+    },
     "dashboard": {
       "title": "AI Trading",
       "subtitle": "AI Research & Trading",
@@ -2233,6 +2237,7 @@
       "sysGridExecFailed": "{count} order ditolak · {categories}",
       "sysGridInitialized": "Grid diinisialisasi: {gridCount} level [{lower}–{upper}]",
       "sysMinConfFiltered": "Kepercayaan {actual}% < min {required}%",
+      "sysCloseConfFiltered": "Kepercayaan tutup tidak cukup {actual}%<{required}%, mempertahankan posisi",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "Margin",

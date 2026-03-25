@@ -890,6 +890,124 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
+  /**
+   * 获取活跃的 SL/TP 条件单列表（供 AI prompt 展示，非致命）
+   *
+   * Binance: 同时查普通条件单（fapiPrivateGetOpenOrders）+ Algo 条件单（fapiPrivateGetOpenAlgoOrders）
+   * OKX / Bybit: 通过 fetchOpenOrders 过滤条件单类型
+   *
+   * @param symbols 按币种过滤（undefined = 不过滤，返回全部）
+   */
+  async getStopOrders(symbols?: string[]): Promise<Array<{
+    symbol: string;
+    type: 'stop_loss' | 'take_profit' | 'trailing_stop' | 'other';
+    triggerPrice: number;
+    side: string;
+    quantity: number;
+    orderId: string;
+  }>> {
+    try {
+      const ex = this.getExchange();
+      const SL_TYPES = ['STOP_MARKET', 'STOP', 'STOP_LIMIT'];
+      const TP_TYPES = ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'TAKE_PROFIT_LIMIT'];
+      const TRAIL_TYPES = ['TRAILING_STOP_MARKET'];
+
+      const classifyType = (t: string): 'stop_loss' | 'take_profit' | 'trailing_stop' | 'other' => {
+        const upper = (t || '').toUpperCase();
+        if (SL_TYPES.includes(upper)) return 'stop_loss';
+        if (TP_TYPES.includes(upper)) return 'take_profit';
+        if (TRAIL_TYPES.includes(upper)) return 'trailing_stop';
+        return 'other';
+      };
+
+      const results: Array<{
+        symbol: string;
+        type: 'stop_loss' | 'take_profit' | 'trailing_stop' | 'other';
+        triggerPrice: number;
+        side: string;
+        quantity: number;
+        orderId: string;
+      }> = [];
+
+      const ALL_STOP_TYPES = [...SL_TYPES, ...TP_TYPES, ...TRAIL_TYPES];
+
+      if (this.exchangeType === 'binance' || this.exchangeType === 'binanceusdm') {
+        // Binance: 1. 普通条件单（旧 API）
+        try {
+          const rawOrders: any[] = await (ex as any).fapiPrivateGetOpenOrders({});
+          for (const o of rawOrders) {
+            if (!ALL_STOP_TYPES.includes((o.type || '').toUpperCase())) continue;
+            // 按 symbol 过滤
+            const ccxtSym = ex.markets
+              ? (Object.values(ex.markets) as any[]).find((m: any) => m.id === o.symbol || m.info?.symbol === o.symbol)?.symbol || o.symbol
+              : o.symbol;
+            if (symbols && !symbols.includes(ccxtSym)) continue;
+            results.push({
+              symbol: ccxtSym,
+              type: classifyType(o.type),
+              triggerPrice: Number(o.stopPrice || o.price || 0),
+              side: (o.side || '').toLowerCase(),
+              quantity: Number(o.origQty || o.qty || 0),
+              orderId: String(o.orderId || ''),
+            });
+          }
+        } catch (e: any) {
+          this.logger.debug(`[CcxtAdapter] getStopOrders: Binance legacy openOrders 查询跳过: ${e.message}`);
+        }
+
+        // Binance: 2. Algo 条件单（新 API）
+        try {
+          const response = await (ex as any).fapiPrivateGetOpenAlgoOrders({});
+          const algoOrders: any[] = Array.isArray(response?.orders) ? response.orders
+            : Array.isArray(response) ? response : [];
+          for (const o of algoOrders) {
+            if (!ALL_STOP_TYPES.includes((o.type || o.orderType || '').toUpperCase())) continue;
+            const ccxtSym = ex.markets
+              ? (Object.values(ex.markets) as any[]).find((m: any) => m.id === o.symbol || m.info?.symbol === o.symbol)?.symbol || o.symbol
+              : o.symbol;
+            if (symbols && !symbols.includes(ccxtSym)) continue;
+            results.push({
+              symbol: ccxtSym,
+              type: classifyType(o.type || o.orderType || ''),
+              triggerPrice: Number(o.stopPrice || o.triggerPrice || o.price || 0),
+              side: (o.side || '').toLowerCase(),
+              quantity: Number(o.origQty || o.qty || o.quantity || 0),
+              orderId: String(o.algoId || o.orderId || ''),
+            });
+          }
+        } catch (e: any) {
+          this.logger.debug(`[CcxtAdapter] getStopOrders: Binance Algo openOrders 查询跳过: ${e.message}`);
+        }
+      } else {
+        // OKX / Bybit / Gate / Bitget: 通过 fetchOpenOrders 过滤条件单类型
+        try {
+          const orders = await ex.fetchOpenOrders(undefined as any);
+          for (const o of orders) {
+            const orderType = ((o.type as string) || '').toUpperCase();
+            if (!ALL_STOP_TYPES.includes(orderType)) continue;
+            if (symbols && !symbols.includes(o.symbol)) continue;
+            results.push({
+              symbol: o.symbol,
+              type: classifyType(o.type as string),
+              triggerPrice: Number((o as any).stopPrice || o.price || 0),
+              side: (o.side || 'sell').toLowerCase(),
+              quantity: Number(o.amount || 0),
+              orderId: String(o.id || ''),
+            });
+          }
+        } catch (e: any) {
+          this.logger.debug(`[CcxtAdapter] getStopOrders: ${this.exchangeType} fetchOpenOrders 查询跳过: ${e.message}`);
+        }
+      }
+
+      return results;
+    } catch (e: any) {
+      // 非致命：获取失败返回空数组，不影响主流程
+      this.logger.debug(`[CcxtAdapter] getStopOrders 失败(非致命): ${e.message}`);
+      return [];
+    }
+  }
+
   async fetchMyTrades(symbol: string, since: number, limit: number): Promise<Array<{
     side: 'buy' | 'sell';
     price: number;

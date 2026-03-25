@@ -642,3 +642,22 @@ nofx 有两套 prompt 路径，HOOT 对齐的是 **engine.go 主路径**（不�
 
 1. **副时间框架 OHLCV 注入**：两个 TF 的 K 线 ≈ 600 token，需确认 LLM 成本预算
 2. **OI 流动性过滤**：nofx 过滤 OI<15M USD 的币，HOOT coinScanner 有自己的过滤逻辑
+
+## 前端日志展示待修（VPS 验证发现）
+
+### 问题描述（参照截图）
+
+1. 🔴 **SOL 没有独立 coin 行** — SOL 是 hold 动作，它的 reasoning 和顶层 `d.reasoning` 完全相同（因为 primaryDecision=SOL），被 `r === reasoning` 跳过了 CoinReasoning 展示。看起来 SOL "消失"了。
+   - 修复：多币种模式下每币**始终显示**，reasoning 相同时改为显示"（详见整体分析）"而非跳过。
+
+2. 🔴 **被 minConf 拦截的币没有 marketSnapshot** — 拦截路径（L1566-1589）的 cycleDecisions push 没有传入 marketSnapshot。
+   - 修复：在 minConf 拦截的 cycleDecisions push 中补充 `marketSnapshot: _logMarketSnapshot`。
+
+3. 🟡 **顶层 reasoning 和 DeepSeek R1 内容重叠** — reasoning 来自 analysis（<reasoning>标签），aiThinking 来自 thinking。对于 DeepSeek-Reasoner，9b 轮的 CoTTrace 统一把 thinking 填充到了 analysis，导致两者相同。
+   - 修复：如果 `d.reasoning === d.aiThinking`，aiThinking 区域不显示（避免重复）。
+
+4. 🟡 **多币种卡片结构需要调整** — 当前：顶部一大段分析 → 中间 coin 行列表 → 底部 DeepSeek R1。期望：每币独立的"市场数据+分析+决策"三层结构。
+
+### 涉及文件
+- `apps/web/src/components/ui-v3/ai/timeline-cards/solo-log-card.tsx`
+- `apps/api/src/modules/ai/services/trading/auto-trader.service.ts`（minConf 拦截路径补充 marketSnapshot）

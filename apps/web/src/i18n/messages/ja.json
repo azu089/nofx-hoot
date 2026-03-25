@@ -2025,6 +2025,10 @@
       "localeTitle": "AI出力言語",
       "localeSaved": "出力言語が保存されました"
     },
+    "strategy": {
+      "minCloseConfidence": "決済最低信頼度",
+      "minCloseConfidenceDesc": "AI決済判断の最低信頼度。この値を下回る決済シグナルはホールドに変換されます"
+    },
     "dashboard": {
       "title": "AI取引",
       "subtitle": "AIリサーチと自動売買",
@@ -2233,6 +2237,7 @@
       "sysGridExecFailed": "{count}件注文拒否 · {categories}",
       "sysGridInitialized": "グリッド初期化: {gridCount}段 [{lower}–{upper}]",
       "sysMinConfFiltered": "信頼度 {actual}% < 最低 {required}%",
+      "sysCloseConfFiltered": "決済信頼度不足 {actual}%<{required}%、保有継続",
       "breakoutDirUp": "↑",
       "breakoutDirDown": "↓",
       "marginLabel": "証拠金",
