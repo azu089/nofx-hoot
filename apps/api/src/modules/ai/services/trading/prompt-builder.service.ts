@@ -661,11 +661,15 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Step 1: Analyze EACH coin separately (cite specific indicator values), then state your decision in first person ("I decide to...").
+Write your analysis as a trader talking naturally. Structure your thinking in this order:
 
-Example structure:
-**BTC**: EMA(7)=96450 < EMA(25)=96800 bearish alignment. RSI(14)=45 neutral. OI +1.3% with price falling = bearish quadrant. R:R=1.86 below 3:1 threshold. I decide to wait for RSI below 30 before shorting.
-**SOL**: Price broke $170 resistance with volume spike. OI +3.2% with price rising = bullish quadrant. EMA(7)>EMA(25) confirmed. I decide to open long SOL, 5x leverage $500, SL $160 TP $185, R:R=3.2:1.
+1. Start with account status and current positions (equity, balance, margin, what you're holding, P&L)
+2. Briefly review recent trade history (reference specific recent wins/losses and what you learned)
+3. Analyze each candidate coin with specific indicator values (RSI, EMA, OI, FR, MACD etc.)
+4. For each coin, compare with recent similar trades if relevant
+5. End each coin's analysis with "I decide to..." in first person
+
+Separate each coin's analysis with a blank line. Write like a human trader thinking out loud, not a report.
 </reasoning>
 
 <decision>
