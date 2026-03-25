@@ -132,8 +132,7 @@ export class AiExecutionService {
     existingAdapter?: ExchangeAdapter,
   ): Promise<number> {
     try {
-      const adapter = (existingAdapter?.isReady?.() ? existingAdapter : null)
-        ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
+      const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
       const balance = await this.retryCall('getBalance', () => adapter.getBalance());
       const exchangeBalance = balance.availableBalance;
       if (allocatedCapital && allocatedCapital > 0) {
@@ -155,10 +154,15 @@ export class AiExecutionService {
     apiKeyId: string,
     existingAdapter?: ExchangeAdapter,
   ): Promise<{ totalEquity: number; availableBalance: number; usedMargin: number }> {
-    // 防御：传入的 adapter 可能被 evictStale/dispose 导致 not ready，此时重新创建
-    const adapter = (existingAdapter?.isReady?.() ? existingAdapter : null)
-      ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
-    const balance = await this.retryCall('getBalance', () => adapter.getBalance());
+    let adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
+    let balance;
+    try {
+      balance = await this.retryCall('getBalance', () => adapter.getBalance());
+    } catch (e) {
+      // adapter 异常时重建重试
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      balance = await adapter.getBalance();
+    }
     return {
       totalEquity: balance.totalEquity,
       availableBalance: balance.availableBalance,
@@ -195,30 +199,36 @@ export class AiExecutionService {
         return { success: true, symbol, action, error: undefined };
       }
 
-      // 创建适配器（优先复用外部传入，isReady 防御 dispose 后残留引用）
-      const adapter = (existingAdapter?.isReady?.() ? existingAdapter : null)
-        ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
+      // 创建适配器（优先复用外部传入）
+      let adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-      // 路由到对应执行方法
-      switch (action) {
-        case 'open_long':
-          return await this.openPosition(
-            adapter, userId, apiKeyId, symbol, 'long', decision, source, aiStrategyId,
-          );
-        case 'open_short':
-          return await this.openPosition(
-            adapter, userId, apiKeyId, symbol, 'short', decision, source, aiStrategyId,
-          );
-        case 'close_long':
-          return await this.closePosition(
-            adapter, userId, symbol, 'long', source, aiStrategyId,
-          );
-        case 'close_short':
-          return await this.closePosition(
-            adapter, userId, symbol, 'short', source, aiStrategyId,
-          );
-        default:
-          return { success: false, symbol, action, error: `不支持的动作: ${action}` };
+      // 执行交易（失败时自动重建 adapter 重试 1 次）
+      const exec = async (a: ExchangeAdapter): Promise<ExecutionResult> => {
+        switch (action) {
+          case 'open_long':
+            return this.openPosition(a, userId, apiKeyId, symbol, 'long', decision, source, aiStrategyId);
+          case 'open_short':
+            return this.openPosition(a, userId, apiKeyId, symbol, 'short', decision, source, aiStrategyId);
+          case 'close_long':
+            return this.closePosition(a, userId, symbol, 'long', source, aiStrategyId);
+          case 'close_short':
+            return this.closePosition(a, userId, symbol, 'short', source, aiStrategyId);
+          default:
+            return { success: false, symbol, action, error: `不支持的动作: ${action}` };
+        }
+      };
+
+      try {
+        return await exec(adapter);
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+        // adapter 内部状态异常时（如 loadMarkets 丢失），重建 adapter 重试 1 次
+        if (msg.includes('未初始化') || msg.includes('initialize') || msg.includes('market')) {
+          this.logger.warn(`[AI执行] adapter 异常(${msg})，重建后重试`);
+          adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+          return await exec(adapter);
+        }
+        throw firstErr;
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : '未知错误';
@@ -887,9 +897,8 @@ export class AiExecutionService {
 
     this.logger.log(`[AI执行] 批量平仓启动: 策略 ${strategyId} 共 ${openPositions.length} 笔持仓`);
 
-    const readyAdapter = existingAdapter?.isReady?.() ? existingAdapter : null;
-    const ownsAdapter = !readyAdapter;
-    let adapter: ExchangeAdapter | null = readyAdapter;
+    const ownsAdapter = !existingAdapter;
+    let adapter: ExchangeAdapter | null = existingAdapter ?? null;
     try {
       if (!adapter) adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
       for (const pos of openPositions) {
