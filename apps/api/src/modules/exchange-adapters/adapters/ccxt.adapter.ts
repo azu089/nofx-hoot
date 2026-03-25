@@ -258,7 +258,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }
 
   isReady(): boolean {
-    return this.exchange !== null;
+    // exchange 存在 + markets 已加载（loadMarkets 完成）
+    return this.exchange !== null && this.exchange.markets !== undefined && Object.keys(this.exchange.markets).length > 0;
   }
 
   async dispose(): Promise<void> {
