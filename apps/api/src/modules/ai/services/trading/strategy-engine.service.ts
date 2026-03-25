@@ -1165,6 +1165,15 @@ export class StrategyEngineService implements OnModuleInit {
               } : {}),
             },
           });
+          // 对齐 nofx CloseLong/CloseShort: 平仓后清理残留 SL/TP 条件单
+          // Binance 的 reduceOnly 条件单在持仓清零后不会自动失效
+          try {
+            await adapter.cancelStopOrders(dbPos.symbol);
+            this.logger.log(`[持仓同步] ${dbPos.symbol} 残留条件单已清理`);
+          } catch (e: any) {
+            this.logger.debug(`[持仓同步] ${dbPos.symbol} 清理条件单失败(非致命): ${e.message}`);
+          }
+
           this.logger.warn(
             `[持仓同步] ${dbPos.symbol} ${dbPos.side} 交易所已无持仓 → ${closeReason}${exitPrice > 0 ? ` @ $${exitPrice.toFixed(4)}` : ''}${realizedPnl !== 0 ? ` PnL=$${realizedPnl.toFixed(4)}` : ''}`,
           );
