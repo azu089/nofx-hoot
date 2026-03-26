@@ -10,6 +10,7 @@ import { OrderResult } from '../../exchange-adapters/types/exchange.types';
 import { AI_SAFETY_DEFAULTS } from '../constants/safety-defaults';
 import { TradingGateway } from '../../../gateways/trading.gateway';
 import { PositionMonitorService } from '../../trading/position-monitor.service';
+import { PriceWatchService } from '../../trading/price-watch.service';
 
 // ========================= 类型定义 =========================
 
@@ -93,6 +94,7 @@ export class AiExecutionService {
     private readonly memoryService: AiMemoryService,
     @Optional() private readonly tradingGateway?: TradingGateway,
     @Optional() private readonly positionMonitor?: PositionMonitorService,
+    @Optional() private readonly priceWatchService?: PriceWatchService,
   ) {}
 
   /**
@@ -521,6 +523,46 @@ export class AiExecutionService {
       });
     }
 
+    // 13.6 注册到 WS 实时风控（PriceWatchService — 平台级 WebSocket 风控）
+    if (this.priceWatchService) {
+      try {
+        const riskConfig = aiStrategyId
+          ? (await this.prisma.aiStrategy.findUnique({
+              where: { id: aiStrategyId },
+              select: { riskControlConfig: true },
+            }))?.riskControlConfig as any
+          : null;
+
+        this.priceWatchService.subscribe({
+          positionId: position.id,
+          userId,
+          apiKeyId,
+          symbol: futuresSymbol,
+          exchangeType: adapter.exchangeType,
+          side,
+          entryPrice: filledPrice,
+          amount: filledAmount,
+          margin: margin.toNumber(),
+          leverage: actualLeverage,
+          riskConfig: {
+            peakProfitThreshold: riskConfig?.peakProfitThreshold ?? 5.0,
+            peakDrawdownThreshold: riskConfig?.peakDrawdownThreshold ?? 40.0,
+            absoluteLossThreshold: riskConfig?.absoluteLossThreshold ?? -30.0,
+            stopLossPercent: decision.stopLoss && decision.stopLoss > 0
+              ? Math.abs((decision.stopLoss - filledPrice) / filledPrice * 100)
+              : undefined,
+            takeProfitPercent: decision.takeProfit && decision.takeProfit > 0
+              ? Math.abs((decision.takeProfit - filledPrice) / filledPrice * 100)
+              : undefined,
+            trailingStopActivation: riskConfig?.trailingStopActivation,
+            trailingStopCallback: riskConfig?.trailingStopCallback,
+          },
+        });
+      } catch (e: any) {
+        this.logger.warn(`[AI执行] WS 实时风控注册失败(非致命): ${e.message}`);
+      }
+    }
+
     // 14. 设置止损（3次重试 → 降级到软监控）
     // 开仓无 SL/TP 防御检查（正常情况 safety L9 已拦截，此处为最终防线 WARN）
     if (!decision.stopLoss || decision.stopLoss <= 0) {
@@ -820,6 +862,11 @@ export class AiExecutionService {
     // 平仓后移除持仓监控
     if (this.positionMonitor && position) {
       this.positionMonitor.untrackPosition(position.id);
+    }
+
+    // 平仓后取消 WS 实时风控订阅
+    if (this.priceWatchService && position) {
+      this.priceWatchService.unsubscribe(position.id);
     }
 
     // 推送 WebSocket 平仓更新（前端交易页实时刷新）

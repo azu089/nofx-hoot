@@ -31,6 +31,15 @@ import { PositionSyncService } from './position-sync.service';
 // 交易所历史持仓同步 + 统一扣费
 import { ClosedPnlSyncService } from './closed-pnl-sync.service';
 
+// WebSocket 实时价格监控（平台级风控）
+import { BinanceWsProvider } from './exchange-ws/binance-ws.provider';
+import { OkxWsProvider } from './exchange-ws/okx-ws.provider';
+import { BybitWsProvider } from './exchange-ws/bybit-ws.provider';
+import { GateWsProvider } from './exchange-ws/gate-ws.provider';
+import { BitgetWsProvider } from './exchange-ws/bitget-ws.provider';
+import { RestFallbackProvider } from './exchange-ws/rest-fallback.provider';
+import { PriceWatchService } from './price-watch.service';
+
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'trade' }),
@@ -63,6 +72,14 @@ import { ClosedPnlSyncService } from './closed-pnl-sync.service';
     PositionSyncService,
     // 交易所历史持仓同步 + 统一扣费
     ClosedPnlSyncService,
+    // WebSocket 实时价格监控（平台级风控）
+    BinanceWsProvider,
+    OkxWsProvider,
+    BybitWsProvider,
+    GateWsProvider,
+    BitgetWsProvider,
+    RestFallbackProvider,
+    PriceWatchService,
   ],
   exports: [
     TradingService,
@@ -81,6 +98,8 @@ import { ClosedPnlSyncService } from './closed-pnl-sync.service';
     PositionSyncService,
     // 交易所历史持仓同步 + 统一扣费
     ClosedPnlSyncService,
+    // WebSocket 实时价格监控（平台级风控）
+    PriceWatchService,
   ],
 })
 export class TradingModule {}

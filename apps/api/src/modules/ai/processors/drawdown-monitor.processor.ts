@@ -11,13 +11,17 @@ import { isSameSymbol } from '../../../common/utils/symbol.util';
 import { TradingGateway } from '../../../gateways/trading.gateway';
 
 /**
- * AI 持仓回撤监控处理器
+ * AI 持仓回撤监控处理器（已精简为兜底同步）
  *
- * 定期检查所有 AI 来源的开放持仓：
- * 1. 获取当前标记价格
- * 2. 计算未实现盈亏百分比
- * 3. 更新高水位（highWaterMark）
- * 4. 分批止盈：盈利 +3% 平 33%、+5% 平至 50%、+8% 全平
+ * Phase 3 重构：Peak-Drawdown / 绝对亏损保护已迁移到 PriceWatchService（WebSocket 实时）
+ *
+ * 当前职责（30s 轮询兜底）：
+ * 1. 检测 not_found_on_exchange — 交易所 SL/TP 条件单触发后，DB 未同步 → 标记 closed
+ * 2. 同步实时数据到 DB（markPrice / unrealizedPnl / amount / margin）
+ *
+ * 不再负责：
+ * - 峰值回撤平仓（PriceWatchService 实时触发）
+ * - 绝对亏损平仓（PriceWatchService 实时触发）
  */
 @Processor('ai-monitor')
 export class DrawdownMonitorProcessor extends WorkerHost {
@@ -160,85 +164,34 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           }
         }
 
-        // 获取当前价格（优先用 exchange 持仓里的 markPrice，fallback 到单独查价）
-        const currentPrice = liveMarkPrice || await this.tradingService.getCurrentPrice(
-          pos.userId,
-          pos.apiKeyId,
-          pos.symbol,
-        );
-
-        if (!currentPrice || currentPrice <= 0) continue;
-
-        // 以交易所实时数据为准，fallback 到 DB 数据
-        const entryPrice = Number(pos.entryPrice);
-        const amount = liveAmount ?? Number(pos.amount);
-        const margin = liveMargin ?? Number(pos.margin || 0);
-
-        if (entryPrice <= 0 || margin <= 0) continue;
-
-        const unrealizedPnl = liveUnrealizedPnl ?? (
-          pos.side === 'long'
-            ? (currentPrice - entryPrice) * amount
-            : (entryPrice - currentPrice) * amount
-        );
-        const pnlPercent = (unrealizedPnl / margin) * 100;
-
-        // 更新高水位
-        const currentHWM = pos.highWaterMark ? Number(pos.highWaterMark) : null;
-        const baseUpdateData: any = {
-          markPrice: new Decimal(currentPrice),
-          unrealizedPnl: new Decimal(unrealizedPnl),
-          lastSyncAt: new Date(),
-        };
-        // 同步交易所的实时 amount 和 margin（若获取到）
-        if (liveAmount !== undefined) baseUpdateData.amount = new Decimal(liveAmount);
-        if (liveMargin !== undefined) baseUpdateData.margin = new Decimal(liveMargin);
-
-        if (currentHWM === null || pnlPercent > currentHWM) {
-          await this.prisma.position.update({
-            where: { id: pos.id },
-            data: {
-              highWaterMark: new Decimal(Math.max(pnlPercent, 0)),
-              ...baseUpdateData,
-            },
-          });
-        } else {
-          await this.prisma.position.update({
-            where: { id: pos.id },
-            data: baseUpdateData,
-          });
-        }
-
-        // [已删除] 分批止盈 — 与交易所 TP 条件单冲突 + AI 不知情会补仓循环
-        // 止盈由 AI 决策 + 交易所 TP 条件单负责，代码层不抢先
-
-        const cachedAdapter = adapterCache.get(cacheKey);
-
-        // 绝对亏损保护：不依赖高水位，当前亏损超过阈值直接平仓
-        // 高杠杆（≥5x）收紧到 -20%，低杠杆维持 -30%（减少高杠杆滑动窗口风险）
-        const lev = (pos as any).leverage ?? 1;
-        const ABSOLUTE_LOSS_THRESHOLD = lev >= 5 ? -20 : -30;
-        if (pnlPercent < ABSOLUTE_LOSS_THRESHOLD) {
-          this.logger.warn(
-            `[AI监控] 绝对亏损保护触发: ${pos.symbol} ${pos.side} 亏损 ${pnlPercent.toFixed(1)}% < ${ABSOLUTE_LOSS_THRESHOLD}% (杠杆 ${lev}x)`,
+        // 同步实时数据到 DB（markPrice / unrealizedPnl / amount / margin）
+        // WS 每 5s 落盘，此处 30s 兜底确保数据不丢失
+        if (liveMarkPrice && liveMarkPrice > 0) {
+          const entryPrice = Number(pos.entryPrice);
+          const amount = liveAmount ?? Number(pos.amount);
+          const margin = liveMargin ?? Number(pos.margin || 0);
+          const unrealizedPnl = liveUnrealizedPnl ?? (
+            pos.side === 'long'
+              ? (liveMarkPrice - entryPrice) * amount
+              : (entryPrice - liveMarkPrice) * amount
           );
-          await this.autoClosePosition(
-            pos,
-            `绝对亏损保护：当前亏损 ${pnlPercent.toFixed(1)}% 超过 ${ABSOLUTE_LOSS_THRESHOLD}% 阈值 (杠杆 ${lev}x)`,
-            currentPrice,
-            'absolute_loss',
-            cachedAdapter,
-          );
-          closedCount++;
-          continue; // 跳过高水位检查
-        }
+          const pnlPercent = margin > 0 ? (unrealizedPnl / margin) * 100 : 0;
 
-        // Peak-Drawdown 紧急平仓（对齐 nofx checkPositionDrawdown，参数可配置）
-        const riskConfig = pos.aiStrategyId ? strategyConfigMap.get(pos.aiStrategyId) : null;
-        const peakClosed = await this.checkPeakDrawdown(pos, pnlPercent, currentPrice, unrealizedPnl, cachedAdapter, riskConfig);
-        if (peakClosed) {
-          closedCount++;
-          continue;
+          const updateData: any = {
+            markPrice: new Decimal(liveMarkPrice),
+            unrealizedPnl: new Decimal(unrealizedPnl),
+            lastSyncAt: new Date(),
+          };
+          if (liveAmount !== undefined) updateData.amount = new Decimal(liveAmount);
+          if (liveMargin !== undefined) updateData.margin = new Decimal(liveMargin);
+
+          // 更新高水位（仅当有新高时写入，不覆盖 WS 已写入的值）
+          const currentHWM = pos.highWaterMark ? Number(pos.highWaterMark) : null;
+          if (pnlPercent > 0 && (currentHWM === null || pnlPercent > currentHWM)) {
+            updateData.highWaterMark = new Decimal(pnlPercent);
+          }
+
+          await this.prisma.position.update({ where: { id: pos.id }, data: updateData });
         }
       } catch (error) {
         this.logger.warn(
