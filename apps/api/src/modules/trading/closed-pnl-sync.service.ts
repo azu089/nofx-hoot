@@ -110,38 +110,61 @@ export class ClosedPnlSyncService {
           exchangeRef,
         };
 
-        // 防重复：先检查是否已有 AI 平仓的记录（exchangeRef=null 但 symbol+side+closedAt 匹配）
-        // AI 平仓时不知道交易所 exchangeRef，ClosedPnlSync 拉到时需要关联而非创建新记录
+        // 防重复：先检查是否已有 AI 记录（open 或 closed，exchangeRef=null）
+        // AI 开仓创建的记录 status=open，AI/SL/TP 平仓后变 closed，都需要匹配
         const closedAtTime = posData.closedAt instanceof Date ? posData.closedAt : new Date(posData.closedAt);
         const existingAiPos = await this.prisma.position.findFirst({
           where: {
             userId,
             symbol: record.symbol,
             side: posData.side,
-            status: 'closed',
             exchangeRef: null,
-            closeReason: { in: ['ai_decision', 'scale_out_complete', 'peak_drawdown', 'not_found_on_exchange'] },
-            closedAt: {
-              gte: new Date(closedAtTime.getTime() - 5 * 60 * 1000), // ±5 分钟窗口
-              lte: new Date(closedAtTime.getTime() + 5 * 60 * 1000),
-            },
+            source: 'ai_strategy',
+            OR: [
+              // 已平仓：closedAt ±30 分钟窗口内匹配
+              {
+                status: 'closed',
+                closedAt: {
+                  gte: new Date(closedAtTime.getTime() - 30 * 60 * 1000),
+                  lte: new Date(closedAtTime.getTime() + 30 * 60 * 1000),
+                },
+              },
+              // 未平仓：AI 开的仓还没被 AI 平（手动/SL/TP 触发），createdAt 在平仓时间之前
+              {
+                status: 'open',
+                createdAt: { lte: closedAtTime },
+              },
+            ],
           },
-          orderBy: { closedAt: 'desc' },
+          orderBy: { createdAt: 'desc' },
         });
 
         let position;
         if (existingAiPos) {
-          // 关联 exchangeRef 到已有的 AI 平仓记录，补充交易所数据
+          // 关联 exchangeRef 到已有 AI 记录，补充交易所数据
+          // 如果是 open 状态，同时更新为 closed（手动平仓/SL/TP 触发的情况）
+          const isOpenPos = existingAiPos.status === 'open';
           position = await this.prisma.position.update({
             where: { id: existingAiPos.id },
             data: {
               exchangeRef,
               closePrice: posData.closePrice || existingAiPos.closePrice,
-              // 如果 AI 记录缺少 exitPrice，从交易所补充
               ...(!existingAiPos.exitPrice && record.exitPrice ? { exitPrice: record.exitPrice } : {}),
+              // open → closed: 补充平仓信息
+              ...(isOpenPos ? {
+                status: 'closed',
+                closedAt: posData.closedAt,
+                realizedPnl: posData.realizedPnl,
+                pnl: posData.pnl,
+                closeReason: posData.closeReason || 'exchange_close',
+                entryPrice: posData.entryPrice || existingAiPos.entryPrice, // 交易所均价更准
+              } : {}),
             },
           });
-          this.logger.debug(`[历史持仓同步] 关联 exchangeRef 到已有 AI 记录: ${record.symbol} ${posData.side} → ${existingAiPos.id}`);
+          this.logger.debug(
+            `[历史持仓同步] ${isOpenPos ? '关闭+' : ''}关联 AI 记录: ${record.symbol} ${posData.side} → ${existingAiPos.id}` +
+            (isOpenPos ? ' (open→closed)' : ''),
+          );
         } else {
           // upsert: 存在则更新价格/PnL（交易所可能修正），不存在则创建
           position = await this.prisma.position.upsert({
