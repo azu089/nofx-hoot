@@ -373,12 +373,28 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         result = await adapter.closeShort(pos.symbol, closeAmount);
       }
 
-      const exitPrice = result.avgPrice || currentPrice;
       const entryPrice = parseFloat(pos.entryPrice.toString());
       const amount = parseFloat(pos.amount.toString());
-      let pnl: number;
 
-      if (pos.side === 'long') {
+      // 1. exitPrice 优先级：交易所实际成交均价 > 从 realizedPnl 反推 > 下单前标记价（最不准确）
+      let exitPrice = result.avgPrice || 0;
+      if (exitPrice <= 0 && result.realizedPnl !== undefined) {
+        // 从交易所返回的 realizedPnl 反推成交价，避免用标记价产生偏差
+        exitPrice = pos.side === 'long'
+          ? entryPrice + result.realizedPnl / amount
+          : entryPrice - result.realizedPnl / amount;
+        this.logger.debug(`[AI监控] avgPrice=0，从 realizedPnl 反推 exitPrice=$${exitPrice.toFixed(4)}`);
+      }
+      if (exitPrice <= 0) {
+        exitPrice = currentPrice;
+        this.logger.warn(`[AI监控] avgPrice=0 且无 realizedPnl，使用标记价 $${currentPrice} 作为退出价（可能轻微偏差）`);
+      }
+
+      // 2. PnL 优先级：交易所直接返回的 realizedPnl（最准确）> 本地从价格计算
+      let pnl: number;
+      if (result.realizedPnl !== undefined && result.realizedPnl !== 0) {
+        pnl = result.realizedPnl;
+      } else if (pos.side === 'long') {
         pnl = (exitPrice - entryPrice) * amount;
       } else {
         pnl = (entryPrice - exitPrice) * amount;

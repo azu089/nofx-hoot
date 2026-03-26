@@ -60,6 +60,17 @@ const formatTradeQty = (qty: number): string => {
   return qty.toFixed(2)
 }
 
+/**
+ * PnL 格式化：截断（非四舍五入）到2位小数，对齐交易所显示
+ * 交易所（Binance等）使用截断显示：0.0864 → 0.08，非四舍五入的 0.09
+ */
+const formatPnl = (pnl: number): string => {
+  const sign = pnl >= 0 ? '+' : '-'
+  const abs = Math.abs(pnl)
+  const truncated = Math.floor(abs * 100) / 100
+  return `${sign}${truncated.toFixed(2)}`
+}
+
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
 
@@ -756,7 +767,7 @@ export function MobileTradingCenter({
                     </div>
                     <div className="text-right">
                       <p className={`text-sm font-semibold ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {order.pnl >= 0 ? '+' : ''}{order.pnl.toFixed(2)} USDT
+                        {formatPnl(order.pnl)} USDT
                       </p>
                       {order.pnlPercent !== 0 && (
                         <p className={`text-[10px] ${order.pnl >= 0 ? 'text-green-400/70' : 'text-red-400/70'}`}>
