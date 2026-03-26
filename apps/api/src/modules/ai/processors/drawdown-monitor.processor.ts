@@ -302,8 +302,10 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     const peakProfitThreshold = riskConfig?.peakProfitThreshold ?? 5.0;
     const peakDrawdownThreshold = riskConfig?.peakDrawdownThreshold ?? 40.0;
 
-    // 检查触发条件
-    if (currentPnlPct <= peakProfitThreshold || peakPnlPct <= 0) return false;
+    // 检查触发条件：只要峰值曾超过阈值，无论当前盈亏如何都继续检查回撤
+    // Bug fix: 原来用 currentPnlPct 判断，当价格快速回落时 currentPnl 立刻低于阈值导致保护永久失效
+    // 正确逻辑：用 peakPnlPct（历史最高盈利）判断，峰值达标则始终检查回撤
+    if (peakPnlPct <= peakProfitThreshold || peakPnlPct <= 0) return false;
 
     const drawdownPct = ((peakPnlPct - currentPnlPct) / peakPnlPct) * 100;
 
