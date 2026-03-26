@@ -1871,12 +1871,9 @@ export class AutoTraderService {
             const marginEst = decision.positionSizeUSD
               ? decision.positionSizeUSD / (decision.leverage || 1) // USD 模式：名义值/杠杆=保证金
               : (decision.positionSizePercent / 100) * allocCap;
-            const userMinSize = riskControl.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
-            const minMargin = isMaj
-              ? Math.max(userMinSize, AI_SAFETY_DEFAULTS.minPositionSizeMajor) // BTC/ETH 系统硬底 $60
-              : userMinSize; // 山寨币用用户配置值（默认 $12）
+            const minMargin = riskControl.minPositionSize;
 
-            if (marginEst < minMargin * 0.95) {
+            if (minMargin && marginEst < minMargin * 0.95) {
               const e4Reason = `预估保证金 $${marginEst.toFixed(1)} < 最低 $${(minMargin * 0.95).toFixed(1)} (${isMaj ? 'BTC/ETH' : '山寨币'})`;
               this.logger.warn(`[风控-E4] ${symbol} ${e4Reason}，跳过`);
               result.decisions.push({

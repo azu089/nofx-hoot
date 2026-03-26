@@ -668,11 +668,8 @@ Generate your final transaction proposal.${buildUserMessageLanguageReminder(conf
 
           // E4: 最小仓位检查（用户可配 minPositionSize）
           const marginEst = (decision.positionSizePercent / 100) * allocCap;
-          const userMinSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
-          const minMargin = isMajor
-            ? Math.max(userMinSize, AI_SAFETY_DEFAULTS.minPositionSizeMajor) // BTC/ETH 系统硬底 $60
-            : userMinSize;
-          if (marginEst < minMargin * 0.95) {
+          const minMargin = rc.minPositionSize;
+          if (minMargin && marginEst < minMargin * 0.95) {
             this.logger.warn(
               `[研究-E4] ${symbol}: 预估保证金 $${marginEst.toFixed(1)} < 最低 $${(minMargin * 0.95).toFixed(1)} (${isMajor ? 'BTC/ETH' : '山寨币'})，降级为 wait`,
             );

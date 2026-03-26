@@ -43,7 +43,4 @@ export const AI_SAFETY_DEFAULTS = {
   btcEthMaxRatio: 5.0, // BTC/ETH: position ≤ equity × 5.0
   altMaxRatio: 1.0, // 山寨币: position ≤ equity × 1.0
 
-  // ── 最小仓位系统硬底（用户 minPositionSize 不能低于此） ──
-  minPositionSizeMajor: 60, // BTC/ETH: margin ≥ 60 USDT
-  minPositionSizeAlt: 12, // 山寨币: margin ≥ 12 USDT
 };
