@@ -1271,11 +1271,21 @@ export class AiController {
       data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any; totalPnl?: any; winRate?: any; totalTrades?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
 
-        // 所有策略类型统一从 Position 表实时计算（盈亏/交易数/胜率）
-        const todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
-        const totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
-        const totalTrades = totalTradesMap.get(s.id) || 0;
-        const wins = totalWinsMap.get(s.id) || 0;
+        // 网格策略：直接读 gridRuntimeState（网格服务每次成交后实时更新，权威来源）
+        // 其他策略：从 Position 表聚合 realizedPnl
+        const grs = s.strategyType === 'grid' ? (s.gridRuntimeState as any) : null;
+        const todayPnl = grs
+          ? Number((grs.dailyTotalProfit ?? 0).toFixed(2))
+          : Number((todayPnlMap.get(s.id) || 0).toFixed(2));
+        const totalPnl = grs
+          ? Number((grs.totalProfit ?? 0).toFixed(2))
+          : Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
+        const totalTrades = grs
+          ? (grs.totalTrades ?? 0)
+          : (totalTradesMap.get(s.id) || 0);
+        const wins = grs
+          ? (grs.winningTrades ?? 0)
+          : (totalWinsMap.get(s.id) || 0);
         const winRate = totalTrades > 0 ? Number((wins / totalTrades * 100).toFixed(1)) : 0;
 
         return {
@@ -1524,6 +1534,14 @@ export class AiController {
       });
       exchangeLabel = apiKey?.label ?? null;
       exchangeName = apiKey?.exchange ?? null;
+    }
+
+    // 网格策略：todayPnl/todayTrades/todayWins 从 gridState 读取（权威来源）
+    if (strategy.strategyType === 'grid' && gridState) {
+      const gs = gridState as any;
+      todayPnl = Number((gs.dailyTotalProfit ?? 0).toFixed(2));
+      todayTrades = gs.totalTrades ?? 0;
+      todayWins = gs.winningTrades ?? 0;
     }
 
     return { strategy, nextCycleAt, todayPnl: Number(todayPnl.toFixed(2)), todayTrades, todayWins, gridState, exchangeLabel, exchangeName };
