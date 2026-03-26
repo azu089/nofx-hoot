@@ -427,6 +427,7 @@ model Position {
   signal         Signal?  @relation(fields: [signalId], references: [id], onDelete: SetNull)
 
   status      String    @default("open") // open, closed, failed
+  openedAt    DateTime? @map("opened_at")  // 实际开仓时间（来自交易所）
   closedAt    DateTime? @map("closed_at")
   exitPrice   Decimal?  @db.Decimal(18, 8) @map("exit_price")
   closePrice  Decimal?  @db.Decimal(18, 8) @map("close_price")

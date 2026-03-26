@@ -97,6 +97,7 @@ export class ClosedPnlSyncService {
           tradingType: 'futures' as const,
           leverage: record.leverage || 1,
           status: 'closed' as const,
+          openedAt: (record.entryTime && !isNaN(record.entryTime.getTime())) ? record.entryTime : undefined,
           closedAt: (record.exitTime && !isNaN(record.exitTime.getTime())) ? record.exitTime : new Date(),
           closePrice: record.exitPrice || 0,
           pnl: record.realizedPnl || 0,
@@ -159,6 +160,8 @@ export class ClosedPnlSyncService {
                 closeReason: posData.closeReason || 'exchange_close',
                 entryPrice: posData.entryPrice || existingAiPos.entryPrice, // 交易所均价更准
               } : {}),
+              // 补充开仓时间（如果原记录没有）
+              ...(!existingAiPos.openedAt && posData.openedAt ? { openedAt: posData.openedAt } : {}),
             },
           });
           this.logger.debug(
