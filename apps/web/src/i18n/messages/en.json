@@ -2011,7 +2011,8 @@
       "localeSaved": "Output language saved"
     },
     "strategy": {
-      "minCloseConfidence": "Min Close Confidence",
+      "openConfidence": "Open Confidence",
+      "minCloseConfidence": "Close Confidence",
       "minCloseConfidenceDesc": "Minimum confidence for AI close decisions; below this threshold, close signals will be held instead"
     },
     "dashboard": {

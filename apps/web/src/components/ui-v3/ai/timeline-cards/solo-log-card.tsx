@@ -247,14 +247,15 @@ function calcPct(entry: number, target: number): string {
 }
 
 /**
- * 计算 R:R 比（对齐 nofx engine.go L2055-2075 唯一公式）
- * 入场价估算: SL + (TP-SL) × 0.2（开多），SL - (SL-TP) × 0.2（开空）
+ * 计算 R:R 比（基于实际入场价 = AI 实际盈亏比）
+ * 前端展示用：AI 给的 SL/TP + 实际入场价 → 真实 R:R
+ * 无入场价时降级 nofx 估算公式（后端拦截用）
  */
-function calcRiskReward(sl: number, tp: number, isLong: boolean): number | null {
+function calcRiskReward(sl: number, tp: number, isLong: boolean, entryPrice?: number): number | null {
   if (!sl || !tp || sl <= 0 || tp <= 0) return null;
-  const entry = isLong
-    ? sl + (tp - sl) * 0.2
-    : sl - (sl - tp) * 0.2;
+  const entry = (entryPrice && entryPrice > 0)
+    ? entryPrice
+    : isLong ? sl + (tp - sl) * 0.2 : sl - (sl - tp) * 0.2;
   if (entry <= 0) return null;
   const riskPct = isLong
     ? (entry - sl) / entry * 100
@@ -613,15 +614,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   const isHoldPos = !isGridLog && !isAutoDisabled && action === 'hold';
   const isCloseAction = action === 'close_long' || action === 'close_short';
 
-  // 估算入场价
-  const entryPrice = er?.price || (d.stopLoss && d.takeProfit
-    ? ((d.stopLoss || 0) + (d.takeProfit || 0)) / 2
-    : 0);
+  // 入场价：优先执行价，fallback 市场快照价（被拦截时无执行价，快照价是决策时实际市价）
+  const entryPrice = er?.price || d.marketSnapshot?.price || 0;
 
-  // R:R — 对齐 nofx 唯一公式（估算入场价 = SL + (TP-SL) × 0.2）
+  // R:R — 统一用实际市价计算，避免 heuristic 公式失真
   const isLongAction = action === 'open_long';
   const rr = (d.stopLoss && d.takeProfit)
-    ? calcRiskReward(d.stopLoss, d.takeProfit, isLongAction)
+    ? calcRiskReward(d.stopLoss, d.takeProfit, isLongAction, entryPrice > 0 ? entryPrice : undefined)
     : null;
 
   // Grid: 折叠状态
@@ -732,7 +731,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const adAction = wasConfBlocked ? ((ad as any).originalAction || ad.action || 'wait') : (ad.action || 'wait');
             const adCfg = ACTION_CONFIG[adAction] || ACTION_CONFIG['wait'];
             const adEr = ad.executionResult;
-            const adEntryPrice = adEr?.price || 0;
+            // 入场价：优先执行价，fallback 市场快照价（被拦截/未执行时无执行价，快照价是决策时实际市价）
+            const adEntryPrice = adEr?.price || (ad as any).marketSnapshot?.price || 0;
             const adAmt = adEr?.amount;
             const adPvl = adEr?.positionValueLimit || 0;
             const adAiReq = adEr?.aiRequestedUSD || (ad as any).positionSizeUSD || 0;
@@ -774,6 +774,20 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {wasConfBlocked && (
                   <div className="text-[10px] text-[#F59E0B]">置信度不足 {(ad as any).actual ?? ad.confidence}%{'<'}{(ad as any).required ?? 80}%，未执行</div>
                 )}
+                {/* 开仓参数 + SL/TP + R:R 一行紧凑（在市场数据上方） */}
+                {isOpen && (adPvl > 0 || adNotional > 0 || ad.stopLoss != null || ad.takeProfit != null) && (
+                  <div className="flex items-center flex-nowrap gap-1.5 text-[9px] text-[#606070] font-mono whitespace-nowrap overflow-x-auto">
+                    {adPvl > 0 && <span>${adPvl.toFixed(0)}</span>}
+                    {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
+                    {adNotional > 0 && <span>{adTruncated ? <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span> : `$${adNotional.toFixed(0)}`}</span>}
+                    {ad.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(ad.stopLoss).toLocaleString()}{adEntryPrice > 0 && <span className="opacity-60">({calcPct(adEntryPrice, ad.stopLoss)})</span>}</span>}
+                    {ad.takeProfit != null && <span className="text-[#10B981]">↑${Number(ad.takeProfit).toLocaleString()}{adEntryPrice > 0 && <span className="opacity-60">({calcPct(adEntryPrice, ad.takeProfit)})</span>}</span>}
+                    {ad.stopLoss != null && ad.takeProfit != null && (() => {
+                      const rrVal = calcRiskReward(ad.stopLoss, ad.takeProfit, adAction === 'open_long', adEntryPrice > 0 ? adEntryPrice : undefined);
+                      return rrVal && rrVal > 0 ? <span className={`font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
+                    })()}
+                  </div>
+                )}
                 {/* 市场数据面板 */}
                 {ad.marketSnapshot && (() => {
                   const ms = ad.marketSnapshot as any;
@@ -791,23 +805,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     </div>
                   );
                 })()}
-                {/* 开仓参数 + SL/TP + R:R 合并一行 */}
-                {isOpen && (adPvl > 0 || adNotional > 0 || ad.stopLoss != null || ad.takeProfit != null) && (
-                  <div className="flex items-center gap-2 text-[10px] text-[#606070] font-mono">
-                    {adPvl > 0 && <span>{t('timeline.limitLabel')}${adPvl.toFixed(0)}</span>}
-                    {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
-                    {adNotional > 0 && (adTruncated
-                      ? <span>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span></span>
-                      : <span>{t('timeline.notionalLabel')} ${adNotional.toFixed(0)}</span>
-                    )}
-                    {ad.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(ad.stopLoss).toLocaleString()}</span>}
-                    {ad.takeProfit != null && <span className="text-[#10B981]">↑${Number(ad.takeProfit).toLocaleString()}</span>}
-                    {ad.stopLoss != null && ad.takeProfit != null && (() => {
-                      const rrVal = calcRiskReward(ad.stopLoss, ad.takeProfit, adAction === 'open_long');
-                      return rrVal && rrVal > 0 ? <span className={`ml-auto font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
-                    })()}
-                  </div>
-                )}
                 {/* 拦截原因 */}
                 {adEr?.blocked && <div className="text-[10px] text-[#F59E0B]">{adEr.reason || adEr.blockedBy}</div>}
                 {/* 分析 + 第一人称决策（始终显示，不跳过） */}
@@ -850,19 +847,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {amt && <span className="text-[#F8F8FC]">×{amt}</span>}
                   {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
                 </div>
-                {/* 行2: 上限$720  80%  名义$96  ↓$0.245  ↑$0.275  1:4.0 */}
-                <div className="flex items-center gap-2 text-[10px] text-[#606070] font-mono pl-1">
-                  {pvl > 0 && <span>{t('timeline.limitLabel') || '上限'}${pvl.toFixed(0)}</span>}
+                {/* 行2: $720 80% $96 ↓SL ↑TP R:R */}
+                <div className="flex items-center flex-nowrap gap-1.5 text-[9px] text-[#606070] font-mono pl-1 whitespace-nowrap overflow-x-auto">
+                  {pvl > 0 && <span>${pvl.toFixed(0)}</span>}
                   {aiPct > 0 && <span className="text-[#06B6D4]">{aiPct}%</span>}
-                  {notional > 0 && (
-                    truncated
-                      ? <span>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span></span>
-                      : <span>{t('timeline.notionalLabel')} ${notional.toFixed(0)}</span>
-                  )}
-                  {d.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(d.stopLoss).toLocaleString()}</span>}
-                  {d.takeProfit != null && <span className="text-[#10B981]">↑${Number(d.takeProfit).toLocaleString()}</span>}
+                  {notional > 0 && <span>{truncated ? <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span> : `$${notional.toFixed(0)}`}</span>}
+                  {d.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(d.stopLoss).toLocaleString()}{entryPrice > 0 && <span className="opacity-60">({calcPct(entryPrice, d.stopLoss)})</span>}</span>}
+                  {d.takeProfit != null && <span className="text-[#10B981]">↑${Number(d.takeProfit).toLocaleString()}{entryPrice > 0 && <span className="opacity-60">({calcPct(entryPrice, d.takeProfit)})</span>}</span>}
                   {d.stopLoss != null && d.takeProfit != null && rr != null && rr > 0 && (
-                    <span className="ml-auto font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
+                    <span className="font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
                   )}
                 </div>
               </>

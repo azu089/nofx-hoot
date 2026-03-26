@@ -116,8 +116,11 @@ export function AIStrategyDetailPage() {
 
   // 创建表单对齐：高级风控 + 止停条件
   const [editMinConfidence, setEditMinConfidence] = useState(0);
+  const [editMinCloseConfidence, setEditMinCloseConfidence] = useState(0);
   const [editMinRR, setEditMinRR] = useState(0);
   const [editMinPositionSize, setEditMinPositionSize] = useState(0);
+  const [editPeakProfitThreshold, setEditPeakProfitThreshold] = useState<number | ''>(5);
+  const [editPeakDrawdownThreshold, setEditPeakDrawdownThreshold] = useState<number | ''>(40);
   const [editBtcEthPVR, setEditBtcEthPVR] = useState(5);
   const [editAltcoinPVR, setEditAltcoinPVR] = useState(1);
   const [editMaxCycles, setEditMaxCycles] = useState(0);
@@ -395,8 +398,11 @@ export function AIStrategyDetailPage() {
       setEditInterval(strategy?.intervalMinutes || 60);
       // 高级风控 + 止停条件
       setEditMinConfidence(rc.minConfidence ?? 0);
+      setEditMinCloseConfidence(rc.minCloseConfidence ?? 0);
       setEditMinRR(rc.minRiskRewardRatio ?? 0);
       setEditMinPositionSize(rc.minPositionSize ?? 0);
+      setEditPeakProfitThreshold(rc.peakProfitThreshold ?? '');
+      setEditPeakDrawdownThreshold(rc.peakDrawdownThreshold ?? '');
       setEditBtcEthPVR(rc.btcEthMaxPositionValueRatio ?? 5);
       setEditAltcoinPVR(rc.altcoinMaxPositionValueRatio ?? 1);
       setEditMaxCycles(strategy.stopConditions?.maxCycles ?? 0);
@@ -498,7 +504,10 @@ export function AIStrategyDetailPage() {
           altcoinMaxLeverage: strategy?.riskControlConfig?.altcoinMaxLeverage,
           minRiskRewardRatio: editMinRR || undefined,
           minConfidence: editMinConfidence || undefined,
+          minCloseConfidence: editMinCloseConfidence || undefined,
           minPositionSize: editMinPositionSize || undefined,
+          peakProfitThreshold: editPeakProfitThreshold !== '' ? parseFloat(String(editPeakProfitThreshold)) || undefined : undefined,
+          peakDrawdownThreshold: editPeakDrawdownThreshold !== '' ? parseFloat(String(editPeakDrawdownThreshold)) || undefined : undefined,
           maxMarginUsage: strategy?.riskControlConfig?.maxMarginUsage,
         },
         promptSections: {
@@ -1189,8 +1198,14 @@ export function AIStrategyDetailPage() {
                     {riskControlConfig?.minRiskRewardRatio && (
                       <ConfigRow label={t('detail.minRiskRewardRatio')} value={`${riskControlConfig.minRiskRewardRatio}:1`} />
                     )}
+                    {riskControlConfig?.peakProfitThreshold && (
+                      <ConfigRow label={'利润保护'} value={`盈利>${riskControlConfig.peakProfitThreshold}% 回撤≥${riskControlConfig.peakDrawdownThreshold ?? 40}%`} />
+                    )}
                     {riskControlConfig?.minConfidence && (
-                      <ConfigRow label={t('detail.minConfidence')} value={`${riskControlConfig.minConfidence}%`} />
+                      <ConfigRow label={t('strategy.openConfidence') || '开仓置信度'} value={`${riskControlConfig.minConfidence}%`} />
+                    )}
+                    {riskControlConfig?.minCloseConfidence && (
+                      <ConfigRow label={t('strategy.minCloseConfidence') || '平仓置信度'} value={`${riskControlConfig.minCloseConfidence}%`} />
                     )}
                     {riskControlConfig?.minPositionSize && (
                       <ConfigRow label={t('detail.minPositionSize')} value={`$${riskControlConfig.minPositionSize}`} />
@@ -2119,12 +2134,24 @@ export function AIStrategyDetailPage() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] text-[#606070] mb-1">{t('create.minConfidence')}</p>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('strategy.openConfidence') || '开仓置信度'}</p>
                       <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                         <input type="number" min={0} max={100}
-                          value={editMinConfidence || ''}
-                          onChange={(e) => setEditMinConfidence(parseInt(e.target.value) || 0)}
+                          value={editMinConfidence === 0 ? '' : editMinConfidence}
+                          onChange={(e) => setEditMinConfidence(e.target.value === '' ? 0 : parseInt(e.target.value) || 0)}
                           className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('strategy.minCloseConfidence') || '平仓置信度'}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={0} max={100}
+                          value={editMinCloseConfidence === 0 ? '' : editMinCloseConfidence}
+                          onChange={(e) => setEditMinCloseConfidence(e.target.value === '' ? 0 : parseInt(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                          placeholder="0"
                         />
                         <span className="text-[#606070] text-xs">%</span>
                       </div>
@@ -2149,6 +2176,30 @@ export function AIStrategyDetailPage() {
                           onChange={(e) => setEditMinPositionSize(parseFloat(e.target.value) || 0)}
                           className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                         />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{'利润保护触发'}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <span className="text-[#606070] text-xs">盈利&gt;</span>
+                        <input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*"
+                          value={editPeakProfitThreshold}
+                          onChange={(e) => { const v = e.target.value; setEditPeakProfitThreshold(v === '' ? '' : /^[0-9]*\.?[0-9]*$/.test(v) ? (v as any) : editPeakProfitThreshold); }}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 w-12"
+                        />
+                        <span className="text-[#606070] text-xs">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{'峰值回撤触发'}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <span className="text-[#606070] text-xs">回撤&ge;</span>
+                        <input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*"
+                          value={editPeakDrawdownThreshold}
+                          onChange={(e) => { const v = e.target.value; setEditPeakDrawdownThreshold(v === '' ? '' : /^[0-9]*\.?[0-9]*$/.test(v) ? (v as any) : editPeakDrawdownThreshold); }}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 w-12"
+                        />
+                        <span className="text-[#606070] text-xs">%</span>
                       </div>
                     </div>
                   </div>

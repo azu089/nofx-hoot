@@ -233,9 +233,9 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           continue; // 跳过高水位检查
         }
 
-        // Peak-Drawdown 紧急平仓（对齐 nofx checkPositionDrawdown）
-        // 规则：当前盈利>5% 且从峰值回撤>=40% → 紧急全平
-        const peakClosed = await this.checkPeakDrawdown(pos, pnlPercent, currentPrice, unrealizedPnl, cachedAdapter);
+        // Peak-Drawdown 紧急平仓（对齐 nofx checkPositionDrawdown，参数可配置）
+        const riskConfig = pos.aiStrategyId ? strategyConfigMap.get(pos.aiStrategyId) : null;
+        const peakClosed = await this.checkPeakDrawdown(pos, pnlPercent, currentPrice, unrealizedPnl, cachedAdapter, riskConfig);
         if (peakClosed) {
           closedCount++;
           continue;
@@ -282,6 +282,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     currentPrice: number,
     unrealizedPnl: number,
     existingAdapter?: ExchangeAdapter,
+    riskConfig?: any,
   ): Promise<boolean> {
     if (!pos.apiKeyId) return false;
 
@@ -297,19 +298,23 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       });
     }
 
-    // 检查触发条件：盈利 > 5% 且从峰值回撤 >= 40%
-    if (currentPnlPct <= 5.0 || peakPnlPct <= 0) return false;
+    // 从策略配置读取参数，默认值对齐 nofx（盈利>5% 且回撤≥40%）
+    const peakProfitThreshold = riskConfig?.peakProfitThreshold ?? 5.0;
+    const peakDrawdownThreshold = riskConfig?.peakDrawdownThreshold ?? 40.0;
+
+    // 检查触发条件
+    if (currentPnlPct <= peakProfitThreshold || peakPnlPct <= 0) return false;
 
     const drawdownPct = ((peakPnlPct - currentPnlPct) / peakPnlPct) * 100;
 
-    if (drawdownPct >= 40.0) {
+    if (drawdownPct >= peakDrawdownThreshold) {
       this.logger.warn(
-        `[AI监控] Peak-Drawdown 紧急平仓触发: ${pos.symbol} ${pos.side} | 当前盈利: ${currentPnlPct.toFixed(2)}% | 峰值: ${peakPnlPct.toFixed(2)}% | 回撤: ${drawdownPct.toFixed(2)}%`,
+        `[AI监控] Peak-Drawdown 紧急平仓触发: ${pos.symbol} ${pos.side} | 当前盈利: ${currentPnlPct.toFixed(2)}% | 峰值: ${peakPnlPct.toFixed(2)}% | 回撤: ${drawdownPct.toFixed(2)}% (阈值: 盈利>${peakProfitThreshold}% 回撤≥${peakDrawdownThreshold}%)`,
       );
 
       await this.autoClosePosition(
         pos,
-        `Peak-Drawdown 紧急平仓：盈利 ${currentPnlPct.toFixed(1)}%，峰值 ${peakPnlPct.toFixed(1)}%，回撤 ${drawdownPct.toFixed(1)}%`,
+        `Peak-Drawdown 紧急平仓：盈利 ${currentPnlPct.toFixed(1)}%，峰值 ${peakPnlPct.toFixed(1)}%，回撤 ${drawdownPct.toFixed(1)}% (阈值: >${peakProfitThreshold}%/≥${peakDrawdownThreshold}%)`,
         currentPrice,
         'peak_drawdown',
         existingAdapter,

@@ -2036,7 +2036,8 @@
       "localeSaved": "输出语言已保存"
     },
     "strategy": {
-      "minCloseConfidence": "平仓最低置信度",
+      "openConfidence": "开仓置信度",
+      "minCloseConfidence": "平仓置信度",
       "minCloseConfidenceDesc": "AI 平仓决策的最低信心度，低于此值的平仓将被拦截为持有"
     },
     "dashboard": {

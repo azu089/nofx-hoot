@@ -194,6 +194,7 @@ export function UnifiedAiCreate() {
   const [excludedCoins, setExcludedCoins] = useState<string[]>([]);
   const [maxCoins] = useState(5); // 提交时仍用于 coinSourceConfig.maxCoins，UI 不再展示选择器
   const [showExcludedCoins, setShowExcludedCoins] = useState(false);
+  const [excludeSearch, setExcludeSearch] = useState('');
   const [coinSearch, setCoinSearch] = useState('');
   const [minPositionSize, setMinPositionSize] = useState(100);
   // 日亏损上限（单位：$，直接金额，非百分比）
@@ -848,9 +849,16 @@ export function UnifiedAiCreate() {
               </button>
               {showExcludedCoins && (
                 <div className="px-4 pb-4">
-                  <p className="text-xs text-[#606070] mb-3">{t('create.excludeCoinsDesc')}</p>
+                  <p className="text-xs text-[#606070] mb-2">{t('create.excludeCoinsDesc')}</p>
+                  <input
+                    type="text"
+                    placeholder={t('create.searchCoin') || '搜索币种...'}
+                    value={excludeSearch}
+                    onChange={(e) => setExcludeSearch(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 mb-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] outline-none placeholder-[#606070] focus:border-[#06B6D4]"
+                  />
                   <div className="flex flex-wrap gap-2">
-                    {COINS.map((coin) => {
+                    {COINS.filter((coin) => !excludeSearch || coin.includes(excludeSearch)).map((coin) => {
                       const ex = excludedCoins.includes(coin);
                       return (
                         <button key={coin} type="button" onClick={() => handleExcludedCoinToggle(coin)}
@@ -1227,9 +1235,9 @@ export function UnifiedAiCreate() {
                       <span className="text-[#606070] text-xs">min</span>
                     </div>
                   </div>
-                  {/* 最低置信度 */}
+                  {/* 开仓置信度 */}
                   <div>
-                    <p className="text-[10px] text-[#606070] mb-1">{t('create.minConfidence')}</p>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('strategy.openConfidence') || '开仓置信度'}</p>
                     <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                       <input type="number" min={0} max={100}
                         value={customParams.minConfidence || ''}

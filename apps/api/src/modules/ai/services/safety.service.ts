@@ -862,18 +862,15 @@ export class SafetyService {
             detail: `止盈方向错误: ${input.action} 时 TP 应在当前价格的${input.action === 'open_long' ? '上方' : '下方'}`,
           };
         }
-        // 4d. 风险收益比（对齐 nofx engine.go L2055-2079: 用 SL/TP 绝对价格估算入场价计算 R:R）
+        // 4d. 风险收益比（对齐 nofx engine.go L2055-2080 唯一公式：估算入场价 = SL + (TP-SL) × 0.2）
         const requiredRR = input.strategyRiskConfig?.minRiskRewardRatio
           ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
         let riskRewardRatio = input.takeProfitPercent / input.stopLossPercent; // fallback: 百分比直除
         if (input.stopLossPrice && input.takeProfitPrice && input.stopLossPrice > 0 && input.takeProfitPrice > 0) {
-          // nofx 公式: 假设入场点在 SL→TP 的 20% 处
           const isLong = input.action === 'open_long';
           const sl = input.stopLossPrice;
           const tp = input.takeProfitPrice;
-          const entryPrice = isLong
-            ? sl + (tp - sl) * 0.2
-            : sl - (sl - tp) * 0.2;
+          const entryPrice = isLong ? sl + (tp - sl) * 0.2 : sl - (sl - tp) * 0.2;
           if (entryPrice > 0) {
             const riskPct = isLong
               ? (entryPrice - sl) / entryPrice * 100

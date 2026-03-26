@@ -374,6 +374,9 @@ export interface RiskControlConfig {
   altcoinMaxPositionValueRatio?: number;
   btcEthMaxLeverage?: number;
   altcoinMaxLeverage?: number;
+  minCloseConfidence?: number;
+  peakProfitThreshold?: number;
+  peakDrawdownThreshold?: number;
 }
 
 export interface PromptSections {
