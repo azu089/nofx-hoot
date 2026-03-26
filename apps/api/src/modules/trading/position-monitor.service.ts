@@ -71,7 +71,11 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
   // 加载活跃持仓
   private async loadActivePositions() {
     const positions = await this.prisma.position.findMany({
-      where: { status: 'open' },
+      where: {
+        status: 'open',
+        // AI 持仓由 PriceWatchService（WebSocket 实时）负责，此处只处理信号订阅持仓
+        source: { notIn: ['ai_analysis', 'ai_research', 'ai_strategy'] },
+      },
       include: {
         subscription: {
           select: {

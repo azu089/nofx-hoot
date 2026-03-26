@@ -509,20 +509,6 @@ export class AiExecutionService {
       },
     });
 
-    // 13.5 注册到持仓监控（开仓即监控，无论 SL/TP 是否在交易所设置）
-    if (this.positionMonitor) {
-      this.positionMonitor.trackPosition({
-        positionId: position.id,
-        userId,
-        apiKeyId,
-        symbol: futuresSymbol,
-        side,
-        entryPrice: filledPrice,
-        amount: filledAmount,
-        config: {}, // 交易所侧 SL/TP 为主，monitor 作为二级保护
-      });
-    }
-
     // 13.6 注册到 WS 实时风控（PriceWatchService — 平台级 WebSocket 风控）
     if (this.priceWatchService) {
       try {

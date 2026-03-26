@@ -18,6 +18,7 @@ import { GateWsProvider } from './exchange-ws/gate-ws.provider';
 import { BitgetWsProvider } from './exchange-ws/bitget-ws.provider';
 import { RestFallbackProvider } from './exchange-ws/rest-fallback.provider';
 import { IWsProvider, MarkPriceTick, TickCallback } from './exchange-ws/ws-provider.interface';
+import { PositionMonitorService } from './position-monitor.service';
 
 /** 订阅时传入的持仓信息 */
 export interface WatchParams {
@@ -96,6 +97,7 @@ export class PriceWatchService implements OnModuleInit, OnModuleDestroy {
     private readonly restFallback: RestFallbackProvider,
     @Optional() private readonly adapterFactory?: AdapterFactoryService,
     @Optional() @Inject(forwardRef(() => TradingGateway)) private readonly tradingGateway?: TradingGateway,
+    @Optional() private readonly positionMonitor?: PositionMonitorService,
   ) {
     this.wsProviders = {
       binance: this.binanceWs,
@@ -453,6 +455,8 @@ export class PriceWatchService implements OnModuleInit, OnModuleDestroy {
 
     // 取消订阅
     this.unsubscribe(positionId);
+    // 通知 PositionMonitorService 清理（防止空跑轮询）
+    this.positionMonitor?.untrackPosition(positionId);
   }
 
   // ==================== DB 节流批量写入 ====================

@@ -9,6 +9,8 @@ import { ExchangeAdapter } from '../../exchange-adapters/types/adapter.interface
 import { Decimal } from '@prisma/client/runtime/library';
 import { isSameSymbol } from '../../../common/utils/symbol.util';
 import { TradingGateway } from '../../../gateways/trading.gateway';
+import { PriceWatchService } from '../../trading/price-watch.service';
+import { PositionMonitorService } from '../../trading/position-monitor.service';
 
 /**
  * AI 持仓回撤监控处理器（已精简为兜底同步）
@@ -34,6 +36,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     @Optional() private readonly adapterFactory?: AdapterFactoryService,
     @Optional() private readonly tradingGateway?: TradingGateway,
     @Optional() private readonly feeService?: FeeService,
+    @Optional() private readonly priceWatchService?: PriceWatchService,
+    @Optional() private readonly positionMonitor?: PositionMonitorService,
   ) {
     super();
   }
@@ -159,6 +163,28 @@ export class DrawdownMonitorProcessor extends WorkerHost {
             this.logger.warn(
               `[AI监控] ${pos.symbol} ${pos.side} 交易所已无持仓（SL/TP 条件单触发），标记 closed`,
             );
+            // 通知所有监控层清理该持仓（防止 WS/REST 继续监控已关闭持仓）
+            this.priceWatchService?.unsubscribe(pos.id);
+            this.positionMonitor?.untrackPosition(pos.id);
+
+            // 推送前端 WebSocket（用户实时看到持仓消失）
+            this.tradingGateway?.sendPositionUpdate(pos.userId, {
+              id: pos.id,
+              symbol: pos.symbol,
+              side: pos.side,
+              entryPrice: pos.entryPrice?.toString() ?? '0',
+              amount: pos.amount?.toString() ?? '0',
+              status: 'closed',
+              action: 'closed',
+            });
+
+            // TG 通知（用户知道交易所 SL/TP 被触发）
+            this.sendTgDrawdownAlert(
+              pos.userId,
+              pos.symbol,
+              `交易所条件单触发平仓（SL/TP）: ${pos.symbol} ${pos.side}`,
+            ).catch(() => {});
+
             closedCount++;
             continue;
           }
