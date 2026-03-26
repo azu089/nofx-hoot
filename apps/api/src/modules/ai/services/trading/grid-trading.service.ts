@@ -846,8 +846,7 @@ export class GridTradingService {
       state.pauseSource = undefined;
       state.pauseReason = undefined;
       state.startEquity = state.lastEquity;  // 回撤/均值基准归位
-      // peakEquity 不重置，保持历史最高值（配置重启应保留风控连续性）
-      // maxDrawdown 归零（仅重置追踪计数，实际回撤仍会在下一轮重新计算）
+      state.peakEquity = state.lastEquity;  // 峰值重置为当前权益，防止立即重新触发
       state.maxDrawdown = 0;
       state.chargedProfit = 0;
       // dailyPnl / dailyTotalProfit 不重置（配置重启不改变当日盈亏事实）
