@@ -722,103 +722,215 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         );
       })()}
 
-      {/* === 多币种合并日志 — 每币独立卡片结构 === */}
-      {isMultiCoin && !isGridLog && (
-        <div className="space-y-2.5">
-          {allDecisions.map((ad, idx) => {
-            // 置信度拦截时显示原始 action（如 open_long），不显示被强制转换后的 wait
-            const wasConfBlocked = (ad as any).minConfFilter === true;
-            const adAction = wasConfBlocked ? ((ad as any).originalAction || ad.action || 'wait') : (ad.action || 'wait');
-            const adCfg = ACTION_CONFIG[adAction] || ACTION_CONFIG['wait'];
-            const adEr = ad.executionResult;
-            // 入场价：优先执行价，fallback 市场快照价（被拦截/未执行时无执行价，快照价是决策时实际市价）
-            const adEntryPrice = adEr?.price || (ad as any).marketSnapshot?.price || 0;
-            const adAmt = adEr?.amount;
-            const adPvl = adEr?.positionValueLimit || 0;
-            const adAiReq = adEr?.aiRequestedUSD || (ad as any).positionSizeUSD || 0;
-            const adNotional = adEr?.actualNotional || (adEntryPrice > 0 && adAmt ? adEntryPrice * Number(adAmt) : 0);
-            const adMargin = adEr?.actualMargin || (adNotional && ad.leverage ? adNotional / ad.leverage : 0);
-            const adTruncated = adEr?.wasTruncated || false;
-            const adPct = adPvl > 0 && adAiReq > 0 ? Math.round(adAiReq / adPvl * 100) : (ad.positionSizePercent || 0);
-            const adSymbol = (ad.symbol || '').replace(/\/USDT.*$/, '');
-            const isOpen = adAction === 'open_long' || adAction === 'open_short';
-            const isClose = adAction === 'close_long' || adAction === 'close_short';
-            // 平仓时从 accountSnapshot.positions 获取持仓信息（executionResult 可能为空）
-            const posSnap = isClose && (d as any).accountSnapshot?.positions
-              ? ((d as any).accountSnapshot.positions as any[]).find((p: any) => {
-                  const pSym = (p.symbol || '').replace(/\/USDT.*$/, '');
-                  return pSym === adSymbol;
-                })
-              : null;
-            const closeEntryPrice = adEntryPrice || posSnap?.entryPrice || 0;
-            const closeMarkPrice = posSnap?.markPrice || 0;
-            const closeQty = adAmt || posSnap?.quantity || 0;
-            return (
-              <div key={idx} className={`rounded-lg bg-[#0A0A0F]/40 border border-[#1E1E2E]/40 p-2.5 space-y-1`}>
-                {/* 行1: 币种 + 动作 + 置信度 */}
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-[#06B6D4] font-medium">{adSymbol}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" style={{ color: adCfg.color, backgroundColor: adCfg.bg }}>
-                    {ACTION_I18N[adAction] ? t(ACTION_I18N[adAction]) : adCfg.label}
-                  </span>
-                  {isOpen && ad.leverage != null && ad.leverage > 1 && <span className="text-[#9090A0] font-mono text-[10px]">{ad.leverage}x</span>}
-                  {isOpen && adMargin > 0 && <span className="text-[#10B981] font-mono text-[10px]">${adMargin.toFixed(2)}</span>}
-                  {isOpen && adEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">${adEntryPrice.toFixed(2)}</span>}
-                  {isOpen && adAmt && <span className="text-[#F8F8FC] font-mono text-[10px]">×{adAmt}</span>}
-                  {isClose && closeEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">入${closeEntryPrice.toFixed(2)}</span>}
-                  {isClose && closeMarkPrice > 0 && <><span className="text-[#606070] font-mono text-[10px]">→</span><span className="text-[#F8F8FC] font-mono text-[10px]">${closeMarkPrice.toFixed(2)}</span></>}
-                  {isClose && closeQty > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">×{closeQty}</span>}
-                  <span className="ml-auto font-semibold text-xs shrink-0" style={{ color: (ad.confidence ?? 0) >= 80 ? '#22C55E' : (ad.confidence ?? 0) >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence ?? 0}%</span>
+      {/* === 多币种合并日志 — 4段式结构 === */}
+      {isMultiCoin && !isGridLog && (() => {
+        const acct = (d as any).accountSnapshot;
+        const gc = (d as any).globalContext;
+        return (
+          <div className="space-y-3">
+
+            {/* ══ 段1: 账户状态 ══ */}
+            {acct && (
+              <div className="space-y-1 text-[10px]">
+                <div className="text-[#404050] font-semibold uppercase tracking-wider text-[9px]">账户状态</div>
+                {/* 行1: 权益 | 预算 | 可用 | 保证金率 */}
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[#9090A0] font-mono">
+                  {acct.totalEquity != null && <span className="text-[#F8F8FC]">权益 ${Number(acct.totalEquity).toFixed(2)}</span>}
+                  {acct.allocatedCapital != null && <span>预算 ${Number(acct.allocatedCapital).toFixed(0)}</span>}
+                  {acct.availableBalance != null && <span>可用 ${Number(acct.availableBalance).toFixed(2)}</span>}
+                  {acct.marginUsedPct != null && acct.marginUsedPct > 0 && (
+                    <span className={acct.marginUsedPct > 70 ? 'text-[#F43F5E]' : acct.marginUsedPct > 40 ? 'text-[#F59E0B]' : 'text-[#9090A0]'}>
+                      保证金 {Number(acct.marginUsedPct).toFixed(1)}%
+                    </span>
+                  )}
+                  {acct.dailyPnl != null && (
+                    <span className={acct.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]'}>
+                      日PnL {acct.dailyPnl >= 0 ? '+' : ''}{Number(acct.dailyPnl).toFixed(2)}
+                    </span>
+                  )}
                 </div>
-                {/* 置信度拦截提示 */}
-                {wasConfBlocked && (
-                  <div className="text-[10px] text-[#F59E0B]">置信度不足 {(ad as any).actual ?? ad.confidence}%{'<'}{(ad as any).required ?? 80}%，未执行</div>
-                )}
-                {/* 开仓参数 + SL/TP + R:R 一行紧凑（在市场数据上方） */}
-                {isOpen && (adPvl > 0 || adNotional > 0 || ad.stopLoss != null || ad.takeProfit != null) && (
-                  <div className="flex items-center flex-nowrap gap-1.5 text-[9px] text-[#606070] font-mono whitespace-nowrap overflow-x-auto">
-                    {adPvl > 0 && <span>${adPvl.toFixed(0)}</span>}
-                    {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
-                    {adNotional > 0 && <span>{adTruncated ? <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span> : `$${adNotional.toFixed(0)}`}</span>}
-                    {ad.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(ad.stopLoss).toLocaleString()}{adEntryPrice > 0 && <span className="opacity-60">({calcPct(adEntryPrice, ad.stopLoss)})</span>}</span>}
-                    {ad.takeProfit != null && <span className="text-[#10B981]">↑${Number(ad.takeProfit).toLocaleString()}{adEntryPrice > 0 && <span className="opacity-60">({calcPct(adEntryPrice, ad.takeProfit)})</span>}</span>}
-                    {ad.stopLoss != null && ad.takeProfit != null && (() => {
-                      const rrVal = calcRiskReward(ad.stopLoss, ad.takeProfit, adAction === 'open_long', adEntryPrice > 0 ? adEntryPrice : undefined);
-                      return rrVal && rrVal > 0 ? <span className={`font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
-                    })()}
+                {/* 行2: 当前持仓快照 */}
+                {Array.isArray(acct.positions) && acct.positions.length > 0 && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[#9090A0] font-mono">
+                    {(acct.positions as any[]).map((p: any, i: number) => {
+                      const pSym = (p.symbol || '').replace(/\/USDT.*$/, '');
+                      const pnlPct = p.entryPrice > 0 && p.markPrice > 0
+                        ? ((p.markPrice - p.entryPrice) / p.entryPrice * 100 * (p.side === 'short' ? -1 : 1) * (p.leverage || 1))
+                        : null;
+                      return (
+                        <span key={i}>
+                          <span className="text-[#06B6D4]">{pSym}</span>
+                          <span className="text-[#606070]"> {p.side === 'long' ? '多' : '空'}</span>
+                          {p.entryPrice > 0 && <span className="text-[#9090A0]"> 入${Number(p.entryPrice).toFixed(2)}</span>}
+                          {p.markPrice > 0 && <span className="text-[#F8F8FC]">→${Number(p.markPrice).toFixed(2)}</span>}
+                          {pnlPct != null && (
+                            <span className={pnlPct >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]'}> {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%</span>
+                          )}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
-                {/* 市场数据面板 */}
-                {ad.marketSnapshot && (() => {
-                  const ms = ad.marketSnapshot as any;
+                {/* 行3: 历史统计 + 上轮决策 */}
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[#606070] font-mono">
+                  {gc?.tradingStats && (
+                    <span>历史 {gc.tradingStats.trades}笔 胜率{gc.tradingStats.winRate}% PF={Number(gc.tradingStats.pf).toFixed(2)}</span>
+                  )}
+                  {Array.isArray(gc?.lastDecisionsSummary) && gc.lastDecisionsSummary.length > 0 && (
+                    <span>上轮: {(gc.lastDecisionsSummary as Array<{ sym: string; action: string; confidence: number }>)
+                      .filter((x: any) => x.action !== 'wait' && x.action !== 'hold')
+                      .slice(0, 4)
+                      .map((x: any) => {
+                        const shortAction = x.action.replace('open_', '').replace('close_', '平').replace('long', '多').replace('short', '空');
+                        return `${x.sym} ${shortAction}(${x.confidence}%)`;
+                      }).join(' | ') || '全部观望'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ══ 段2: 市场数据 ══ */}
+            {(allDecisions.some((ad: any) => ad.marketSnapshot?.price) || gc?.newsItems?.length || gc?.fearGreed || gc?.btcPrice) && (
+              <div className="space-y-1 text-[10px]">
+                <div className="text-[#404050] font-semibold uppercase tracking-wider text-[9px]">市场数据</div>
+                {/* 每币市场快照（紧凑单行） */}
+                {allDecisions.map((ad: any, idx: number) => {
+                  const ms = ad.marketSnapshot;
                   if (!ms?.price) return null;
+                  const sym = (ad.symbol || '').replace(/\/USDT.*$/, '');
                   const atrPct = ms.atr14 && ms.price > 0 ? (ms.atr14 / ms.price * 100) : null;
                   return (
-                    <div className="text-[10px] font-mono text-[#9090A0] flex flex-wrap gap-x-2 gap-y-0">
-                      <span className="text-[#F8F8FC]">${ms.price?.toFixed(2)}</span>
-                      {ms.rsi14 != null && <span>RSI {ms.rsi14.toFixed(0)}</span>}
-                      {ms.macdHist != null && <span>MACD {ms.macdHist > 0 ? '+' : ''}{ms.macdHist.toFixed(3)}</span>}
+                    <div key={idx} className="flex flex-wrap gap-x-2 gap-y-0 font-mono text-[#9090A0]">
+                      <span className="text-[#06B6D4] font-medium">{sym}</span>
+                      <span className="text-[#F8F8FC]">${Number(ms.price).toFixed(ms.price >= 100 ? 1 : ms.price >= 1 ? 3 : 5)}</span>
+                      {ms.rsi14 != null && <span>RSI {Number(ms.rsi14).toFixed(0)}</span>}
+                      {ms.macdHist != null && <span>MACD {ms.macdHist > 0 ? '+' : ''}{Number(ms.macdHist).toFixed(3)}</span>}
                       {atrPct != null && <span>ATR {atrPct.toFixed(1)}%</span>}
-                      {ms.fundingRate != null && <span>FR {(ms.fundingRate * 100).toFixed(3)}%</span>}
+                      {ms.fundingRate != null && <span className={ms.fundingRate > 0.001 ? 'text-[#F43F5E]' : ms.fundingRate < -0.001 ? 'text-[#22C55E]' : ''}>FR {(ms.fundingRate * 100).toFixed(3)}%</span>}
                       {ms.oiChange != null && <span>OI {ms.oiChange}</span>}
-                      {ms.emaTrend && <span className={ms.emaTrend.includes('多') || ms.emaTrend.includes('↑') ? 'text-[#10B981]' : ms.emaTrend.includes('空') || ms.emaTrend.includes('↓') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}
+                      {ms.emaTrend && <span className={ms.emaTrend.includes('多') || ms.emaTrend.includes('↑') ? 'text-[#10B981]' : ms.emaTrend.includes('空') || ms.emaTrend.includes('↓') ? 'text-[#F43F5E]' : ''}>{ms.emaTrend}</span>}
                     </div>
                   );
-                })()}
-                {/* 拦截原因 */}
-                {adEr?.blocked && <div className="text-[10px] text-[#F59E0B]">{adEr.reason || adEr.blockedBy}</div>}
-                {/* 分析 + 第一人称决策（始终显示，不跳过） */}
-                {ad.reasoning && <CoinReasoning text={String(ad.reasoning)} />}
+                })}
+                {/* BTC 参考 */}
+                {gc?.btcPrice && (
+                  <div className="flex gap-x-2 font-mono text-[#9090A0]">
+                    <span className="text-[#F59E0B]">BTC</span>
+                    <span className="text-[#F8F8FC]">${Number(gc.btcPrice).toLocaleString()}</span>
+                    {gc.btcChange1h != null && <span className={gc.btcChange1h >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]'}>{gc.btcChange1h >= 0 ? '+' : ''}{Number(gc.btcChange1h).toFixed(2)}% 1h</span>}
+                    {gc.btcChange4h != null && <span className={gc.btcChange4h >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]'}>{gc.btcChange4h >= 0 ? '+' : ''}{Number(gc.btcChange4h).toFixed(2)}% 4h</span>}
+                  </div>
+                )}
+                {/* 全局增强数据: 恐贪 + 新闻 */}
+                {(gc?.fearGreed || gc?.newsItems?.length || gc?.socialSentiment) && (
+                  <div className="space-y-0.5">
+                    {gc.fearGreed && (() => {
+                      const fg = gc.fearGreed.value;
+                      const fgColor = fg <= 20 ? '#10B981' : fg <= 35 ? '#86EFAC' : fg <= 55 ? '#9090A0' : fg <= 75 ? '#FCA5A5' : '#F43F5E';
+                      const fgLabel = fg <= 20 ? '极恐' : fg <= 35 ? '恐惧' : fg <= 55 ? '中性' : fg <= 75 ? '贪婪' : '极贪';
+                      return (
+                        <div className="font-mono" style={{ color: fgColor }}>
+                          恐贪 {fg}/100 ({gc.fearGreed.classification}) {fgLabel}
+                        </div>
+                      );
+                    })()}
+                    {Array.isArray(gc.newsItems) && gc.newsItems.slice(0, 3).map((n: any, i: number) => {
+                      const tag = n.sentiment === 'positive' ? '[+]' : n.sentiment === 'negative' ? '[-]' : '[·]';
+                      const tagColor = n.sentiment === 'positive' ? '#22C55E' : n.sentiment === 'negative' ? '#EF4444' : '#9090A0';
+                      return (
+                        <div key={i} className="flex gap-x-1 text-[#9090A0]">
+                          <span style={{ color: tagColor }}>{tag}</span>
+                          <span className="line-clamp-1">{n.title}</span>
+                          {n.source && <span className="text-[#505060] shrink-0">({n.source})</span>}
+                        </div>
+                      );
+                    })}
+                    {gc.socialSentiment && (
+                      <div className="text-[#606070] line-clamp-1">{gc.socialSentiment}</div>
+                    )}
+                  </div>
+                )}
               </div>
-            );
-          })}
+            )}
 
-          {/* AI 完整推理过程（始终显示，这是用户看分析逻辑的核心区域） */}
-          {reasoning && (
-            <AiThinkingSection text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
-          )}
-        </div>
-      )}
+            {/* ══ 段3: AI 推理过程 ══ */}
+            {reasoning && (
+              <AiThinkingSection text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+            )}
+
+            {/* ══ 段4: 决策结果 ══ */}
+            <div className="space-y-1.5">
+              <div className="text-[#404050] font-semibold uppercase tracking-wider text-[9px]">决策结果</div>
+              {allDecisions.map((ad: any, idx: number) => {
+                const wasConfBlocked = ad.minConfFilter === true;
+                const adAction = wasConfBlocked ? (ad.originalAction || ad.action || 'wait') : (ad.action || 'wait');
+                const adCfg = ACTION_CONFIG[adAction] || ACTION_CONFIG['wait'];
+                const adEr = ad.executionResult;
+                const adEntryPrice = adEr?.price || ad.marketSnapshot?.price || 0;
+                const adAmt = adEr?.amount;
+                const adPvl = adEr?.positionValueLimit || 0;
+                const adAiReq = adEr?.aiRequestedUSD || ad.positionSizeUSD || 0;
+                const adNotional = adEr?.actualNotional || (adEntryPrice > 0 && adAmt ? adEntryPrice * Number(adAmt) : 0);
+                const adMargin = adEr?.actualMargin || (adNotional && ad.leverage ? adNotional / ad.leverage : 0);
+                const adTruncated = adEr?.wasTruncated || false;
+                const adPct = adPvl > 0 && adAiReq > 0 ? Math.round(adAiReq / adPvl * 100) : (ad.positionSizePercent || 0);
+                const adSymbol = (ad.symbol || '').replace(/\/USDT.*$/, '');
+                const isOpen = adAction === 'open_long' || adAction === 'open_short';
+                const isClose = adAction === 'close_long' || adAction === 'close_short';
+                const posSnap = isClose && acct?.positions
+                  ? (acct.positions as any[]).find((p: any) => (p.symbol || '').replace(/\/USDT.*$/, '') === adSymbol)
+                  : null;
+                const closeEntryPrice = adEntryPrice || posSnap?.entryPrice || 0;
+                const closeMarkPrice = posSnap?.markPrice || 0;
+                const closeQty = adAmt || posSnap?.quantity || 0;
+                return (
+                  <div key={idx} className="rounded-lg bg-[#0A0A0F]/40 border border-[#1E1E2E]/40 p-2 space-y-0.5">
+                    {/* 行1: 币种 + 动作 + 执行详情 + 置信度 */}
+                    <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                      <span className="text-[#06B6D4] font-medium shrink-0">{adSymbol}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0" style={{ color: adCfg.color, backgroundColor: adCfg.bg }}>
+                        {ACTION_I18N[adAction] ? t(ACTION_I18N[adAction]) : adCfg.label}
+                      </span>
+                      {isOpen && ad.leverage != null && ad.leverage > 1 && <span className="text-[#9090A0] font-mono text-[10px]">{ad.leverage}x</span>}
+                      {isOpen && adMargin > 0 && <span className="text-[#10B981] font-mono text-[10px]">${adMargin.toFixed(2)}</span>}
+                      {isOpen && adEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">${adEntryPrice.toFixed(2)}</span>}
+                      {isOpen && adAmt && <span className="text-[#F8F8FC] font-mono text-[10px]">×{adAmt}</span>}
+                      {isClose && closeEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">入${closeEntryPrice.toFixed(2)}</span>}
+                      {isClose && closeMarkPrice > 0 && <><span className="text-[#606070] font-mono text-[10px]">→</span><span className="text-[#F8F8FC] font-mono text-[10px]">${closeMarkPrice.toFixed(2)}</span></>}
+                      {isClose && closeQty > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">×{closeQty}</span>}
+                      <span className="ml-auto font-semibold text-xs shrink-0" style={{ color: (ad.confidence ?? 0) >= 80 ? '#22C55E' : (ad.confidence ?? 0) >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence ?? 0}%</span>
+                    </div>
+                    {/* 置信度拦截 */}
+                    {wasConfBlocked && (
+                      <div className="text-[10px] text-[#F59E0B]">置信度不足 {ad.actual ?? ad.confidence}%{'<'}{ad.required ?? 80}%，未执行</div>
+                    )}
+                    {/* 开仓: SL/TP + R:R */}
+                    {isOpen && (adPvl > 0 || adNotional > 0 || ad.stopLoss != null || ad.takeProfit != null) && (
+                      <div className="flex items-center flex-nowrap gap-1.5 text-[9px] text-[#606070] font-mono whitespace-nowrap overflow-x-auto">
+                        {adPvl > 0 && <span>${adPvl.toFixed(0)}</span>}
+                        {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
+                        {adNotional > 0 && <span>{adTruncated ? <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span> : `$${adNotional.toFixed(0)}`}</span>}
+                        {ad.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(ad.stopLoss).toLocaleString()}{adEntryPrice > 0 && <span className="opacity-60">({calcPct(adEntryPrice, ad.stopLoss)})</span>}</span>}
+                        {ad.takeProfit != null && <span className="text-[#10B981]">↑${Number(ad.takeProfit).toLocaleString()}{adEntryPrice > 0 && <span className="opacity-60">({calcPct(adEntryPrice, ad.takeProfit)})</span>}</span>}
+                        {ad.stopLoss != null && ad.takeProfit != null && (() => {
+                          const rrVal = calcRiskReward(ad.stopLoss, ad.takeProfit, adAction === 'open_long', adEntryPrice > 0 ? adEntryPrice : undefined);
+                          return rrVal && rrVal > 0 ? <span className={`font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
+                        })()}
+                      </div>
+                    )}
+                    {/* 拦截原因 */}
+                    {adEr?.blocked && <div className="text-[10px] text-[#F59E0B]">{adEr.reason || adEr.blockedBy}</div>}
+                    {/* 第一人称决策 */}
+                    {ad.reasoning && <CoinReasoning text={String(ad.reasoning)} />}
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        );
+      })()}
 
       {/* === 普通 Solo: 极简决策卡片 === */}
       {!isGridLog && !isAutoDisabled && !isMultiCoin && !(isGridEntry && !isGridLog) && (

@@ -38,6 +38,7 @@ export interface SafetyCheckInput {
   positionSizeUSD?: number; // 实际仓位金额（美元），用于 L10 流动性比较
   currentPrice?: number; // 当前价格，用于 L9 regime 感知 R:R 计算
   priceChange1h?: number; // 近1h价格变化率（%），用于 L9 黑天鹅检测（ATR 滞后补偿）
+  btcPriceChange1h?: number | null; // BTC 近1h价格变化率，用于 L9-BTC 市场结构过滤
   strategyId?: string; // AI策略ID，用于 L9 按策略独立计算持仓数
   // 策略级风控参数（优先于 aiConfig 全局默认值）
   strategyRiskConfig?: {
@@ -239,6 +240,36 @@ export class SafetyService {
     if (!l9.passed && !blockedBy) {
       blockedBy = 'L9';
       blockedReason = l9.detail;
+    }
+
+    // L9-BTC: BTC 市场结构过滤（仅 open_long 且非 BTC 系资产）
+    // 当 BTC 急速下跌时，相关资产多单开仓风险大幅上升
+    if (!isClose && input.action === 'open_long' &&
+        input.btcPriceChange1h !== undefined && input.btcPriceChange1h !== null) {
+      const baseCurrency = (input.symbol.split('/')[0] || '').toUpperCase();
+      const isBtcFamily = baseCurrency === 'BTC' || baseCurrency === 'WBTC';
+      if (!isBtcFamily) {
+        const btcChange = input.btcPriceChange1h;
+        if (btcChange <= AI_SAFETY_DEFAULTS.btcRegimeBlockThreshold) {
+          const blockDetail = `BTC Regime 熔断: BTC 近1h下跌 ${Math.abs(btcChange).toFixed(2)}%（阈值 ${Math.abs(AI_SAFETY_DEFAULTS.btcRegimeBlockThreshold)}%），相关资产多单暂停`;
+          checks.push({ layer: 'L9-BTC', name: 'BTC市场结构', passed: false, detail: blockDetail });
+          if (!blockedBy) {
+            blockedBy = 'L9-BTC';
+            blockedReason = blockDetail;
+          }
+        } else if (btcChange <= AI_SAFETY_DEFAULTS.btcRegimeWarnThreshold) {
+          const warnMsg = `BTC 近1h下跌 ${Math.abs(btcChange).toFixed(2)}%，${input.symbol} 开多风险上升`;
+          warnings.push(warnMsg);
+          checks.push({ layer: 'L9-BTC', name: 'BTC市场结构', passed: true, detail: warnMsg });
+        } else {
+          checks.push({
+            layer: 'L9-BTC',
+            name: 'BTC市场结构',
+            passed: true,
+            detail: `BTC 1h ${btcChange >= 0 ? '+' : ''}${btcChange.toFixed(2)}%，市场结构正常`,
+          });
+        }
+      }
     }
 
     // L10: 流动性软警告（不拦截，仅记录警告）

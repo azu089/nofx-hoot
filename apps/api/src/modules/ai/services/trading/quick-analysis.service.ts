@@ -148,6 +148,13 @@ export interface QuickAnalysisResult {
   aiThinking?: string;
   /** 市场数据快照（前端日志卡片展示，对齐 Grid 的 gridSnapshot） */
   marketSnapshot?: MarketSnapshot;
+  /** 全局增强数据快照（多币种共享，新闻/恐贪/社媒/BTC参考，前端日志展示） */
+  globalSnapshot?: {
+    newsItems?: Array<{ title: string; source: string; sentiment: string }>;
+    fearGreed?: { value: number; classification: string } | null;
+    socialSentiment?: string | null;
+    btcRef?: { price: number; change1h: number; change4h: number; rsi?: number } | null;
+  };
 }
 
 /** Solo 策略市场数据快照（存入 decision JSON，前端展示） */
@@ -1100,6 +1107,19 @@ export class QuickAnalysisService {
             analysis: mcUnifiedAnalysis,
             aiThinking: response.thinking,
             marketSnapshot: mcSnapshot,
+            globalSnapshot: {
+              newsItems: Array.isArray(mcNews) ? (mcNews as any[]).slice(0, 5).map((n: any) => ({
+                title: n.title || '',
+                source: n.source || '',
+                sentiment: n.sentiment || 'neutral',
+              })) : undefined,
+              fearGreed: mcFearGreed ? {
+                value: (mcFearGreed as any).value,
+                classification: (mcFearGreed as any).classification || '',
+              } : null,
+              socialSentiment: mcSocial ? this.lunarCrush.formatForAI(mcSocial) : null,
+              btcRef: mcBtc as any,
+            },
           });
         } else {
           // 对齐 nofx: AI 未输出该币决策 = 隐含 wait（无持仓）或 hold（有持仓）
@@ -1129,6 +1149,19 @@ export class QuickAnalysisService {
             systemPrompt, userPrompt: userMessage,
             analysis: mcUnifiedAnalysis,
             aiThinking: response.thinking,
+            globalSnapshot: {
+              newsItems: Array.isArray(mcNews) ? (mcNews as any[]).slice(0, 5).map((n: any) => ({
+                title: n.title || '',
+                source: n.source || '',
+                sentiment: n.sentiment || 'neutral',
+              })) : undefined,
+              fearGreed: mcFearGreed ? {
+                value: (mcFearGreed as any).value,
+                classification: (mcFearGreed as any).classification || '',
+              } : null,
+              socialSentiment: mcSocial ? this.lunarCrush.formatForAI(mcSocial) : null,
+              btcRef: mcBtc as any,
+            },
           });
         }
       }

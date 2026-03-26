@@ -219,7 +219,15 @@ export class PromptBuilderService {
       if (variant === 'aggressive') {
         sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when you have HIGH confidence\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
       } else if (variant === 'conservative') {
-        sections.push(`## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses`);
+        sections.push([
+          '## Mode: Conservative',
+          '- **Entry**: Only open when multiple signals align across timeframes; pause new entries after consecutive losses',
+          '- **Hold**: The risk system (stop-loss + trailing stop) manages mechanical exits automatically — do NOT pre-empt these with early manual closes',
+          '  - Peak PnL = 0% (never profitable): hold unless the original entry thesis is clearly invalidated by new, material information',
+          '  - Peak PnL > 0% (was profitable): focus on thesis validity; trailing stop handles mechanical exit',
+          '- **RSI** oversold (<30) while holding LONG = selling exhaustion, supportive for longs — not an exit signal',
+          '- **RSI** overbought (>70) while holding SHORT = buying exhaustion, supportive for shorts — not an exit signal',
+        ].join('\n'));
       } else if (variant === 'scalping') {
         sections.push(`## Mode: Scalping\n- Focus on short-term momentum, smaller profit targets but require quick action\n- If price doesn't move as expected within two bars, immediately reduce position or stop-loss`);
       }

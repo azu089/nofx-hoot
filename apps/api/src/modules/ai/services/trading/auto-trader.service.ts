@@ -910,6 +910,8 @@ export class AutoTraderService {
       }> = {};
       // 极速全局分析的完整结果（日志透明化用，保存 rawResponse/systemPrompt/userPrompt/aiThinking/marketSnapshot）
       const quickGlobalResults = new Map<string, { rawResponse?: string; systemPrompt?: string; userPrompt?: string; analysis?: string; aiThinking?: string; marketSnapshot?: any }>();
+      // 多币种全局增强数据快照（新闻/恐贪/社媒/BTC参考，前端日志展示）
+      let sharedGlobalSnapshot: any = undefined;
 
       // ═══════════════════════════════════════════════════════════════════════
       // 【共识策略 — debate 模式】
@@ -1200,6 +1202,10 @@ export class AutoTraderService {
               aiThinking: analysisResult.aiThinking,
               marketSnapshot: analysisResult.marketSnapshot,
             });
+            // 提取全局增强数据（第一个有效结果）
+            if (!sharedGlobalSnapshot && analysisResult.globalSnapshot) {
+              sharedGlobalSnapshot = analysisResult.globalSnapshot;
+            }
           }
           result.totalCost += multiTotalCost;
           this.logger.log(
@@ -1301,6 +1307,7 @@ export class AutoTraderService {
           let safetyCurrentPrice: number | undefined;
           let safetyVolume24h: number | undefined;
           let safetyPriceChange1h: number | undefined;
+          let btcPriceChange1h: number | undefined;
 
           // ── 分支判断：共识/深研策略（预处理已完成）vs 极速策略（此处实时调用）──
           // debateResults 在上方的 if(debate) / if(research) 块中填入
@@ -1416,6 +1423,19 @@ export class AutoTraderService {
               safetyPriceChange1h = await this.marketData.fetchPriceChange1h(symbol);
             } catch {
               // 非致命，priceChange1h 缺失时 L9 跳过黑天鹅检查
+            }
+          }
+
+          // BTC Regime 过滤：获取 BTC 近1h涨跌，用于 L9-BTC 市场结构判断
+          // 仅在非 BTC 资产时获取（BTC 自身用 safetyPriceChange1h 即可）
+          // OHLCV 有 5min 缓存，重复调用成本极低
+          const _btcBase = (symbol.split('/')[0] || '').toUpperCase();
+          if (_btcBase !== 'BTC' && _btcBase !== 'WBTC') {
+            try {
+              const _quoteCurrency = (symbol.split('/')[1] || 'USDT').split(':')[0];
+              btcPriceChange1h = await this.marketData.fetchPriceChange1h(`BTC/${_quoteCurrency}`);
+            } catch {
+              // 非致命，缺失时 L9-BTC 跳过市场结构检查
             }
           }
 
@@ -1652,6 +1672,7 @@ export class AutoTraderService {
             fundingRate: safetyFundingRate,
             volume24h: safetyVolume24h,
             priceChange1h: safetyPriceChange1h, // L9 黑天鹅检测
+            btcPriceChange1h, // L9-BTC BTC 市场结构过滤
             positionSizeUSD,
             takeProfitPercent,
             stopLossPercent,
@@ -2340,7 +2361,22 @@ export class AutoTraderService {
                 } : undefined,
                 stopOrdersCount: accountInfo.stopOrders?.length ?? 0,
                 lastDecisionsCount: lastDecisions.length,
+                // 上轮决策摘要（前端展示"上轮: SOL open_long(80%)"）
+                lastDecisionsSummary: lastDecisions.slice(0, 5).map(d => ({
+                  sym: (d.symbol || '').replace(/\/.*$/, ''),
+                  action: d.action,
+                  confidence: d.confidence,
+                })),
                 btcRef: accountInfo.exchangeTotalEquity > 0, // 是否有 BTC 参考数据
+                // 全局增强数据（新闻/恐贪/社媒/BTC参考，多币种模式从 analyzeMultiCoin 获取）
+                ...(sharedGlobalSnapshot ? {
+                  newsItems: sharedGlobalSnapshot.newsItems,
+                  fearGreed: sharedGlobalSnapshot.fearGreed,
+                  socialSentiment: sharedGlobalSnapshot.socialSentiment,
+                  btcPrice: sharedGlobalSnapshot.btcRef?.price,
+                  btcChange1h: sharedGlobalSnapshot.btcRef?.change1h,
+                  btcChange4h: sharedGlobalSnapshot.btcRef?.change4h,
+                } : {}),
               },
             } as unknown as Prisma.InputJsonValue,
             executed: cycleDecisions.some(d => d.executed),

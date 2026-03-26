@@ -28,6 +28,10 @@ export const AI_SAFETY_DEFAULTS = {
   priceChange1hExtreme: 8.0, // |1h涨跌| > 8% → 硬拦截新开仓
   priceChange1hHigh: 5.0, // |1h涨跌| > 5% → 软警告（不拦截）
 
+  // ── L9: BTC Market Regime 过滤（非 BTC 币种开多时检查 BTC 市场结构） ──
+  btcRegimeBlockThreshold: -5.0, // BTC 近1h跌幅 ≥ 5% → 硬拦截非BTC多单
+  btcRegimeWarnThreshold: -3.0,  // BTC 近1h跌幅 ≥ 3% → 软警告
+
   // ── R:R 系统默认下限（用户可在策略 riskControlConfig.minRiskRewardRatio 覆盖） ──
   // 对齐 nofx engine.go L2077: riskRewardRatio < 3.0 → reject
   minRiskRewardRatio: 3.0,

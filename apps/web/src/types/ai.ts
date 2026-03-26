@@ -765,7 +765,15 @@ export interface StrategyLog {
       };
       stopOrdersCount?: number;
       lastDecisionsCount?: number;
+      lastDecisionsSummary?: Array<{ sym: string; action: string; confidence: number }>;
       btcRef?: boolean;
+      // 全局增强数据（新闻/恐贪/社媒/BTC参考价格）
+      newsItems?: Array<{ title: string; source: string; sentiment: string }>;
+      fearGreed?: { value: number; classification: string } | null;
+      socialSentiment?: string | null;
+      btcPrice?: number | null;
+      btcChange1h?: number | null;
+      btcChange4h?: number | null;
     };
   };
   executed: boolean;
