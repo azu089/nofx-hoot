@@ -60,6 +60,7 @@ export interface GridConfig {
   directionalCloseOnBreakout?: boolean; // 突破上界时平 short、突破下界时平 long（默认 false，对齐 nofx：突破时只 cancel+pause）
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
+  profitTrailingStopPct?: number; // 利润回撤保护%（默认 50）：totalProfit 从峰值回撤超此比例时紧急平仓
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
   profitTargetPct?: number;      // 策略止盈目标%（0=AI自主决策，>0=传递给AI提示词）
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，默认 0.2 = 20%）：严重倾斜+价格偏离超此值时自动重建
@@ -122,6 +123,7 @@ export interface GridState {
   winningTrades: number;
   maxDrawdown: number;
   peakEquity: number;
+  peakProfit: number;  // 利润峰值（totalProfit 的历史最高正值，用于利润回撤保护）
   dailyPnl: number;
   dailyPnlResetDate: string; // YYYY-MM-DD
   dailyStartEquity: number;  // 每日开始时的账户权益，用于计算真实日内亏损
@@ -653,6 +655,7 @@ export class GridTradingService {
       winningTrades: 0,
       maxDrawdown: 0,
       peakEquity: initialEquity,
+      peakProfit: 0,
       dailyPnl: 0,
       dailyPnlResetDate: today,
       dailyStartEquity: initialEquity,
@@ -1147,6 +1150,28 @@ export class GridTradingService {
       }
     }
 
+
+    // F1.5: 利润回撤保护 — totalProfit 从峰值回撤超过指定比例时紧急平仓
+    // 与 F1（权益峰值回撤）互补：F1 看总权益，这里只看已赚利润的回吐
+    {
+      const profitTrailingStopPct = gridConfig?.profitTrailingStopPct ?? 50;
+      if (profitTrailingStopPct > 0 && state.totalProfit > 0) {
+        if (state.totalProfit > (state.peakProfit ?? 0)) {
+          state.peakProfit = state.totalProfit;
+        }
+      }
+      if (profitTrailingStopPct > 0 && (state.peakProfit ?? 0) > 0) {
+        const profitDrawback = ((state.peakProfit - state.totalProfit) / state.peakProfit) * 100;
+        if (profitDrawback >= profitTrailingStopPct) {
+          await this.emergencyExit(state, userId, apiKeyId,
+            `利润回撤保护触发\n` +
+            `保护规则: 利润从峰值回撤超过 ${profitTrailingStopPct}% 时紧急平仓\n` +
+            `实际情况: 利润峰值 $${state.peakProfit.toFixed(2)}，当前 $${state.totalProfit.toFixed(2)}，回撤 ${profitDrawback.toFixed(1)}%`);
+          await this.persistGridState(strategyId, state);
+          return { trades: 0, errors: 0 };
+        }
+      }
+    }
 
     // F2: 总体亏损上限（安全网）— 累计亏损超过 totalInvestment 的指定比例时紧急平仓
     // 与 maxDrawdown（基于权益峰值）互补：即使权益未到峰值，累计亏损也受上限保护
@@ -2982,6 +3007,7 @@ export class GridTradingService {
     }
     state.chargedProfit = 0;
     state.maxDrawdown = 0;
+    state.peakProfit = Math.max(0, state.totalProfit); // 利润峰值重置为当前利润（若为正）
     // dailyPnl + dailyTotalProfit 全部归零（否则日损保护立即重新触发）
     state.dailyPnl = 0;
     state.dailyTotalProfit = 0;
