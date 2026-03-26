@@ -1616,12 +1616,12 @@ export class AiController {
     // 如果是网格策略，初始化网格
     if (strategy.strategyType === 'grid' && strategy.gridConfig) {
       const gc = strategy.gridConfig as unknown as Record<string, unknown>;
+      // 直接透传 DB 全量 gridConfig，避免手动挑字段导致新增配置项丢失
       const gridConfig: GridConfig = {
+        ...(gc as unknown as GridConfig),
         symbol: (gc.symbol as string) || ((strategy.coinSourceConfig as unknown as Record<string, unknown>)?.coins as string[])?.[0] || 'BTC/USDT',
         gridCount: (gc.gridCount as number) || 10,
         totalInvestment: (gc.totalInvestment as number) || 1000,
-        upperBound: gc.upperBound as number | undefined,
-        lowerBound: gc.lowerBound as number | undefined,
         leverage: (gc.leverage as number) || 1,
       };
 
