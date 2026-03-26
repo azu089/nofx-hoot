@@ -729,8 +729,9 @@ export class AutoTraderService {
           status: 'closed',
           closedAt: { gte: statsLookback },
           aiStrategyId: strategy.id,
-          // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange）
-          closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
+          // 只排除手动平仓（用户主动操作，不算策略绩效）
+          // not_found_on_exchange = 交易所SL/TP触发，必须计入止停统计
+          closeReason: { not: 'manual' },
         },
         select: { realizedPnl: true, margin: true },
       });
