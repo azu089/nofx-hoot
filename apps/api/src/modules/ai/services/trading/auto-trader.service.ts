@@ -654,6 +654,19 @@ export class AutoTraderService {
         if (cycleAdapter) {
           const since = new Date(Date.now() - 24 * 60 * 60 * 1000); // 最近 24h
           const exchangeClosedPnl = await cycleAdapter.getClosedPnl(since, 10);
+
+          // 从 DB 批量获取 closeReason / peakPnlPercent，用 symbol + closedAt 窗口匹配
+          // 交易所不返回平仓原因，需要 join HOOT DB 补充
+          const dbCloseInfo = await this.prisma.position.findMany({
+            where: {
+              userId,
+              aiStrategyId: strategy.id,
+              status: 'closed',
+              closedAt: { gte: since },
+            },
+            select: { symbol: true, closedAt: true, closeReason: true, peakPnlPercent: true },
+          });
+
           recentTrades = exchangeClosedPnl.map((r) => {
             const entryTime = r.entryTime;
             const exitTime = r.exitTime;
@@ -665,6 +678,13 @@ export class AutoTraderService {
               holdDuration = hours > 0 ? `${hours}h${minutes}m` : `${minutes}m`;
             }
             const margin = r.leverage > 0 ? (r.entryPrice * r.quantity) / r.leverage : 0;
+
+            // 按 symbol + closedAt 2min 窗口匹配 DB 记录（补充平仓原因）
+            const dbMatch = exitTime ? dbCloseInfo.find((d) => {
+              if (!d.closedAt || d.symbol !== r.symbol) return false;
+              return Math.abs(d.closedAt.getTime() - exitTime.getTime()) < 2 * 60 * 1000;
+            }) : undefined;
+
             return {
               symbol: r.symbol,
               side: r.side,
@@ -675,6 +695,8 @@ export class AutoTraderService {
               entryTime: entryTime?.toISOString().slice(0, 16) || 'N/A',
               closedAt: exitTime?.toISOString().slice(0, 16) || 'N/A',
               holdDuration,
+              closeReason: dbMatch?.closeReason ?? undefined,
+              peakPnlPct: dbMatch?.peakPnlPercent != null ? Number(dbMatch.peakPnlPercent) : undefined,
             };
           });
           this.logger.log(`[交易记录] 从交易所获取 ${recentTrades.length} 条近期平仓记录`);
@@ -694,7 +716,7 @@ export class AutoTraderService {
           },
           orderBy: { closedAt: 'desc' },
           take: 10,
-          select: { symbol: true, side: true, entryPrice: true, exitPrice: true, realizedPnl: true, margin: true, createdAt: true, closedAt: true },
+          select: { symbol: true, side: true, entryPrice: true, exitPrice: true, realizedPnl: true, margin: true, createdAt: true, closedAt: true, closeReason: true, peakPnlPercent: true },
         });
         recentTrades = recentPositions.map((p) => {
           const entryTime = p.createdAt;
@@ -714,6 +736,8 @@ export class AutoTraderService {
             entryTime: entryTime?.toISOString().slice(0, 16) || 'N/A',
             closedAt: exitTime?.toISOString().slice(0, 16) || 'N/A',
             holdDuration,
+            closeReason: p.closeReason ?? undefined,
+            peakPnlPct: p.peakPnlPercent != null ? Number(p.peakPnlPercent) : undefined,
           };
         });
       }

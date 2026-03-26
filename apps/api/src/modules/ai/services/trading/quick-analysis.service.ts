@@ -26,6 +26,8 @@ export interface RecentTrade {
   entryTime: string;
   closedAt: string;   // exitTime
   holdDuration: string; // 持仓时长 e.g. "2h30m"
+  closeReason?: string;   // 平仓原因：peak_drawdown / ai_decision / not_found_on_exchange / manual 等
+  peakPnlPct?: number;    // 持仓期间峰值盈利%（peak_drawdown 时有值）
 }
 
 /**
@@ -557,6 +559,8 @@ export class QuickAnalysisService {
         pnlPercent: t.pnlPercent,
         holdDuration: t.holdDuration,
         closedAt: t.closedAt,
+        closeReason: t.closeReason,
+        peakPnlPct: t.peakPnlPct,
       })),
       tradingStats: config.tradingStats ? {
         totalTrades: config.tradingStats.totalTrades,
@@ -951,6 +955,7 @@ export class QuickAnalysisService {
           symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
           exitPrice: t.exitPrice, pnl: t.pnl, pnlPercent: t.pnlPercent,
           holdDuration: t.holdDuration, closedAt: t.closedAt,
+          closeReason: t.closeReason, peakPnlPct: t.peakPnlPct,
         })),
         tradingStats: refConfig.tradingStats ? {
           totalTrades: refConfig.tradingStats.totalTrades,
@@ -1232,7 +1237,17 @@ export class QuickAnalysisService {
         const emoji = t.pnl >= 0 ? '✅' : '❌';
         const prices = t.entryPrice && t.exitPrice ? ` Entry:$${t.entryPrice}→$${t.exitPrice}` : '';
         const hold = t.holdDuration && t.holdDuration !== 'N/A' ? ` Hold:${t.holdDuration}` : '';
-        lines.push(`${emoji} ${t.symbol} ${t.side}${prices} | PnL: $${t.pnl.toFixed(2)} (${t.pnlPercent.toFixed(1)}%)${hold} | ${t.closedAt}`);
+        const reasonMap: Record<string, string> = {
+          'peak_drawdown': t.peakPnlPct != null ? `峰值回撤止盈(峰+${t.peakPnlPct.toFixed(1)}%)` : '峰值回撤止盈',
+          'ai_decision': 'AI主动平仓',
+          'not_found_on_exchange': '条件单/强平',
+          'stop_loss': '止损',
+          'take_profit': '止盈',
+          'manual': '手动平仓',
+          'grid_stop_condition': '网格止损',
+        };
+        const reasonLabel = t.closeReason ? ` | 原因:${reasonMap[t.closeReason] ?? t.closeReason}` : '';
+        lines.push(`${emoji} ${t.symbol} ${t.side}${prices} | PnL: $${t.pnl.toFixed(2)} (${t.pnlPercent.toFixed(1)}%)${hold}${reasonLabel} | ${t.closedAt}`);
       }
     }
 
