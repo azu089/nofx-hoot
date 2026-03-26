@@ -2441,19 +2441,12 @@ export class GridTradingService {
       }));
     }
 
-    // 仓位 cap 使用率（对齐 nofx checkTotalPositionLimit: TotalInvestment × Leverage，无 regime 百分比）
-    const capTotal = state.totalInvestment * (state.leverage ?? 1);
-    let capPositionValue = 0;
-    const capBaseSymbol = state.symbol.split('/')[0];
-    for (const pos of (preSyncExchangePositions ?? [])) {
-      if (!pos.symbol?.includes(capBaseSymbol)) continue;
-      capPositionValue += Math.abs(pos.quantity ?? 0) * (pos.markPrice ?? pos.entryPrice ?? currentPrice);
-    }
-    // 对齐 nofx checkTotalPositionLimit：所有 pending 都计入（保守估计，与 nofx 一致）
-    const capPendingNotional = exchangeLevels
-      .filter(l => l.state === 'pending' && (l.positionSize ?? 0) === 0)
-      .reduce((sum, l) => sum + (l.quantity ?? 0) * l.price, 0);
-    const capUsed = capPositionValue + capPendingNotional;
+    // 仓位 cap 使用率：按层数预算计算，不受 markPrice 波动影响
+    const capLeverage = state.leverage ?? 1;
+    const capTotal = state.totalInvestment * capLeverage;
+    const capPerLevel = capTotal / state.gridLines.length;
+    const capOccupiedLevels = exchangeLevels.filter(l => l.state === 'pending' || l.state === 'filled').length;
+    const capUsed = capOccupiedLevels * capPerLevel;
     const capUsedPct = capTotal > 0 ? Math.round(capUsed / capTotal * 100) : 0;
 
     return {
@@ -3111,35 +3104,19 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限（对齐 nofx checkTotalPositionLimit: TotalInvestment × Leverage，无 regime 百分比）
-      // 持仓值 = 交易所实际持仓市值（abs(size) × markPrice），非槽位预算
-      // 挂单值 = 内存 pending 层 qty × price（与 nofx 一致）
+      // 总仓位上限：按层数预算计算，不受 markPrice 波动影响
+      // capTotal = totalInvestment × leverage（固定值）
+      // capUsed = 已占用层数 × 每层预算（固定值），不用实时价
       const totalPositionCap = state.totalInvestment * leverage;
-      const baseSymbol = state.symbol.split('/')[0];
-
-      // 从交易所实时持仓计算实际市值（对齐 nofx L978-992）
-      const exchPositions: any[] = (state as any)._exchangePositions ?? [];
-      let currentPositionValue = 0;
-      for (const pos of exchPositions) {
-        if (!pos.symbol?.includes(baseSymbol)) continue;
-        const posQty = Math.abs(pos.quantity ?? 0);
-        const posPrice = pos.markPrice ?? pos.entryPrice ?? state.lastPrice ?? 0;
-        currentPositionValue += posQty * posPrice;
-      }
-
-      // 挂单名义值（对齐 nofx：所有 pending 都计入，保守估计）
-      const pendingNotional = state.gridLines
-        .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
-        .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
+      const perLevelBudget = totalPositionCap / state.gridLines.length;
+      const occupiedLevels = state.gridLines.filter(l => l.state === 'pending' || l.state === 'filled').length;
 
       capTotal = totalPositionCap;
-      capUsed = currentPositionValue + pendingNotional;
-      if (capUsed + quantity * price > totalPositionCap) {
-        const remaining = Math.max(0, totalPositionCap - currentPositionValue - pendingNotional);
-        quantity = Math.min(quantity, remaining / price);
+      capUsed = occupiedLevels * perLevelBudget;
+      if (capUsed + perLevelBudget > totalPositionCap) {
         capTruncated = true;
-        if (quantity <= 0) {
-          const skipReason = `总仓位已满: 交易所持仓$${currentPositionValue.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)} (investment=${state.totalInvestment}×${leverage}x)`;
+        if (occupiedLevels >= state.gridLines.length) {
+          const skipReason = `总仓位已满: ${occupiedLevels}/${state.gridLines.length}层已占用，上限$${totalPositionCap.toFixed(2)} (investment=${state.totalInvestment}×${leverage}x)`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
