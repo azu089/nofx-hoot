@@ -2986,11 +2986,9 @@ export class GridTradingService {
     // 所有风控计数器必须清零，否则下一轮立即重新触发
     if (state.lastEquity && state.lastEquity > 0) {
       state.startEquity = state.lastEquity;
-      // F1: peakEquity 不重置（对齐 nofx：只涨不跌，从不归零）
-      // 手动恢复不改变历史最高权益，回撤基准保持历史峰值不变
+      state.peakEquity = state.lastEquity; // 重置峰值为当前权益，回撤从0开始
     }
     state.chargedProfit = 0;
-    // maxDrawdown 归零，回撤计数从当前权益重新开始
     state.maxDrawdown = 0;
     // dailyPnl + dailyTotalProfit 全部归零（否则日损保护立即重新触发）
     state.dailyPnl = 0;
@@ -3005,11 +3003,11 @@ export class GridTradingService {
 
     this.logger.log(
       `[网格] 用户手动恢复风控暂停: ${strategyId} | ` +
-      `peakEquity=${state.peakEquity?.toFixed(2) ?? 'N/A'}（保留历史峰值）, maxDrawdown=0, dailyPnl=0 | ` +
+      `peakEquity=${state.peakEquity?.toFixed(2) ?? 'N/A'}（重置为当前权益）, maxDrawdown=0, dailyPnl=0 | ` +
       `totalProfit=${state.totalProfit.toFixed(2)}（保留）`,
     );
 
-    return { success: true, message: '网格已恢复，风控计数器已清零（peakEquity 保持历史峰值）' };
+    return { success: true, message: '网格已恢复，风控计数器已清零，回撤基准重置为当前权益' };
   }
 
   /** 下网格限价单（含仓位限制检查）
