@@ -608,7 +608,8 @@ export class AiExecutionService {
     }
 
     // 15. 如果交易所 SL/TP 未设置成功，降级到 position-monitor 软监控
-    if (this.positionMonitor && (((decision.stopLoss != null && decision.stopLoss > 0) && !slSet) || ((decision.takeProfit != null && decision.takeProfit > 0) && !tpSet))) {
+    // 注意：priceWatchService 已订阅时（WS 实时覆盖），跳过旧的 5s 轮询软监控，避免双重触发
+    if (this.positionMonitor && !this.priceWatchService && (((decision.stopLoss != null && decision.stopLoss > 0) && !slSet) || ((decision.takeProfit != null && decision.takeProfit > 0) && !tpSet))) {
       const slPercent = (decision.stopLoss != null && decision.stopLoss > 0)
         ? Math.abs((decision.stopLoss - filledPrice) / filledPrice) * 100
         : undefined;
