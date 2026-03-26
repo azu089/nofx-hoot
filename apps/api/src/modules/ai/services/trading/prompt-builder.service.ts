@@ -580,7 +580,7 @@ Your task is to make trading decisions based on provided market data.`;
     const btcEthPVR = rc.btcEthMaxPositionValueRatio ?? 5.0;
     const altPVR = rc.altcoinMaxPositionValueRatio ?? 1.0;
     const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
-    const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
+    const minPosSize = rc.minPositionSize ?? null;
 
     // 对齐 nofx: CODE ENFORCED（代码验证，AI 需要知道边界）+ AI GUIDED（推荐，AI 自主决定）
     return `# Hard Constraints (Risk Control)
@@ -590,7 +590,7 @@ Your task is to make trading decisions based on provided market data.`;
 - Position Value Limit (Altcoins): max ${(equity * altPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${altPVR}x)
 - Position Value Limit (BTC/ETH): max ${(equity * btcEthPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${btcEthPVR}x)
 - Max Margin Usage: ≤${(rc.maxMarginUsage ?? 90) > 1 ? Math.round(rc.maxMarginUsage ?? 90) : Math.round((rc.maxMarginUsage ?? 0.9) * 100)}%
-- Min Position Size: >= ${minPosSize} USDT
+${minPosSize != null ? `- Min Position Size: >= ${minPosSize} USDT` : ''}
 
 ## AI GUIDED (Recommended, you should follow):
 - Trading Leverage: Altcoins max ${altLev}x | BTC/ETH max ${btcLev}x

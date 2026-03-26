@@ -163,6 +163,7 @@ export interface MarketSnapshot {
   institutionFlow?: number | null;
   emaTrend?: string | null;         // EMA 趋势：↑多头 / ↓空头 / →震荡
   stablecoinNet?: number | null;    // 稳定币24h净流入（百万美元）
+  fearGreed?: number | null;        // 恐惧贪婪指数 0-100
   dataSources: {
     oi: boolean;
     fr: boolean;
@@ -415,6 +416,7 @@ export class QuickAnalysisService {
           institutionFlow: instFlow,
           emaTrend,
           stablecoinNet: typeof stablecoinNet === 'number' ? stablecoinNet : null,
+          fearGreed: (_fearGreed as any)?.value ?? null,
           dataSources: {
             oi: openInterest != null,
             fr: fundingRate != null,
@@ -1076,6 +1078,7 @@ export class QuickAnalysisService {
             oiChange: oiChangeStr,
             oiQuadrant,
             emaTrend: mcEmaTrend,
+            fearGreed: mcFearGreed ? (mcFearGreed as any).value : null,
             institutionFlow: null as number | null,
             dataSources: {
               oi: mr.openInterest != null, fr: mr.fundingRate != null,

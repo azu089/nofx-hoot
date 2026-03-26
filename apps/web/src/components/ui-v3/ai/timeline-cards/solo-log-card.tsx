@@ -910,23 +910,31 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   <span>{ms.oiChange != null ? `OI ${ms.oiChange}` : ''}</span>
                   <span className="text-right">{ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}</span>
                 </div>
-                {/* 行3: 机构流+数据源标记 — flex justify-between */}
-                <div className="flex items-center justify-between">
+                {/* 行3: F&G + 机构流 + 稳定币流 + 数据源标记 */}
+                <div className="flex items-center gap-x-2 flex-wrap">
+                  {(ms as any).fearGreed != null && (() => {
+                    const fg = (ms as any).fearGreed as number;
+                    const fgColor = fg <= 20 ? 'text-[#10B981]' : fg <= 35 ? 'text-[#86EFAC]' : fg <= 55 ? 'text-[#9090A0]' : fg <= 75 ? 'text-[#FCA5A5]' : 'text-[#F43F5E]';
+                    const fgLabel = fg <= 20 ? '极恐' : fg <= 35 ? '恐惧' : fg <= 55 ? '中性' : fg <= 75 ? '贪婪' : '极贪';
+                    return <span className={`font-semibold ${fgColor}`}>F&amp;G {fg} {fgLabel}</span>;
+                  })()}
                   {ms.institutionFlow != null && ms.institutionFlow !== 0 && (
                     <span className={`${ms.institutionFlow > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
-                      {ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
+                      机构{ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
                     </span>
                   )}
                   {ms.stablecoinNet != null && ms.stablecoinNet !== 0 && (
                     <span className={ms.stablecoinNet > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
-                      {ms.stablecoinNet > 0 ? '+' : ''}${(ms.stablecoinNet / 1e6).toFixed(0)}M
+                      稳定币{ms.stablecoinNet > 0 ? '+' : ''}${(ms.stablecoinNet / 1e6).toFixed(0)}M
                     </span>
                   )}
-                  {ms.dataSources && Object.entries(ms.dataSources).map(([k, v]) => (
-                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
-                    </span>
-                  ))}
+                  <span className="ml-auto flex gap-x-1">
+                    {ms.dataSources && Object.entries(ms.dataSources).map(([k, v]) => (
+                      <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                      </span>
+                    ))}
+                  </span>
                 </div>
               </div>
             );
