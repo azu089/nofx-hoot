@@ -444,6 +444,7 @@ export class QuickAnalysisService {
         indicators: flatIndicators,
         openInterest,
         fundingRate,
+        volume24h,
         // 对齐 nofx: 注入最近 30 根原始 K 线（让 AI 看到价格形态）
         ohlcv: ohlcv.slice(-30).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
         existingPositions,
