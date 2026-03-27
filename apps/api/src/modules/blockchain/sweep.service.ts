@@ -391,13 +391,16 @@ export class SweepService {
       this.hdWalletService.deriveTronAddress(derivationIndex);
     const childHex = HdWalletService.tronBase58ToHex(childBase58);
 
-    // 热钱包 TRON 地址（优先使用独立配置，回退到从 EVM 私钥派生）
+    // Gas 发送方：始终用 WITHDRAW_WALLET_PRIVATE_KEY 对应的 TRON 地址（有私钥可签名）
     const evmWallet = new Wallet(hotWalletKey);
-    const hotTronBase58 = process.env.TRON_HOT_WALLET_ADDRESS
-      || HdWalletService.evmToTronAddress(evmWallet.address);
+    const gasSenderBase58 = HdWalletService.evmToTronAddress(evmWallet.address);
+    const gasSenderHex = '41' + evmWallet.address.slice(2).toLowerCase();
+
+    // USDT 归集目标：优先使用独立配置的地址，回退到 Gas 发送方地址
+    const hotTronBase58 = process.env.TRON_HOT_WALLET_ADDRESS || gasSenderBase58;
     const hotTronHex = process.env.TRON_HOT_WALLET_ADDRESS
       ? HdWalletService.tronBase58ToHex(process.env.TRON_HOT_WALLET_ADDRESS)
-      : '41' + evmWallet.address.slice(2).toLowerCase();
+      : gasSenderHex;
 
     const usdtHex = HdWalletService.tronBase58ToHex(tronConfig.usdtAddress);
 
@@ -423,7 +426,7 @@ export class SweepService {
 
         await this.sendTrx(
           tronConfig,
-          hotTronHex,
+          gasSenderHex,  // Gas 从有私钥的地址发出
           hotWalletKey,
           childHex,
           sendAmount,
