@@ -50,7 +50,10 @@ export function formatMarketDataPrompt(data: {
     lines.push(`24h Change: ${data.change24h > 0 ? '+' : ''}${data.change24h.toFixed(2)}%`);
   }
   if (data.volume24h !== undefined) {
-    lines.push(`24h Volume: ${data.volume24h.toLocaleString()}`);
+    // quoteVolume (USDT 计价) 动态格式化：B/M/K，明确标注 USDT 单位
+    const vol = data.volume24h;
+    const volDisplay = vol >= 1e9 ? `$${(vol / 1e9).toFixed(2)}B` : vol >= 1e6 ? `$${(vol / 1e6).toFixed(0)}M` : `$${vol.toFixed(0)}`;
+    lines.push(`24h Volume: ${volDisplay} USDT`);
   }
 
   // 技术指标
