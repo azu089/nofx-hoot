@@ -893,7 +893,8 @@ export class SafetyService {
             detail: `止盈方向错误: ${input.action} 时 TP 应在当前价格的${input.action === 'open_long' ? '上方' : '下方'}`,
           };
         }
-        // 4d. 风险收益比（对齐 nofx engine.go L2055-2080 唯一公式：估算入场价 = SL + (TP-SL) × 0.2）
+        // 4d. 风险收益比（用实际市价作为入场价，HOOT 使用市价单，入场价 = currentPrice）
+        // nofx 的估算公式 SL+(TP-SL)*0.2 适用于"不知道入场价的限价单"场景，市价单不适用（始终返回4:1）
         const requiredRR = input.strategyRiskConfig?.minRiskRewardRatio
           ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
         let riskRewardRatio = input.takeProfitPercent / input.stopLossPercent; // fallback: 百分比直除
@@ -901,7 +902,10 @@ export class SafetyService {
           const isLong = input.action === 'open_long';
           const sl = input.stopLossPrice;
           const tp = input.takeProfitPrice;
-          const entryPrice = isLong ? sl + (tp - sl) * 0.2 : sl - (sl - tp) * 0.2;
+          // 优先用实际市价；无市价时 fallback 到 nofx 估算公式
+          const entryPrice = (input.currentPrice && input.currentPrice > 0)
+            ? input.currentPrice
+            : isLong ? sl + (tp - sl) * 0.2 : sl - (sl - tp) * 0.2;
           if (entryPrice > 0) {
             const riskPct = isLong
               ? (entryPrice - sl) / entryPrice * 100
@@ -917,7 +921,7 @@ export class SafetyService {
         if (riskRewardRatio < requiredRR) {
           return {
             passed: false,
-            detail: `风险收益比不足: R:R=${riskRewardRatio.toFixed(2)}:1，需 ≥ ${requiredRR}:1 [SL=${input.stopLossPrice ?? 'N/A'} TP=${input.takeProfitPrice ?? 'N/A'}]`,
+            detail: `风险收益比不足: R:R=${riskRewardRatio.toFixed(2)}:1，需 ≥ ${requiredRR}:1 [entry=${input.currentPrice ?? 'N/A'} SL=${input.stopLossPrice ?? 'N/A'} TP=${input.takeProfitPrice ?? 'N/A'}]`,
           };
         }
       }
