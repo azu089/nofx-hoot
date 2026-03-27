@@ -464,15 +464,8 @@ export class QuickAnalysisService {
 
     // === 极速策略增强: 格式化 4 个新数据源 ===
 
-    // Task 1: CryptoPanic 新闻格式化
-    let newsPrompt = '';
-    if (Array.isArray(newsItems) && newsItems.length > 0) {
-      const newsLines = newsItems.slice(0, 5).map((n: any) => {
-        const tag = n.sentiment === 'positive' ? '[+]' : n.sentiment === 'negative' ? '[-]' : '[·]';
-        return `  ${tag} ${n.title} (${n.source})`;
-      });
-      newsPrompt = `=== Recent News Events ===\n${newsLines.join('\n')}`;
-    }
+    // Task 1: CryptoPanic 新闻 — 暂停注入（API 404，备用数据质量低，避免误导 AI 决策）
+    const newsPrompt = '';
 
     // Task 2: Fear & Greed Index — 暂停注入（nofx 无此数据源，guidance 文案存在方向偏差误导风险）
     const fearGreedPrompt = '';
