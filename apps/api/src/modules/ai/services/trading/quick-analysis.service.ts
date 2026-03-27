@@ -811,6 +811,7 @@ export class QuickAnalysisService {
               indicators: flatIndicators,
               openInterest,
               fundingRate,
+              volume24h,
               ohlcv: ohlcv.slice(-30).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
               marketRanking: marketRanking || undefined,
               enhanced: enhancedData || undefined,
