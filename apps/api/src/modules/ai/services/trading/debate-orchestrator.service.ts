@@ -615,9 +615,13 @@ export class DebateOrchestratorService {
               confidence: conf,
               reasoning: symVote?.reasoning || '',
               leverage: symVote?.leverage ?? 5,
-              positionSizePercent: symVote?.positionSizePercent ?? 10,
-              stopLoss: symVote?.stopLoss ?? null,
-              takeProfit: symVote?.takeProfit ?? null,
+              // position_pct (小数 0.0-1.0) → 整数 %, 兼容旧字段 positionSizePercent
+              positionSizePercent: symVote?.position_pct != null
+                ? Math.round(symVote.position_pct * 100)
+                : (symVote?.positionSizePercent ?? 10),
+              // 兼容 snake_case (stop_loss) 和 camelCase (stopLoss) 两种命名
+              stopLoss: symVote?.stop_loss ?? symVote?.stopLoss ?? null,
+              takeProfit: symVote?.take_profit ?? symVote?.takeProfit ?? null,
             },
             weight: conf / 100,
             success: true,

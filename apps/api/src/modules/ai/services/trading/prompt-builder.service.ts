@@ -103,6 +103,8 @@ export interface UserPromptContext {
     pnlPercent: number;
     holdDuration?: string;
     closedAt: string;
+    closeReason?: string;  // stop_loss / peak_drawdown / take_profit / ai_decision / manual
+    peakPnlPct?: number;   // 持仓期间的峰值盈亏%
   }>;
   /** 交易统计：8 字段 */
   tradingStats?: {
@@ -357,7 +359,18 @@ export class PromptBuilderService {
         const prices = t.entryPrice && t.exitPrice
           ? ` | Entry: $${t.entryPrice} → Exit: $${t.exitPrice}`
           : '';
-        lines.push(`  ${emoji} ${t.symbol} ${t.side}${prices} | PnL: $${t.pnl.toFixed(2)} (${t.pnlPercent > 0 ? '+' : ''}${t.pnlPercent.toFixed(1)}%)${hold} | ${t.closedAt}`);
+        // closeReason 映射：让 AI 清楚区分风控自动平仓 vs AI 主动平仓 vs 手动平仓
+        const reasonMap: Record<string, string> = {
+          'stop_loss': '[risk:stop_loss]',
+          'take_profit': '[risk:take_profit]',
+          'peak_drawdown': t.peakPnlPct != null ? `[risk:peak_drawdown peak+${t.peakPnlPct.toFixed(1)}%]` : '[risk:peak_drawdown]',
+          'ai_decision': '[ai_closed]',
+          'manual': '[manual]',
+          'not_found_on_exchange': '[liquidated/conditional]',
+          'grid_stop_condition': '[grid_stop]',
+        };
+        const closeTag = t.closeReason ? ` | ${reasonMap[t.closeReason] ?? `[${t.closeReason}]`}` : '';
+        lines.push(`  ${emoji} ${t.symbol} ${t.side}${prices} | PnL: $${t.pnl.toFixed(2)} (${t.pnlPercent > 0 ? '+' : ''}${t.pnlPercent.toFixed(1)}%)${hold}${closeTag} | ${t.closedAt}`);
       }
     }
 

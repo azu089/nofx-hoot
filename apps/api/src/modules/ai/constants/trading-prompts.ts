@@ -566,8 +566,8 @@ export function buildVotingOutputFormat(locale?: string): string {
 ### CRITICAL: Output your votes in STRICT JSON ARRAY format (one vote per coin):
 <final_vote>
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "positionSizePercent": 20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. R:R = 1:2.3 with SL below support, TP at previous resistance."},
-  {"symbol": "ETH/USDT:USDT", "action": "wait", "confidence": 35, "leverage": 1, "positionSizePercent": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "position_pct": 0.20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. R:R = 1:2.3 with SL below support, TP at previous resistance."},
+  {"symbol": "ETH/USDT:USDT", "action": "wait", "confidence": 35, "leverage": 1, "position_pct": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
 ]
 </final_vote>
 
@@ -584,7 +584,7 @@ export function buildVotingOutputFormat(locale?: string): string {
 - action: One of the 6 actions above
 - confidence: 0-100 (how confident you are)
 - leverage: 1-20 (recommended leverage, default 5)
-- positionSizePercent: 1-20 (integer, % of available balance, default 10)
+- position_pct: 0.01-1.0 (decimal, e.g. 0.20 = 20% of available balance, default 0.10)
 - stop_loss: 0.01-0.10 (stop loss as decimal percentage, e.g. 0.03 = 3%)
 - take_profit: 0.01-0.20 (take profit as decimal percentage, e.g. 0.06 = 6%)
 - reasoning: Detailed analysis (100-300 chars): include key indicators, signal interpretation, support/resistance levels, and risk assessment ${reasoningHint}

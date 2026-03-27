@@ -922,7 +922,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     {/* 拦截原因 */}
                     {adEr?.blocked && <div className="text-[10px] text-[#F59E0B]">{adEr.reason || adEr.blockedBy}</div>}
                     {/* 第一人称决策 */}
-                    {ad.reasoning && <CoinReasoning text={String(ad.reasoning)} />}
+                    {ad.reasoning && <CoinReasoning text={String(ad.reasoning).replace(/^\[置信度不足[^\]]*\]\s*/u, '')} />}
                   </div>
                 );
               })}
