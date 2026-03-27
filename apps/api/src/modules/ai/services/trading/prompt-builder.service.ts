@@ -464,21 +464,14 @@ export class PromptBuilderService {
       lines.push('  NOTE: These conditional orders are already active on the exchange. Do NOT place duplicate SL/TP orders.');
     }
 
-    // [5.3] Last Cycle Decisions（上轮 AI 决策摘要，避免重复分析）
+    // [5.3] Last Cycle Decisions（上轮 AI 决策摘要，仅 action+confidence，不含 reasoning）
+    // nofx 对齐：nofx prompt_builder 不传递历史 reasoning，避免旧数据（F&G/情绪/新闻）污染当前决策
     if (ctx.lastDecisions && ctx.lastDecisions.length > 0) {
       lines.push('');
       lines.push('=== Previous Cycle Decisions ===');
-      lines.push('⚠️ WARNING: Any external indicator values mentioned in previous reasoning (Fear & Greed index, social sentiment %, news headlines, funding rates) are FROM A PAST CYCLE and are STALE. Do NOT treat them as current data. Use ONLY the market data provided in the sections above.');
-      lines.push('Your action/confidence from the previous cycle:');
       for (const d of ctx.lastDecisions) {
         lines.push(`  ${d.symbol} → ${d.action} (confidence=${d.confidence}%) @ ${d.timestamp}`);
-        if (d.reasoning) {
-          // 截取前200字，避免prompt过长
-          const shortReason = d.reasoning.length > 200 ? d.reasoning.slice(0, 200) + '...' : d.reasoning;
-          lines.push(`    Reason: ${shortReason}`);
-        }
       }
-      lines.push('  NOTE: If market conditions have NOT changed significantly, reference your prior action rather than re-deriving the same conclusion. Focus on what CHANGED since last cycle.');
     }
 
     // [5.5] Other Strategies Exposure（同账户其他策略的持仓概览）
