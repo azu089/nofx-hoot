@@ -811,13 +811,20 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       const market = ex.market(symbol);
       const instId = market?.id || symbol;
 
-      // 拉取所有待执行的算法单（条件单、OCO、触发单等）
-      const response = await (ex as any).privateGetTradeOrdersAlgoPending({
-        instId,
-        ordType: 'conditional,oco,trigger,move_order_stop,iceberg,twap',
-      });
+      // OKX v5 API ordType 不支持逗号多值，必须逐类型单独查询
+      // 只查 SL/TP 相关类型（conditional/oco/trigger），跳过 iceberg/twap/move_order_stop
+      const ordTypes = ['conditional', 'oco', 'trigger'];
+      const algoOrders: any[] = [];
+      for (const ordType of ordTypes) {
+        try {
+          const resp = await (ex as any).privateGetTradeOrdersAlgoPending({ instId, ordType });
+          const items: any[] = resp?.data ?? [];
+          algoOrders.push(...items);
+        } catch {
+          // 某类型无数据或不支持，静默跳过
+        }
+      }
 
-      const algoOrders: any[] = response?.data ?? [];
       if (algoOrders.length === 0) return;
 
       this.logger.log(`[OKX] 发现 ${algoOrders.length} 个算法单，逐个取消...`);
