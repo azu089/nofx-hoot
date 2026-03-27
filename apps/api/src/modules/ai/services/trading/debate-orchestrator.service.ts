@@ -335,30 +335,41 @@ export class DebateOrchestratorService {
       const isShort = consensusResult.consensusAction === 'open_short' || consensusResult.consensusAction === 'close_long';
       const isOpening = consensusResult.consensusAction === 'open_long' || consensusResult.consensusAction === 'open_short';
 
-      let finalSL = riskResult.adjustedStopLoss ?? consensusResult.avgStopLoss;
-      let finalTP = riskResult.adjustedTakeProfit ?? consensusResult.avgTakeProfit;
+      // riskResult.adjustedStopLoss = 绝对价格（risk judge 直接设定）
+      // consensusResult.avgStopLoss = 小数百分比（投票格式，如 0.03 = 3%）
+      // 两者语义不同，需分开处理
+      let finalSL: number | null = riskResult.adjustedStopLoss ?? null;
+      let finalTP: number | null = riskResult.adjustedTakeProfit ?? null;
 
       // Q4: 默认 SL=3%, TP=6% 兜底（仅对开仓 action）
       // R3: 同时记录百分比，执行时用最新价格重算
       let finalSLPct: number | undefined;
       let finalTPPct: number | undefined;
       if (isOpening && currentPrice > 0) {
+        // SL: risk judge 的绝对价格优先；否则用投票百分比（或默认 3%）转绝对价格
         if (finalSL == null) {
-          finalSLPct = 0.03;
+          const slPct = (consensusResult.avgStopLoss != null && consensusResult.avgStopLoss > 0)
+            ? consensusResult.avgStopLoss
+            : 0.03;
+          finalSLPct = slPct;
           finalSL = isLong
-            ? Math.round(currentPrice * 0.97 * 100) / 100  // long: 下方 3%
-            : Math.round(currentPrice * 1.03 * 100) / 100; // short: 上方 3%
+            ? Math.round(currentPrice * (1 - slPct) * 100) / 100
+            : Math.round(currentPrice * (1 + slPct) * 100) / 100;
         } else {
-          // 从绝对值反算百分比
-          finalSLPct = currentPrice > 0 ? Math.abs(finalSL - currentPrice) / currentPrice : undefined;
+          // risk judge 给了绝对价格，反算百分比
+          finalSLPct = Math.abs(finalSL - currentPrice) / currentPrice;
         }
+        // TP: 同理
         if (finalTP == null) {
-          finalTPPct = 0.06;
+          const tpPct = (consensusResult.avgTakeProfit != null && consensusResult.avgTakeProfit > 0)
+            ? consensusResult.avgTakeProfit
+            : 0.06;
+          finalTPPct = tpPct;
           finalTP = isLong
-            ? Math.round(currentPrice * 1.06 * 100) / 100  // long: 上方 6%
-            : Math.round(currentPrice * 0.94 * 100) / 100; // short: 下方 6%
+            ? Math.round(currentPrice * (1 + tpPct) * 100) / 100
+            : Math.round(currentPrice * (1 - tpPct) * 100) / 100;
         } else {
-          finalTPPct = currentPrice > 0 ? Math.abs(finalTP - currentPrice) / currentPrice : undefined;
+          finalTPPct = Math.abs(finalTP - currentPrice) / currentPrice;
         }
       }
 

@@ -566,7 +566,7 @@ export function buildVotingOutputFormat(locale?: string): string {
 ### CRITICAL: Output your votes in STRICT JSON ARRAY format (one vote per coin):
 <final_vote>
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "position_pct": 0.20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. R:R = 1:2.3 with SL below support, TP at previous resistance."},
+  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "position_pct": 0.20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. SL=2% below entry, TP=4% above entry, R:R=2.0:1."},
   {"symbol": "ETH/USDT:USDT", "action": "wait", "confidence": 35, "leverage": 1, "position_pct": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
 ]
 </final_vote>
@@ -1522,7 +1522,7 @@ const RISK_MANAGER_TRADING_PROMPT = `You are 🛡️ RISK MANAGER (风控管理�
 Your mandate: Capital protection and risk gate. Evaluate R:R ratio, sizing, and volatility before endorsing any trade.
 
 Gate checklist (ANY failure → recommend wait or reduce):
-1. R:R RATIO: (take_profit - entry) / (entry - stop_loss) must be ≥ 2.0. R:R < 2.0 → output wait.
+1. R:R RATIO: take_profit / stop_loss must be ≥ 2.0 (e.g. TP=0.06 / SL=0.03 = 2.0). R:R < 2.0 → output wait.
 2. ATR VOLATILITY: ATR(3)/ATR(14) > 3.0 → extreme volatility gate, output wait.
 3. SL DIRECTION: Long SL must be BELOW entry. Short SL must be ABOVE entry.
 4. FUNDING COST: |funding rate| > 0.15%/8h → dangerous holding cost, reduce position size.
