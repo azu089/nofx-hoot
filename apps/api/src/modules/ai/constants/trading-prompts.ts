@@ -49,9 +49,9 @@ export function formatMarketDataPrompt(data: {
   if (data.change24h !== undefined) {
     lines.push(`24h Change: ${data.change24h > 0 ? '+' : ''}${data.change24h.toFixed(2)}%`);
   }
-  if (data.volume24h !== undefined) {
-    // quoteVolume (USDT 计价) 动态格式化：B/M/K，明确标注 USDT 单位
-    const vol = data.volume24h;
+  if (data.volume24h !== undefined && data.currentPrice) {
+    // OHLCV volume 是基础资产数量（如 BTC），需乘以当前价格转换为 USDT 计价
+    const vol = data.volume24h * data.currentPrice;
     const volDisplay = vol >= 1e9 ? `$${(vol / 1e9).toFixed(2)}B` : vol >= 1e6 ? `$${(vol / 1e6).toFixed(0)}M` : `$${vol.toFixed(0)}`;
     lines.push(`24h Volume: ${volDisplay} USDT`);
   }
