@@ -122,10 +122,14 @@ export function formatMarketDataPrompt(data: {
         lines.push(`Target Volume Rank: #${r.targetRank.volumeRank}/${r.totalCoins}`);
       }
     }
-    // OI 排名（OI 持仓量排名）
+    // OI 排名（openInterest 已统一为 USD 计价，动态显示 B/M）
     if (r.topOI && r.topOI.length > 0) {
       lines.push('Top OI: ' + r.topOI
-        .map(o => `${o.symbol.split('/')[0]} $${(o.openInterest / 1e9).toFixed(2)}B`)
+        .map(o => {
+          const v = o.openInterest;
+          const display = v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(0)}M` : `$${v.toFixed(0)}`;
+          return `${o.symbol.split('/')[0]} ${display}`;
+        })
         .join(', '));
     }
   }

@@ -427,7 +427,9 @@ export class MarketDataService implements OnModuleInit {
         () => this.exchange.fetchOpenInterest(symbol),
       );
       const result = {
-        openInterest: (oi as any).openInterestAmount || (oi as any).openInterestValue || 0,
+        // openInterest 统一用 USD 计价（openInterestValue），避免与 openInterestAmount（合约张数）混用
+        // openInterestAmount（合约张数）不可直接 /1e9 当美元展示，ETH=2,223,854张 → 显示 $0.00B 的错误根源
+        openInterest: (oi as any).openInterestValue || (oi as any).openInterestAmount || 0,
         openInterestValue: (oi as any).openInterestValue || 0, // R1: USD 计价，用于流动性过滤
         timestamp: Date.now(),
       };
