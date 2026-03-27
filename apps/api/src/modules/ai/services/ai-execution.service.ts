@@ -534,11 +534,13 @@ export class AiExecutionService {
             peakProfitThreshold: riskConfig?.peakProfitThreshold ?? 5.0,
             peakDrawdownThreshold: riskConfig?.peakDrawdownThreshold ?? 40.0,
             absoluteLossThreshold: riskConfig?.absoluteLossThreshold ?? -30.0,
+            // pnlPct = price_change% × leverage（杠杆化账户收益%），SL/TP 必须乘以杠杆对齐单位
+            // 否则：SL=1.5%价格差 vs pnlPct=22.5%账户损失，会提前杠杆倍数触发
             stopLossPercent: decision.stopLoss && decision.stopLoss > 0
-              ? Math.abs((decision.stopLoss - filledPrice) / filledPrice * 100)
+              ? Math.abs((decision.stopLoss - filledPrice) / filledPrice * 100) * actualLeverage
               : undefined,
             takeProfitPercent: decision.takeProfit && decision.takeProfit > 0
-              ? Math.abs((decision.takeProfit - filledPrice) / filledPrice * 100)
+              ? Math.abs((decision.takeProfit - filledPrice) / filledPrice * 100) * actualLeverage
               : undefined,
             trailingStopActivation: riskConfig?.trailingStopActivation,
             trailingStopCallback: riskConfig?.trailingStopCallback,
