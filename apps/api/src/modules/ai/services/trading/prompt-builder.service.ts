@@ -468,7 +468,8 @@ export class PromptBuilderService {
     if (ctx.lastDecisions && ctx.lastDecisions.length > 0) {
       lines.push('');
       lines.push('=== Previous Cycle Decisions ===');
-      lines.push('Your analysis from the previous cycle (avoid repeating identical reasoning):');
+      lines.push('⚠️ WARNING: Any external indicator values mentioned in previous reasoning (Fear & Greed index, social sentiment %, news headlines, funding rates) are FROM A PAST CYCLE and are STALE. Do NOT treat them as current data. Use ONLY the market data provided in the sections above.');
+      lines.push('Your action/confidence from the previous cycle:');
       for (const d of ctx.lastDecisions) {
         lines.push(`  ${d.symbol} → ${d.action} (confidence=${d.confidence}%) @ ${d.timestamp}`);
         if (d.reasoning) {
@@ -477,7 +478,7 @@ export class PromptBuilderService {
           lines.push(`    Reason: ${shortReason}`);
         }
       }
-      lines.push('  NOTE: If market conditions have NOT changed significantly, reference your prior analysis rather than re-deriving the same conclusion. Focus on what CHANGED since last cycle.');
+      lines.push('  NOTE: If market conditions have NOT changed significantly, reference your prior action rather than re-deriving the same conclusion. Focus on what CHANGED since last cycle.');
     }
 
     // [5.5] Other Strategies Exposure（同账户其他策略的持仓概览）
