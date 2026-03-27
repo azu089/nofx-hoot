@@ -94,7 +94,11 @@ export function formatMarketDataPrompt(data: {
   if (data.openInterest !== undefined || data.fundingRate !== undefined) {
     lines.push('', '--- Derivatives Data ---');
     if (data.openInterest !== undefined) {
-      lines.push(`Open Interest: ${data.openInterest.toLocaleString()}`);
+      // openInterest 是合约张数（contracts），schema 定义单位是 USDT
+      // 用合约量 × 当前价格换算 USD，保持与 OI Trend 段（USD 计价）一致
+      const oiUsd = data.openInterest * price;
+      const oiDisplay = oiUsd >= 1e9 ? `$${(oiUsd / 1e9).toFixed(2)}B` : oiUsd >= 1e6 ? `$${(oiUsd / 1e6).toFixed(0)}M` : `$${oiUsd.toFixed(0)}`;
+      lines.push(`Open Interest: ${oiDisplay} (${data.openInterest.toFixed(0)} contracts)`);
     }
     if (data.fundingRate !== undefined) {
       const fr = data.fundingRate;
