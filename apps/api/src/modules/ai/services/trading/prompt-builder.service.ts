@@ -221,15 +221,7 @@ export class PromptBuilderService {
       if (variant === 'aggressive') {
         sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when you have HIGH confidence\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
       } else if (variant === 'conservative') {
-        sections.push([
-          '## Mode: Conservative',
-          '- **Entry**: Only open when multiple signals align across timeframes; pause new entries after consecutive losses',
-          '- **Hold**: The risk system (stop-loss + trailing stop) manages mechanical exits automatically — do NOT pre-empt these with early manual closes',
-          '  - Peak PnL = 0% (never profitable): hold unless the original entry thesis is clearly invalidated by new, material information',
-          '  - Peak PnL > 0% (was profitable): focus on thesis validity; trailing stop handles mechanical exit',
-          '- **RSI** oversold (<30) while holding LONG = selling exhaustion, supportive for longs — not an exit signal',
-          '- **RSI** overbought (>70) while holding SHORT = buying exhaustion, supportive for shorts — not an exit signal',
-        ].join('\n'));
+        sections.push(`## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses`);
       } else if (variant === 'scalping') {
         sections.push(`## Mode: Scalping\n- Focus on short-term momentum, smaller profit targets but require quick action\n- If price doesn't move as expected within two bars, immediately reduce position or stop-loss`);
       }
@@ -610,12 +602,7 @@ ${minPosSize != null ? `- Min Position Size: >= ${minPosSize} USDT` : ''}
 ## AI GUIDED (Recommended, you should follow):
 - Trading Leverage: Altcoins max ${altLev}x | BTC/ETH max ${btcLev}x
 - Risk-Reward Ratio: >= 1:${minRR} (take_profit / stop_loss)
-- Confidence: Must genuinely reflect signal quality. DO NOT inflate confidence to force trades.
-  - Low (single indicator, no resonance): 30-50
-  - Medium (2 indicators aligned, partial confirmation): 50-70
-  - High (multi-timeframe + OI + volume resonance): 70-90
-  - Very High (extreme setup, all signals aligned): 90+
-  The system tracks your historical accuracy. Inflated confidence → poor trades → lower trust score.
+- Min Confidence: ≥${rc.minConfidence ?? 60} to open position
 
 ## Position Sizing Guidance
 Calculate position_size_usd based on your confidence and the Position Value Limits above:
@@ -634,7 +621,7 @@ Calculate position_size_usd based on your confidence and the Position Value Limi
    * 对齐 nofx engine.go L1097-1131
    * 简洁告知频率+可用指标+决策流程，不限制 AI 的分析方法
    */
-  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, _minConf?: number, indicators?: PromptConfig['indicators']): string {
+  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, minConf?: number, indicators?: PromptConfig['indicators']): string {
     const ind = indicators || {};
 
     // 对齐 nofx writeAvailableIndicators: 从 config 动态生成指标列表
@@ -661,14 +648,13 @@ If you find yourself trading every period → standards too low; if closing posi
 Only open positions when multiple signals resonate. You have:
 ${indicatorLines.join('\n')}
 
-Feel free to use any effective analysis method. Only open positions when your genuine confidence is HIGH (multiple signals resonate). Avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.
+Feel free to use any effective analysis method, but **confidence ≥ ${minConf ?? 60}** required to open positions; avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.
 
 # 📋 Decision Process
 
 1. Check positions → Should we take profit/stop-loss
-2. Scan candidate coins + indicators → Are there strong signals resonating
-3. Compare with recent similar trades on same coin → Avoid repeating mistakes
-4. Write chain of thought first, then output structured JSON`;
+2. Scan candidate coins + multi-timeframe → Are there strong signals
+3. Write chain of thought first, then output structured JSON`;
   }
 
   /**
@@ -686,18 +672,17 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Write your analysis as a trader thinking out loud. Do NOT just list indicator values — show your reasoning process: what the data means, how signals connect to each other, and why that leads to your decision. Reference your recent trade history on the same coin when relevant — what worked, what failed, and how it informs this trade. End each coin's analysis with "I decide to..." and briefly explain your confidence level.
-
-Separate each coin's analysis with a blank line. No markdown formatting.
+Your chain of thought analysis...
+- Briefly analyze your thinking process
 </reasoning>
 
 <decision>
-Step 2: JSON decision array — each coin's "reasoning" field must show your analysis logic (not just list numbers), ending with "I decide to... because..." (or "我决定...因为...")
+Step 2: JSON decision array
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. K-line shows 3 consecutive bearish bars with resistance at $96500. OI +2.1% price falling = bearish quadrant. RSI(14)=38 not yet oversold, room to fall. Entry ~96500, SL 97000 (risk $500), TP 91000 (reward $5500), R:R=11:1. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}."},
-  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. BTC trending bearish but ETH showing relative strength. Entry thesis (momentum breakout) not yet invalidated. I decide to hold current position, waiting for BTC direction to clarify."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA bearish, OI rising with price falling = bearish quad. RSI(14)=42. SL 97000 risk $300, TP 91000 reward $5500 R:R=18:1."},
+  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "Thesis invalidated: EMA crossover reversed, OI dropping."}
 ]
 \`\`\`
 </decision>
@@ -705,9 +690,9 @@ Step 2: JSON decision array — each coin's "reasoning" field must show your ana
 ## Field Description
 
 - \`action\`: open_long | open_short | close_long | close_short | hold | wait
-- \`confidence\`: 0-100 (must genuinely reflect signal quality, NOT inflated to force trades)
+- \`confidence\`: 0-100 (opening recommended ≥ ${rc.minConfidence ?? 60})
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- \`reasoning\`: **MUST be ≥3 sentences** with analysis logic + "I decide to..." statement
+- \`reasoning\`: Your analysis summary for this coin (used for logging and review)
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use \`27.76\` not \`3000 * 0.01\`)`;
   }
 }
