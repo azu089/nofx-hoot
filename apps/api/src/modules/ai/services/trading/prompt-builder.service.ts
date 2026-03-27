@@ -672,10 +672,9 @@ Feel free to use any effective analysis method. Only open positions when your ge
 # 📋 Decision Process
 
 1. Check positions → Should we take profit/stop-loss
-2. Read market environment: BTC direction + Fear & Greed + K-line patterns
-3. Scan candidate coins + indicators → Are there strong signals resonating
-4. Compare with recent similar trades on same coin → Avoid repeating mistakes
-5. Write chain of thought first, then output structured JSON`;
+2. Scan candidate coins + indicators → Are there strong signals resonating
+3. Compare with recent similar trades on same coin → Avoid repeating mistakes
+4. Write chain of thought first, then output structured JSON`;
   }
 
   /**
