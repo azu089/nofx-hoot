@@ -702,8 +702,8 @@ Step 2: JSON decision array — each coin's "reasoning" field must show your ana
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. K-line shows 3 consecutive bearish bars with resistance at $96500. OI +2.1% price falling = bearish quadrant. Fear & Greed at 28 (Fear) supports downside. RSI(14)=38 not yet oversold. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}, SL $97000 TP $91000, R:R=3.2:1."},
-  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. BTC trending bearish but ETH showing relative strength. F&G=28 Fear but no oversold signal yet. I decide to hold current position, waiting for BTC direction to clarify."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. K-line shows 3 consecutive bearish bars with resistance at $96500. OI +2.1% price falling = bearish quadrant. RSI(14)=38 not yet oversold, room to fall. Entry ~96500, SL 97000 (risk $500), TP 91000 (reward $5500), R:R=11:1. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}."},
+  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. BTC trending bearish but ETH showing relative strength. Entry thesis (momentum breakout) not yet invalidated. I decide to hold current position, waiting for BTC direction to clarify."}
 ]
 \`\`\`
 </decision>

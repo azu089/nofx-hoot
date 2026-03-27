@@ -285,7 +285,7 @@ export class QuickAnalysisService {
       }
     } else {
       // 1. 获取市场数据 + 市场排名 + 增强数据 + NofxOS 排名（并行，对齐 nofx 数据获取日志规范）
-      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking, _newsItems, _fearGreed, _lunarCrushData, __btcRef] = await Promise.all([
+      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking, __btcRef] = await Promise.all([
         this.fetchMarketData(config),
         this.marketData.fetchMarketRanking(config.symbol).catch((e: any) => {
           this.logger.warn(`[数据获取] marketRanking 失败: ${e.message}`);
@@ -308,15 +308,6 @@ export class QuickAnalysisService {
           this.logger.warn(`[数据获取] 涨跌幅排名 失败: ${e.message}`);
           return null;
         }),
-        // Task 1: CryptoPanic 新闻
-        this.marketData.fetchCryptoNews(config.symbol, 5).catch((e: any) => {
-          this.logger.warn(`[数据获取] 新闻 失败: ${e.message}`);
-          return [] as any[];
-        }),
-        // Task 2: Fear & Greed Index
-        this.marketData.fetchFearGreedIndex().catch(() => null),
-        // Task 4: LunarCrush 社媒情绪
-        this.lunarCrush.fetchSocialMetrics(config.symbol).catch(() => null),
         // BTC 参考数据（对齐 nofx BuildUserPrompt: BTC price + 1h/4h change + RSI）
         (async () => {
           try {
@@ -340,10 +331,6 @@ export class QuickAnalysisService {
       ]);
       const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
       safetyVolume24h = volume24h;
-      // 赋值到外层作用域（供后续格式化使用）
-      newsItems = _newsItems as any[] || [];
-      fearGreed = _fearGreed as any;
-      lunarCrushData = _lunarCrushData;
       _btcRef = __btcRef as any;
 
       // 数据获取摘要日志（对齐 nofx buildTradingContext 日志规范）
@@ -425,7 +412,7 @@ export class QuickAnalysisService {
           institutionFlow: instFlow,
           emaTrend,
           stablecoinNet: typeof stablecoinNet === 'number' ? stablecoinNet : null,
-          fearGreed: (_fearGreed as any)?.value ?? null,
+          fearGreed: null,
           dataSources: {
             oi: openInterest != null,
             fr: fundingRate != null,
@@ -875,10 +862,8 @@ export class QuickAnalysisService {
       const combinedMarketData = validResults.map(r => r.prompt).join('\n\n');
 
       // 2.5 极速策略增强: 获取全局增强数据（BTC/News/F&G/Social，多币种共享）
-      const [mcNews, mcFearGreed, mcSocial, mcBtcRef] = await Promise.all([
-        this.marketData.fetchCryptoNews(configs[0].symbol, 5).catch(() => [] as any[]),
-        this.marketData.fetchFearGreedIndex().catch(() => null),
-        this.lunarCrush.fetchSocialMetrics(configs[0].symbol).catch(() => null),
+      // 新闻/F&G/社媒 fetch 已移除（nofx 无这些数据源，guidance 存在方向偏差，数据源不稳定）
+      const [mcBtcRef] = await Promise.all([
         // BTC 参考（对齐 nofx: 候选币包含 BTC 时跳过，避免 MARKET DATA 重复）
         (async () => {
           try {
@@ -900,7 +885,6 @@ export class QuickAnalysisService {
           } catch { return null; }
         })(),
       ]);
-      // 新闻/F&G/社媒 — 暂停注入（nofx 无这些数据源，guidance 存在方向偏差，数据源不稳定）
       const mcNewsPrompt = '';
       const mcFearGreedPrompt = '';
       const mcSocialPrompt = '';
@@ -1058,7 +1042,7 @@ export class QuickAnalysisService {
             oiChange: oiChangeStr,
             oiQuadrant,
             emaTrend: mcEmaTrend,
-            fearGreed: mcFearGreed ? (mcFearGreed as any).value : null,
+            fearGreed: null,
             institutionFlow: null as number | null,
             dataSources: {
               oi: mr.openInterest != null, fr: mr.fundingRate != null,
@@ -1076,16 +1060,9 @@ export class QuickAnalysisService {
             aiThinking: response.thinking,
             marketSnapshot: mcSnapshot,
             globalSnapshot: {
-              newsItems: Array.isArray(mcNews) ? (mcNews as any[]).slice(0, 5).map((n: any) => ({
-                title: n.title || '',
-                source: n.source || '',
-                sentiment: n.sentiment || 'neutral',
-              })) : undefined,
-              fearGreed: mcFearGreed ? {
-                value: (mcFearGreed as any).value,
-                classification: (mcFearGreed as any).classification || '',
-              } : null,
-              socialSentiment: mcSocial ? this.lunarCrush.formatForAI(mcSocial) : null,
+              newsItems: undefined,
+              fearGreed: null,
+              socialSentiment: null,
               btcRef: mcBtc as any,
             },
           });
@@ -1118,16 +1095,9 @@ export class QuickAnalysisService {
             analysis: mcUnifiedAnalysis,
             aiThinking: response.thinking,
             globalSnapshot: {
-              newsItems: Array.isArray(mcNews) ? (mcNews as any[]).slice(0, 5).map((n: any) => ({
-                title: n.title || '',
-                source: n.source || '',
-                sentiment: n.sentiment || 'neutral',
-              })) : undefined,
-              fearGreed: mcFearGreed ? {
-                value: (mcFearGreed as any).value,
-                classification: (mcFearGreed as any).classification || '',
-              } : null,
-              socialSentiment: mcSocial ? this.lunarCrush.formatForAI(mcSocial) : null,
+              newsItems: undefined,
+              fearGreed: null,
+              socialSentiment: null,
               btcRef: mcBtc as any,
             },
           });
