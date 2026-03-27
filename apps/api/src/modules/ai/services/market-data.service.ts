@@ -722,10 +722,19 @@ export class MarketDataService implements OnModuleInit {
 
       // 并行获取 top-10 成交量币种的 OI（failsafe：单个失败返回 0，不影响主流程）
       const top10Symbols = byVolume.slice(0, 10).map(t => t.symbol);
+      // 建立 symbol→price 映射，用于 OI 合约张数 → USD 换算
+      const priceMap = new Map<string, number>(byVolume.map(t => [t.symbol, t.last]));
       const oiResults = await Promise.all(
         top10Symbols.map(sym =>
           this.fetchOpenInterest(sym)
-            .then(r => ({ symbol: sym, openInterest: r?.openInterest ?? 0 }))
+            .then(r => {
+              const contractAmt = r?.openInterest ?? 0;
+              // Binance fetchOpenInterest 只返回合约张数（openInterestAmount），openInterestValue 通常为 null
+              // 用合约量 × ticker 价格换算 USD OI
+              const price = priceMap.get(sym) ?? 0;
+              const usdValue = contractAmt > 0 && price > 0 ? contractAmt * price : 0;
+              return { symbol: sym, openInterest: usdValue };
+            })
             .catch(() => ({ symbol: sym, openInterest: 0 }))
         )
       );
