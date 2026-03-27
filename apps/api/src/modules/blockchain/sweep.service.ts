@@ -391,10 +391,13 @@ export class SweepService {
       this.hdWalletService.deriveTronAddress(derivationIndex);
     const childHex = HdWalletService.tronBase58ToHex(childBase58);
 
-    // 热钱包 TRON 地址
+    // 热钱包 TRON 地址（优先使用独立配置，回退到从 EVM 私钥派生）
     const evmWallet = new Wallet(hotWalletKey);
-    const hotTronBase58 = HdWalletService.evmToTronAddress(evmWallet.address);
-    const hotTronHex = '41' + evmWallet.address.slice(2).toLowerCase();
+    const hotTronBase58 = process.env.TRON_HOT_WALLET_ADDRESS
+      || HdWalletService.evmToTronAddress(evmWallet.address);
+    const hotTronHex = process.env.TRON_HOT_WALLET_ADDRESS
+      ? HdWalletService.tronBase58ToHex(process.env.TRON_HOT_WALLET_ADDRESS)
+      : '41' + evmWallet.address.slice(2).toLowerCase();
 
     const usdtHex = HdWalletService.tronBase58ToHex(tronConfig.usdtAddress);
 
