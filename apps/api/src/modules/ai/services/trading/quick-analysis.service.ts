@@ -487,24 +487,11 @@ export class QuickAnalysisService {
       newsPrompt = `=== Recent News Events ===\n${newsLines.join('\n')}`;
     }
 
-    // Task 2: Fear & Greed Index 格式化（增强：加入分级决策引导）
-    let fearGreedPrompt = '';
-    if (fearGreed) {
-      const fgVal = fearGreed.value;
-      let fgGuidance = '';
-      if (fgVal <= 20) fgGuidance = 'Extreme Fear: historically a strong contrarian BUY signal. Consider accumulating quality setups.';
-      else if (fgVal <= 35) fgGuidance = 'Fear: market is cautious. Look for oversold bounces with volume confirmation.';
-      else if (fgVal <= 55) fgGuidance = 'Neutral: no sentiment edge. Rely purely on technical signals.';
-      else if (fgVal <= 75) fgGuidance = 'Greed: market is optimistic. Tighten stops and be cautious with new longs.';
-      else fgGuidance = 'Extreme Greed: historically a WARNING signal. Avoid chasing, consider reducing exposure.';
-      fearGreedPrompt = `=== Market Sentiment (MUST reference in reasoning) ===\nFear & Greed Index: ${fgVal}/100 (${fearGreed.classification})\n${fgGuidance}`;
-    }
+    // Task 2: Fear & Greed Index — 暂停注入（nofx 无此数据源，guidance 文案存在方向偏差误导风险）
+    const fearGreedPrompt = '';
 
-    // Task 4: LunarCrush 社媒情绪格式化
-    let socialSentimentPrompt = '';
-    if (lunarCrushData) {
-      socialSentimentPrompt = this.lunarCrush.formatForAI(lunarCrushData);
-    }
+    // Task 4: LunarCrush 社媒情绪 — 暂停注入（数据源不稳定，降级后质量低）
+    const socialSentimentPrompt = '';
 
     // Task 3: BM25 记忆检索 — 当前市场场景匹配历史教训
     let memoryPrompt = '';
@@ -913,29 +900,10 @@ export class QuickAnalysisService {
           } catch { return null; }
         })(),
       ]);
-      let mcNewsPrompt = '';
-      if (Array.isArray(mcNews) && mcNews.length > 0) {
-        const newsLines = mcNews.slice(0, 5).map((n: any) => {
-          const tag = n.sentiment === 'positive' ? '[+]' : n.sentiment === 'negative' ? '[-]' : '[·]';
-          return `  ${tag} ${n.title} (${n.source})`;
-        });
-        mcNewsPrompt = `=== Recent News Events ===\n${newsLines.join('\n')}`;
-      }
-      let mcFearGreedPrompt = '';
-      if (mcFearGreed) {
-        const fgVal = (mcFearGreed as any).value;
-        let fgGuidance = '';
-        if (fgVal <= 20) fgGuidance = 'Extreme Fear: historically a strong contrarian BUY signal. Consider accumulating quality setups.';
-        else if (fgVal <= 35) fgGuidance = 'Fear: market is cautious. Look for oversold bounces with volume confirmation.';
-        else if (fgVal <= 55) fgGuidance = 'Neutral: no sentiment edge. Rely purely on technical signals.';
-        else if (fgVal <= 75) fgGuidance = 'Greed: market is optimistic. Tighten stops and be cautious with new longs.';
-        else fgGuidance = 'Extreme Greed: historically a WARNING signal. Avoid chasing, consider reducing exposure.';
-        mcFearGreedPrompt = `=== Market Sentiment (MUST reference in reasoning) ===\nFear & Greed Index: ${fgVal}/100 (${(mcFearGreed as any).classification})\n${fgGuidance}`;
-      }
-      let mcSocialPrompt = '';
-      if (mcSocial) {
-        mcSocialPrompt = this.lunarCrush.formatForAI(mcSocial);
-      }
+      // 新闻/F&G/社媒 — 暂停注入（nofx 无这些数据源，guidance 存在方向偏差，数据源不稳定）
+      const mcNewsPrompt = '';
+      const mcFearGreedPrompt = '';
+      const mcSocialPrompt = '';
 
       // 3. 使用第一个 config 的共享参数构建 prompt
       const refConfig = configs[0];
