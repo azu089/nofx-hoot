@@ -163,6 +163,17 @@ export class DrawdownMonitorProcessor extends WorkerHost {
             this.logger.warn(
               `[AI监控] ${pos.symbol} ${pos.side} 交易所已无持仓（SL/TP 条件单触发），标记 closed`,
             );
+            // 清理残留 SL/TP 条件单（SL 触发后 TP 不会自动失效）
+            const closingAdapter = adapterCache.get(cacheKey);
+            if (closingAdapter && typeof (closingAdapter as any).cancelStopOrders === 'function') {
+              try {
+                await (closingAdapter as any).cancelStopOrders(pos.symbol);
+                this.logger.log(`[AI监控] ${pos.symbol} 残留条件单已清理`);
+              } catch (e: any) {
+                this.logger.debug(`[AI监控] ${pos.symbol} 清理条件单失败(非致命): ${e.message}`);
+              }
+            }
+
             // 通知所有监控层清理该持仓（防止 WS/REST 继续监控已关闭持仓）
             this.priceWatchService?.unsubscribe(pos.id);
             this.positionMonitor?.untrackPosition(pos.id);
