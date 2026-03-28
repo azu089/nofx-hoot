@@ -185,11 +185,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, totpCode?: string) => {
     const response = await adminApi.post<{
-      accessToken: string;
+      token: string;
+      accessToken?: string;
       admin: AdminUser;
     }>('/admin/auth/login', { username, password, totpCode });
 
-    const { accessToken, admin: adminData } = response.data;
+    const { admin: adminData } = response.data;
+    const accessToken = (response.data.token || response.data.accessToken) as string;
 
     setToken(accessToken);
     setAdmin(adminData);
