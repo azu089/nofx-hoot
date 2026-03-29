@@ -13,6 +13,7 @@ import {
   MessageSquare,
   X,
   Loader2,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -99,6 +100,11 @@ function UserDetailDialog({
     null | 'reset-password' | 'unbind-tg' | 'unbind-wallet'
   >(null);
 
+  // 昵称编辑
+  const [editNickname, setEditNickname] = useState('');
+  const [nicknameOpen, setNicknameOpen] = useState(false);
+  const [nicknameLoading, setNicknameLoading] = useState(false);
+
   const handleBalanceSubmit = async () => {
     if (!balanceAmount || isNaN(parseFloat(balanceAmount))) {
       toast.error('请输入有效金额');
@@ -121,6 +127,22 @@ function UserDetailDialog({
       toast.error(err instanceof Error ? err.message : '操作失败');
     } finally {
       setBalanceLoading(false);
+    }
+  };
+
+  const handleNicknameSave = async () => {
+    if (!editNickname.trim()) { toast.error('昵称不能为空'); return; }
+    setNicknameLoading(true);
+    try {
+      await adminApi.put(`/admin/users/${userId}`, { nickname: editNickname.trim() });
+      toast.success('昵称修改成功');
+      setNicknameOpen(false);
+      refetch();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '修改失败');
+    } finally {
+      setNicknameLoading(false);
     }
   };
 
@@ -194,6 +216,13 @@ function UserDetailDialog({
               {/* 操作按钮 */}
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
+                  onClick={() => { setEditNickname(user.nickname || ''); setNicknameOpen(true); }}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-sm rounded-lg border border-green-500/20 transition-colors col-span-2"
+                >
+                  <Pencil size={14} />
+                  编辑昵称
+                </button>
+                <button
                   onClick={() => setBalanceOpen(true)}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-sm rounded-lg border border-cyan-500/20 transition-colors"
                 >
@@ -228,6 +257,45 @@ function UserDetailDialog({
           )}
         </div>
       </div>
+
+      {/* 昵称编辑弹窗 */}
+      {nicknameOpen && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4"
+          onClick={() => setNicknameOpen(false)}
+        >
+          <div
+            className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-6 w-full max-w-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-base font-semibold text-white mb-4">编辑昵称</h4>
+            <input
+              type="text"
+              value={editNickname}
+              onChange={(e) => setEditNickname(e.target.value)}
+              placeholder="请输入新昵称"
+              maxLength={32}
+              className="w-full px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm text-white placeholder-[#9090A0] focus:outline-none focus:border-cyan-500/50 mb-4"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setNicknameOpen(false)}
+                className="flex-1 px-4 py-2 text-sm text-[#9090A0] bg-[#1E1E2E] hover:bg-[#2A2A3A] rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleNicknameSave}
+                disabled={nicknameLoading}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm text-green-400 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {nicknameLoading && <Loader2 size={14} className="animate-spin" />}
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 余额调整弹窗 */}
       {balanceOpen && (

@@ -436,7 +436,7 @@ export class AdminAuthService {
    * 加密 TOTP 密钥
    */
   private encryptTotpSecret(secret: string): string {
-    const key = Buffer.from(SECURITY_CONFIG.ENCRYPTION_KEY).slice(0, 32);
+    const key = crypto.createHash('sha256').update(SECURITY_CONFIG.ENCRYPTION_KEY).digest();
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     let encrypted = cipher.update(secret, 'utf8', 'hex');
@@ -449,7 +449,7 @@ export class AdminAuthService {
    */
   private decryptTotpSecret(encryptedSecret: string): string {
     const [ivHex, encrypted] = encryptedSecret.split(':');
-    const key = Buffer.from(SECURITY_CONFIG.ENCRYPTION_KEY).slice(0, 32);
+    const key = crypto.createHash('sha256').update(SECURITY_CONFIG.ENCRYPTION_KEY).digest();
     const iv = Buffer.from(ivHex, 'hex');
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');

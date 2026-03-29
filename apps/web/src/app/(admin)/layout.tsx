@@ -107,7 +107,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between">
             <div className="text-xs text-[#9090A0] truncate">
               {admin?.username || 'admin'}
-              <span className="ml-1 text-cyan-400/60">({admin?.role})</span>
+              <span className="ml-1 text-cyan-400/60">
+                ({admin?.role === 'super_admin' ? '超级管理员' : admin?.role === 'admin' ? '管理员' : admin?.role})
+              </span>
             </div>
             <button
               onClick={logout}
