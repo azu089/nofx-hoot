@@ -95,6 +95,7 @@ function UserDetailDialog({
   const [balanceType, setBalanceType] = useState<'usdt' | 'hoot'>('usdt');
   const [balanceAction, setBalanceAction] = useState<'adjust' | 'deduct'>('adjust');
   const [balanceAmount, setBalanceAmount] = useState('');
+  const [balanceReason, setBalanceReason] = useState('');
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   // 各确认对话框
@@ -112,17 +113,22 @@ function UserDetailDialog({
       toast.error('请输入有效金额');
       return;
     }
+    if (!balanceReason.trim()) {
+      toast.error('请填写调整原因');
+      return;
+    }
     setBalanceLoading(true);
     try {
       await adminApi.post(`/admin/users/${userId}/adjust-balance`, {
         asset: balanceType,
         action: balanceAction === 'adjust' ? 'add' : 'subtract',
         amount: balanceAmount,
-        reason: '管理员手动调整',
+        reason: balanceReason.trim(),
       });
       toast.success('余额调整成功');
       setBalanceOpen(false);
       setBalanceAmount('');
+      setBalanceReason('');
       refetch();
       onChanged();
     } catch (err) {
@@ -342,6 +348,17 @@ function UserDetailDialog({
                   placeholder="0.00"
                   min="0"
                   step="0.01"
+                  className="w-full px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm text-white placeholder-[#9090A0] focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#9090A0] mb-1">调整原因 <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  value={balanceReason}
+                  onChange={(e) => setBalanceReason(e.target.value)}
+                  placeholder="请填写调整原因（必填）"
+                  maxLength={100}
                   className="w-full px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm text-white placeholder-[#9090A0] focus:outline-none focus:border-cyan-500/50"
                 />
               </div>

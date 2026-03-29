@@ -77,6 +77,12 @@ export class AdminStatsService {
           : '0';
 
     return {
+      // flat 字段（供用户统计 Tab 的卡片直接使用）
+      totalUsers,
+      activeToday: activeUsers7d.length,
+      newToday: todayRegistrations,
+      newThisWeek: await this.prisma.user.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
+      // 原有嵌套数据（供详细统计使用）
       overview: {
         totalUsers,
         todayRegistrations,
@@ -106,10 +112,10 @@ export class AdminStatsService {
 
     return stats.map((s) => ({
       date: s.date.toISOString().split('T')[0],
+      count: s.newUsers,
       totalUsers: s.totalUsers,
       newUsers: s.newUsers,
       activeUsers: s.activeUsers,
-      tradingUsers: s.tradingUsers,
     }));
   }
 

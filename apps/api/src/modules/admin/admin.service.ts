@@ -742,32 +742,68 @@ export class AdminService {
 
   // 获取仪表盘统计
   async getDashboardStats() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
     const [
       totalUsers,
+      activeUsers,
+      totalStrategies,
       activeStrategies,
       pendingWithdraws,
-      todaySignals,
-      totalPositions,
+      openPositions,
+      revenueResult,
+      todayRevenueResult,
     ] = await Promise.all([
       this.prisma.user.count(),
+      // 7日内有持仓活动的用户数（代理活跃用户）
+      this.prisma.position.groupBy({
+        by: ['userId'],
+        where: { updatedAt: { gte: weekStart } },
+      }).then(r => r.length),
+      this.prisma.strategy.count(),
       this.prisma.strategy.count({ where: { isActive: true } }),
       this.prisma.withdrawRequest.count({ where: { status: 'pending' } }),
-      this.prisma.signal.count({
-        where: {
-          createdAt: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          },
-        },
-      }),
       this.prisma.position.count({ where: { status: 'open' } }),
+      // 总收入：已完成的 membership/subscription 类型交易（USDT）
+      this.prisma.transaction.aggregate({
+        where: {
+          type: { in: ['membership', 'subscription', 'fee'] },
+          asset: 'USDT',
+          status: 'completed',
+          amount: { lt: 0 },
+        },
+        _sum: { amount: true },
+      }),
+      // 今日收入
+      this.prisma.transaction.aggregate({
+        where: {
+          type: { in: ['membership', 'subscription', 'fee'] },
+          asset: 'USDT',
+          status: 'completed',
+          amount: { lt: 0 },
+          createdAt: { gte: todayStart },
+        },
+        _sum: { amount: true },
+      }),
     ]);
+
+    const totalRevenue = Math.abs(Number(revenueResult._sum.amount || 0)).toFixed(2);
+    const todayRevenue = Math.abs(Number(todayRevenueResult._sum.amount || 0)).toFixed(2);
 
     return {
       totalUsers,
+      activeUsers,
+      totalStrategies,
       activeStrategies,
+      totalRevenue,
+      todayRevenue,
+      totalPositions: openPositions,
+      openPositions,
       pendingWithdraws,
-      todaySignals,
-      totalPositions,
+      riskEvents: 0,
     };
   }
 
