@@ -107,9 +107,10 @@ function UserDetailDialog({
     setBalanceLoading(true);
     try {
       await adminApi.post(`/admin/users/${userId}/adjust-balance`, {
-        type: balanceType,
-        action: balanceAction,
+        asset: balanceType,
+        action: balanceAction === 'adjust' ? 'add' : 'subtract',
         amount: balanceAmount,
+        reason: '管理员手动调整',
       });
       toast.success('余额调整成功');
       setBalanceOpen(false);
