@@ -102,6 +102,8 @@ export class AdminService {
           usdtBalance: true,
           hootBalance: true,
           pointBalance: true,
+          membershipStatus: true,
+          membershipExpireAt: true,
           createdAt: true,
           updatedAt: true,
           _count: {

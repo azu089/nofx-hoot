@@ -44,6 +44,8 @@ interface UserItem {
   usdtBalance: string;
   hootBalance: string;
   pointBalance: string;
+  membershipStatus?: string;
+  membershipExpireAt?: string | null;
   telegramUsername?: string;
   walletAddress?: string;
   createdAt: string;
@@ -492,6 +494,31 @@ function UserListTab() {
       title: '状态',
       align: 'center',
       render: (row) => <AdminStatusBadge status={row.status} />,
+    },
+    {
+      key: 'membershipStatus',
+      title: '会员',
+      align: 'center',
+      render: (row) => {
+        const s = row.membershipStatus;
+        if (!s || s === 'none') return <span className="text-[#4A4A5A] text-xs">—</span>;
+        const expireAt = row.membershipExpireAt ? new Date(row.membershipExpireAt) : null;
+        const expired = expireAt && expireAt < new Date();
+        const labelMap: Record<string, string> = { pro: 'Pro', basic: 'Basic', vip: 'VIP', enterprise: '企业版' };
+        const label = labelMap[s] || s;
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${expired ? 'bg-red-500/10 text-red-400' : 'bg-cyan-500/10 text-cyan-400'}`}>
+              {label}{expired ? '(过期)' : ''}
+            </span>
+            {expireAt && (
+              <span className="text-[10px] text-[#9090A0]">
+                {expireAt.toLocaleDateString('zh-CN')}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'createdAt',
