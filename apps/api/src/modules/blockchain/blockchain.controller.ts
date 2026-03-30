@@ -213,6 +213,15 @@ export class BlockchainController {
   }
 
   /**
+   * 查询归集地址 USDT 余额（管理员）
+   */
+  @UseGuards(AdminGuard)
+  @Get('sweep/config/balance')
+  async getSweepConfigBalance() {
+    return this.sweepService.getSweepConfigBalance();
+  }
+
+  /**
    * 更新归集地址配置（管理员）
    */
   @UseGuards(AdminGuard)

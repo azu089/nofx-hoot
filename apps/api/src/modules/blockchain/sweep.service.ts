@@ -708,6 +708,70 @@ export class SweepService {
     }
   }
 
+  /**
+   * 查询归集地址余额（USDT）
+   * EVM 链：查 BSC USDT 合约余额
+   * TRON：查 TRC20 USDT 余额
+   */
+  async getSweepConfigBalance(): Promise<{
+    evm: { address: string; usdt: string } | null;
+    tron: { address: string; usdt: string } | null;
+  }> {
+    const cfg = await this.getSweepConfig();
+    const result: { evm: { address: string; usdt: string } | null; tron: { address: string; usdt: string } | null } = {
+      evm: null,
+      tron: null,
+    };
+
+    // EVM (BSC) 余额
+    if (cfg.evmAddress) {
+      try {
+        const provider = this.blockchainService.getProviderByChain('BSC');
+        const tokenConfigs = this.blockchainService.getTokenConfigsByChain('BSC');
+        const usdtToken = tokenConfigs.find(t => t.symbol === 'USDT');
+        if (provider && usdtToken) {
+          const contract = new Contract(usdtToken.address, ERC20_ABI, provider);
+          const balance = await contract.balanceOf(cfg.evmAddress);
+          result.evm = {
+            address: cfg.evmAddress,
+            usdt: ethers.formatUnits(balance, usdtToken.decimals),
+          };
+        }
+      } catch {
+        result.evm = { address: cfg.evmAddress, usdt: '0' };
+      }
+    }
+
+    // TRON 余额
+    if (cfg.tronAddress) {
+      try {
+        const tronConfig = this.blockchainService.getTronConfig();
+        if (tronConfig) {
+          const usdtHex = HdWalletService.tronBase58ToHex(tronConfig.usdtAddress);
+          const addressHex = HdWalletService.tronBase58ToHex(cfg.tronAddress);
+          const address20 = '0x' + addressHex.slice(2);
+          const parameter = ethers.AbiCoder.defaultAbiCoder()
+            .encode(['address'], [address20])
+            .slice(2);
+          const res = await this.tronApiCall(tronConfig, '/wallet/triggerconstantcontract', {
+            owner_address: addressHex,
+            contract_address: usdtHex,
+            function_selector: 'balanceOf(address)',
+            parameter,
+            visible: false,
+          });
+          const raw = res?.constant_result?.[0];
+          const usdt = raw ? (parseInt(raw, 16) / 1_000_000).toFixed(6) : '0';
+          result.tron = { address: cfg.tronAddress, usdt };
+        }
+      } catch {
+        result.tron = { address: cfg.tronAddress, usdt: '0' };
+      }
+    }
+
+    return result;
+  }
+
   // ==================== 工具方法 ====================
 
   /**
