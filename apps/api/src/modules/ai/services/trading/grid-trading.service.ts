@@ -4622,7 +4622,7 @@ export class GridTradingService {
     const display: any[] = state.gridLines.map((l, i) => ({
       lv: i + 1,
       p: +l.price.toFixed(4),
-      s: currentPrice > 0 ? (l.price <= currentPrice ? 'buy' : 'sell') : l.side,
+      s: '—', // empty 层不标注方向，filled/pending 覆盖时会设置真实 side
       st: 'empty',
     }));
 
