@@ -3054,18 +3054,8 @@ export class GridTradingService {
       return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
     }
 
-    // ★ neutral 模式下强制层 side：AI 的 buy/sell 方向必须和层 side 一致
-    // 防止 AI 在高价层(sell)下买单导致立即成交、在低价层(buy)下卖单
-    if (level && level.state === 'empty' && (state.currentDirection ?? 'neutral') === 'neutral') {
-      const currentPrice = state.lastPrice ?? 0;
-      const correctSide = level.price <= currentPrice ? 'buy' : 'sell';
-      if (side !== correctSide) {
-        this.logger.warn(
-          `[网格] 方向纠正: L${levelIndex + 1} 价格${level.price.toFixed(2)} ${side === 'buy' ? '>' : '<'} 市价${currentPrice.toFixed(2)}，AI要${side}→纠正为${correctSide}`,
-        );
-        side = correctSide;
-      }
-    }
+    // 对齐 nofx placeGridLimitOrder：不纠正 AI 的 buy/sell 方向，AI 全权决策
+    // 之前的强制纠正（低于市价=buy，高于市价=sell）在有持仓时会扭曲 AI 的策略意图
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
