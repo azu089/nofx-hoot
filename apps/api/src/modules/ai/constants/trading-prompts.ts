@@ -870,6 +870,7 @@ function gridSystemPromptZh(
 - **高波动市场** (谨慎): ATR异常放大, 价格剧烈波动
 
 ### 层状态说明
+每轮从交易所拉取实时数据，按优先级映射到网格层：先映射持仓→再映射委托单→未映射到层的委托单为孤儿单（应撤销）。
 - **filled 层**：有持仓。交易所只返回整体持仓均价（avgEntry），多个 filled 层显示相同入场价。side=buy→多头，side=sell→空头
 - **pending 层**：已挂单，等待成交
 - **empty 层**：无持仓无挂单，可下新单
@@ -944,6 +945,7 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - **High Volatility** (caution): ATR spike, erratic price movement
 
 ### Level State Description
+Each cycle fetches real-time data from exchange and maps to grid levels by priority: positions first → then open orders → unmapped orders are orphans (should be cancelled).
 - **filled levels**: Have positions. Exchange returns overall avgEntry, so multiple filled levels show same entry price. side=buy → long, side=sell → short
 - **pending levels**: Orders on exchange, awaiting fill
 - **empty levels**: No position, no order — can place new orders
