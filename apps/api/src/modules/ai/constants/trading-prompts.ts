@@ -884,6 +884,8 @@ function gridSystemPromptZh(
 - adjust_grid: 调整网格边界
 - hold: 保持当前状态不操作
 
+注意：place_buy/sell_limit 只能在 empty 层操作，不能在持仓层或挂单层下新单。
+
 ## 输出格式
 输出JSON，包含分析和决策数组:
 
@@ -941,6 +943,8 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - resume_grid: Resume grid trading (in ranging market)
 - adjust_grid: Adjust grid boundaries
 - hold: Maintain current state
+
+Note: place_buy/sell_limit can ONLY be used on empty levels, not on filled or pending levels.
 
 ## Output Format
 Output JSON with analysis and actions array:
