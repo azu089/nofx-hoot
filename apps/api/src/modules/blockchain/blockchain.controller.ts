@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   UseGuards,
   Param,
@@ -200,5 +201,24 @@ export class BlockchainController {
   @Post('sweep/execute')
   async sweepAll() {
     return this.sweepService.sweepAll();
+  }
+
+  /**
+   * 获取归集地址配置（管理员）
+   */
+  @UseGuards(AdminGuard)
+  @Get('sweep/config')
+  async getSweepConfig() {
+    return this.sweepService.getSweepConfig();
+  }
+
+  /**
+   * 更新归集地址配置（管理员）
+   */
+  @UseGuards(AdminGuard)
+  @Put('sweep/config')
+  async updateSweepConfig(@Body() body: { evmAddress?: string; tronAddress?: string }) {
+    await this.sweepService.updateSweepConfig(body.evmAddress, body.tronAddress);
+    return this.sweepService.getSweepConfig();
   }
 }

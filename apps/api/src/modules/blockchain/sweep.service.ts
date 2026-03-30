@@ -261,7 +261,8 @@ export class SweepService {
   ): Promise<SweepResult> {
     const provider = this.blockchainService.getProviderByChain(chain);
     const hotWalletKey = process.env.WITHDRAW_WALLET_PRIVATE_KEY;
-    const hotWalletAddress = process.env.HOT_WALLET_ADDRESS;
+    const sweepCfg = await this.getSweepConfig();
+    const hotWalletAddress = sweepCfg.evmAddress;
 
     if (!provider || !hotWalletKey || !hotWalletAddress) {
       return {
@@ -397,9 +398,10 @@ export class SweepService {
     const gasSenderHex = '41' + evmWallet.address.slice(2).toLowerCase();
 
     // USDT 归集目标：优先使用独立配置的地址，回退到 Gas 发送方地址
-    const hotTronBase58 = process.env.TRON_HOT_WALLET_ADDRESS || gasSenderBase58;
-    const hotTronHex = process.env.TRON_HOT_WALLET_ADDRESS
-      ? HdWalletService.tronBase58ToHex(process.env.TRON_HOT_WALLET_ADDRESS)
+    const sweepCfg = await this.getSweepConfig();
+    const hotTronBase58 = sweepCfg.tronAddress || gasSenderBase58;
+    const hotTronHex = sweepCfg.tronAddress
+      ? HdWalletService.tronBase58ToHex(sweepCfg.tronAddress)
       : gasSenderHex;
 
     const usdtHex = HdWalletService.tronBase58ToHex(tronConfig.usdtAddress);
@@ -671,6 +673,39 @@ export class SweepService {
     );
 
     return { results, totalSwept, totalFailed };
+  }
+
+  // ==================== 归集地址配置 ====================
+
+  /** 读取归集地址配置（PlatformConfig 优先，env 回退） */
+  async getSweepConfig(): Promise<{ evmAddress: string; tronAddress: string }> {
+    const [evmCfg, tronCfg] = await Promise.all([
+      this.prisma.platformConfig.findUnique({ where: { key: 'sweep_target_evm' } }),
+      this.prisma.platformConfig.findUnique({ where: { key: 'sweep_target_tron' } }),
+    ]);
+
+    return {
+      evmAddress: (evmCfg?.value as string) || process.env.HOT_WALLET_ADDRESS || '',
+      tronAddress: (tronCfg?.value as string) || process.env.TRON_HOT_WALLET_ADDRESS || '',
+    };
+  }
+
+  /** 更新归集地址配置（写入 PlatformConfig） */
+  async updateSweepConfig(evmAddress?: string, tronAddress?: string): Promise<void> {
+    if (evmAddress !== undefined) {
+      await this.prisma.platformConfig.upsert({
+        where: { key: 'sweep_target_evm' },
+        create: { key: 'sweep_target_evm', value: evmAddress },
+        update: { value: evmAddress },
+      });
+    }
+    if (tronAddress !== undefined) {
+      await this.prisma.platformConfig.upsert({
+        where: { key: 'sweep_target_tron' },
+        create: { key: 'sweep_target_tron', value: tronAddress },
+        update: { value: tronAddress },
+      });
+    }
   }
 
   // ==================== 工具方法 ====================

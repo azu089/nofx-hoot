@@ -14,6 +14,8 @@ import {
   Radio,
   Layers,
   Zap,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import {
   AdminPageHeader,
@@ -66,6 +68,11 @@ interface SweepResult {
   results: { address: string; chain: string; status: string; txHash?: string; error?: string }[];
 }
 
+interface SweepConfig {
+  evmAddress: string;
+  tronAddress: string;
+}
+
 // ─── 链颜色 ──────────────────────────────────────────────────────
 
 const CHAIN_COLORS: Record<string, { text: string; bg: string; dot: string }> = {
@@ -97,6 +104,13 @@ export default function AdminBlockchainPage() {
   const [sweepExecuting, setSweepExecuting] = useState(false);
   const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
 
+  // 归集地址配置
+  const [sweepConfig, setSweepConfig] = useState<SweepConfig>({ evmAddress: '', tronAddress: '' });
+  const [sweepConfigLoading, setSweepConfigLoading] = useState(true);
+  const [sweepConfigEditing, setSweepConfigEditing] = useState(false);
+  const [sweepConfigForm, setSweepConfigForm] = useState<SweepConfig>({ evmAddress: '', tronAddress: '' });
+  const [sweepConfigSaving, setSweepConfigSaving] = useState(false);
+
   // ── 加载监听状态 ──────────────────────────────────────────────
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -124,6 +138,20 @@ export default function AdminBlockchainPage() {
     }
   }, []);
 
+  // ── 加载归集地址配置 ──────────────────────────────────────────
+  const fetchSweepConfig = useCallback(async () => {
+    setSweepConfigLoading(true);
+    try {
+      const res = await adminApi.get<SweepConfig>('/blockchain/sweep/config');
+      setSweepConfig(res.data);
+      setSweepConfigForm(res.data);
+    } catch {
+      // 静默失败
+    } finally {
+      setSweepConfigLoading(false);
+    }
+  }, []);
+
   const refreshAll = useCallback(() => {
     fetchStatus();
     fetchBalances();
@@ -132,9 +160,26 @@ export default function AdminBlockchainPage() {
   // 初始加载 + 30s 自动刷新
   useEffect(() => {
     refreshAll();
+    fetchSweepConfig();
     const id = setInterval(refreshAll, 30_000);
     return () => clearInterval(id);
-  }, [refreshAll]);
+  }, [refreshAll, fetchSweepConfig]);
+
+  // ── 保存归集地址配置 ──────────────────────────────────────────
+  const handleSaveSweepConfig = async () => {
+    setSweepConfigSaving(true);
+    try {
+      const res = await adminApi.put<SweepConfig>('/blockchain/sweep/config', sweepConfigForm);
+      setSweepConfig(res.data);
+      setSweepConfigForm(res.data);
+      setSweepConfigEditing(false);
+      toast.success('归集地址已更新');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setSweepConfigSaving(false);
+    }
+  };
 
   // ── 启动/停止监听 ─────────────────────────────────────────────
   const handleToggle = async () => {
@@ -362,8 +407,8 @@ export default function AdminBlockchainPage() {
                         <span className={`text-xs font-bold ${style.text}`}>{b.chain}</span>
                       </td>
                       <td className="py-3 px-3">
-                        <span className="text-xs text-[#9090A0] font-mono">
-                          {b.address.slice(0, 8)}...{b.address.slice(-6)}
+                        <span className="text-xs text-[#9090A0] font-mono break-all">
+                          {b.address}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
@@ -389,6 +434,95 @@ export default function AdminBlockchainPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* 归集地址配置 */}
+      <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Wallet size={14} className="text-cyan-400" />归集地址配置
+            <span className="text-xs text-[#9090A0] font-normal">资金归集的目标钱包地址</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            {sweepConfigEditing ? (
+              <>
+                <button
+                  onClick={() => { setSweepConfigEditing(false); setSweepConfigForm(sweepConfig); }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-[#2A2A3A] text-[#9090A0] hover:text-white transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveSweepConfig}
+                  disabled={sweepConfigSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-cyan-500/20 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
+                >
+                  {sweepConfigSaving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}
+                  保存
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setSweepConfigEditing(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[#2A2A3A] text-[#9090A0] hover:text-white transition-colors"
+              >
+                <Edit3 size={12} />编辑
+              </button>
+            )}
+          </div>
+        </div>
+
+        {sweepConfigLoading ? (
+          <AdminSkeleton mode="table" count={2} />
+        ) : (
+          <div className="space-y-4">
+            {/* EVM 归集地址 */}
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs font-bold text-yellow-400">BSC / ETH</span>
+                <span className="text-xs text-[#9090A0]">EVM 链归集地址（0x...）</span>
+              </div>
+              {sweepConfigEditing ? (
+                <input
+                  type="text"
+                  value={sweepConfigForm.evmAddress}
+                  onChange={(e) => setSweepConfigForm(f => ({ ...f, evmAddress: e.target.value }))}
+                  placeholder="0x..."
+                  className="w-full px-3 py-2 bg-[#0A0A0F] border border-[#2A2A3A] rounded-lg text-xs font-mono text-white placeholder-[#4A4A5A] focus:outline-none focus:border-cyan-500/50"
+                />
+              ) : (
+                <p className="text-xs font-mono text-white break-all bg-[#0A0A0F] px-3 py-2 rounded-lg border border-[#1E1E2E]">
+                  {sweepConfig.evmAddress || <span className="text-[#9090A0] italic">未配置</span>}
+                </p>
+              )}
+            </div>
+
+            {/* TRON 归集地址 */}
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs font-bold text-red-400">TRON</span>
+                <span className="text-xs text-[#9090A0]">TRON 链归集地址（T...）</span>
+              </div>
+              {sweepConfigEditing ? (
+                <input
+                  type="text"
+                  value={sweepConfigForm.tronAddress}
+                  onChange={(e) => setSweepConfigForm(f => ({ ...f, tronAddress: e.target.value }))}
+                  placeholder="T..."
+                  className="w-full px-3 py-2 bg-[#0A0A0F] border border-[#2A2A3A] rounded-lg text-xs font-mono text-white placeholder-[#4A4A5A] focus:outline-none focus:border-cyan-500/50"
+                />
+              ) : (
+                <p className="text-xs font-mono text-white break-all bg-[#0A0A0F] px-3 py-2 rounded-lg border border-[#1E1E2E]">
+                  {sweepConfig.tronAddress || <span className="text-[#9090A0] italic">未配置</span>}
+                </p>
+              )}
+            </div>
+
+            <p className="text-xs text-[#4A4A5A]">
+              * 派生地址由 HD 钱包助记词自动生成，不可在此修改。归集地址为用户资金最终汇入的目标钱包。
+            </p>
           </div>
         )}
       </div>
@@ -442,9 +576,9 @@ export default function AdminBlockchainPage() {
                       <td className="py-2 px-3">
                         <span className={`text-xs font-bold ${style.text}`}>{a.chain}</span>
                       </td>
-                      <td className="py-2 px-3">
-                        <span className="text-xs text-[#9090A0] font-mono">
-                          {a.address.slice(0, 10)}...{a.address.slice(-6)}
+                      <td className="py-2 px-3 max-w-xs">
+                        <span className="text-xs text-[#9090A0] font-mono break-all">
+                          {a.address}
                         </span>
                       </td>
                       <td className="py-2 px-3 text-right">
@@ -482,7 +616,7 @@ export default function AdminBlockchainPage() {
                     ) : (
                       <XCircle size={11} className="text-red-400 shrink-0" />
                     )}
-                    <span className="text-[#9090A0] font-mono">{r.address.slice(0, 10)}...{r.address.slice(-6)}</span>
+                    <span className="text-[#9090A0] font-mono break-all">{r.address}</span>
                     <span className={`ml-auto ${r.status === 'success' ? 'text-green-400' : 'text-red-400'}`}>
                       {r.status === 'success' ? (r.txHash ? `TX: ${r.txHash.slice(0, 10)}...` : '成功') : r.error}
                     </span>
