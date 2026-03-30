@@ -58,11 +58,18 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   // 未登录显示登录页（login 页面在 admin-login 路由下）
   if (!isAuthenticated && !pathname.includes('admin-login')) {
-    // 客户端重定向
+    // 客户端重定向，期间显示 loading 避免黑屏
     if (typeof window !== 'undefined') {
       window.location.href = '/admin-login';
     }
-    return null;
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#9090A0]">正在跳转登录...</p>
+        </div>
+      </div>
+    );
   }
 
   // 登录页不使用管理布局
