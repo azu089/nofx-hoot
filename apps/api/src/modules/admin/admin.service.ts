@@ -102,6 +102,7 @@ export class AdminService {
           usdtBalance: true,
           hootBalance: true,
           pointBalance: true,
+          status: true,
           membershipStatus: true,
           membershipExpireAt: true,
           createdAt: true,
@@ -647,14 +648,51 @@ export class AdminService {
 
     return {
       items: requests.map((r) => ({
-        ...r,
+        id: r.id,
+        userId: r.userId,
+        userEmail: r.user?.email ?? null,
+        userNickname: r.user?.nickname ?? null,
         amount: r.amount.toString(),
+        asset: r.asset,
+        currency: r.asset,   // 前端兼容字段
+        chain: r.chain,
+        network: r.chain,    // 前端兼容字段
+        address: r.address,
+        status: r.status,
+        txHash: r.txHash ?? null,
+        remark: r.remark ?? null,
+        reason: r.remark ?? null,  // 前端兼容字段
+        processedAt: r.processedAt,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
       })),
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  // 获取提现统计
+  async getWithdrawStats() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [pendingCount, approvedCount, rejectedCount, todayApproved] = await Promise.all([
+      this.prisma.withdrawRequest.count({ where: { status: 'pending' } }),
+      this.prisma.withdrawRequest.count({ where: { status: 'approved' } }),
+      this.prisma.withdrawRequest.count({ where: { status: 'rejected' } }),
+      this.prisma.withdrawRequest.findMany({
+        where: { status: 'approved', processedAt: { gte: today } },
+        select: { amount: true },
+      }),
+    ]);
+
+    const todayTotal = todayApproved
+      .reduce((sum, r) => sum + parseFloat(r.amount.toString()), 0)
+      .toFixed(2);
+
+    return { pendingCount, approvedCount, rejectedCount, todayTotal };
   }
 
   // 审核提现
@@ -672,7 +710,7 @@ export class AdminService {
       throw new BadRequestException('该申请已处理');
     }
 
-    if (dto.action === 'approved') {
+    if (dto.action === 'approved' || dto.action === 'approve') {
       // 审核通过
       await this.prisma.withdrawRequest.update({
         where: { id: requestId },
@@ -1687,7 +1725,7 @@ export class AdminService {
       this.prisma.adminOperationLog.count({ where }),
     ]);
 
-    return { items, total };
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**
@@ -1740,7 +1778,7 @@ export class AdminService {
       this.prisma.refreshToken.count({ where }),
     ]);
 
-    return { items, total };
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**
@@ -1787,6 +1825,64 @@ export class AdminService {
       this.prisma.auditLog.count({ where }),
     ]);
 
-    return { items, total };
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  // ==================== 风控规则管理（存储于 PlatformConfig key=risk_rules）====================
+
+  private async loadRiskRules(): Promise<Record<string, unknown>[]> {
+    const cfg = await this.prisma.platformConfig.findUnique({
+      where: { key: 'risk_rules' },
+    });
+    if (!cfg) return [];
+    try {
+      const parsed = JSON.parse(cfg.value as string);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async saveRiskRules(rules: Record<string, unknown>[]): Promise<void> {
+    await this.prisma.platformConfig.upsert({
+      where: { key: 'risk_rules' },
+      create: { key: 'risk_rules', value: JSON.stringify(rules) },
+      update: { value: JSON.stringify(rules) },
+    });
+  }
+
+  async getRiskRules() {
+    return this.loadRiskRules();
+  }
+
+  async createRiskRule(body: Record<string, unknown>) {
+    const rules = await this.loadRiskRules();
+    const newRule = {
+      ...body,
+      id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      isEnabled: body.isEnabled ?? true,
+      createdAt: new Date().toISOString(),
+    };
+    rules.push(newRule);
+    await this.saveRiskRules(rules);
+    return newRule;
+  }
+
+  async updateRiskRule(id: string, body: Record<string, unknown>) {
+    const rules = await this.loadRiskRules();
+    const idx = rules.findIndex((r) => r['id'] === id);
+    if (idx === -1) throw new NotFoundException('风控规则不存在');
+    rules[idx] = { ...rules[idx], ...body, id };
+    await this.saveRiskRules(rules);
+    return rules[idx];
+  }
+
+  async deleteRiskRule(id: string) {
+    const rules = await this.loadRiskRules();
+    const idx = rules.findIndex((r) => r['id'] === id);
+    if (idx === -1) throw new NotFoundException('风控规则不存在');
+    rules.splice(idx, 1);
+    await this.saveRiskRules(rules);
+    return { deleted: true };
   }
 }

@@ -23,6 +23,7 @@ import {
   HardDrive,
   Database,
   Clock,
+  KeyRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -45,19 +46,24 @@ import { adminApi, useAdminAuth } from '@/lib/admin-auth';
 
 interface ExchangeStats {
   total: number;
-  recommended: number;
-  online: number;
-  activeUsers: number;
+  active: number;
+  supported: number;
+  comingSoon: number;
 }
 
 interface ExchangeItem {
   id: string;
+  slug: string;
   name: string;
-  type: string;
-  status: string;
-  weight: number;
-  config?: Record<string, unknown>;
+  logo: string;
+  description: string;
+  features: string[];
+  affiliateUrl: string;
+  status: string;   // supported | coming_soon
+  sortOrder: number;
+  isActive: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 interface ConfigHistoryItem {
@@ -75,6 +81,8 @@ interface AdminItem {
   email: string;
   role: string;
   totpEnabled: boolean;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
   createdAt: string;
 }
 
@@ -105,25 +113,39 @@ function ExchangeFormDialog({
 }) {
   const isEdit = !!exchange;
   const [form, setForm] = useState({
+    slug: exchange?.slug ?? '',
     name: exchange?.name ?? '',
-    type: exchange?.type ?? 'cex',
-    status: exchange?.status ?? 'online',
-    weight: String(exchange?.weight ?? 100),
-    config: exchange?.config ? JSON.stringify(exchange.config, null, 2) : '{}',
+    logo: exchange?.logo ?? '',
+    description: exchange?.description ?? '',
+    features: exchange?.features?.join(', ') ?? '',
+    affiliateUrl: exchange?.affiliateUrl ?? '',
+    status: exchange?.status ?? 'supported',
+    sortOrder: String(exchange?.sortOrder ?? 100),
+    isActive: exchange?.isActive !== undefined ? exchange.isActive : true,
   });
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (!form.slug.trim()) { toast.error('请填写 Slug'); return; }
     if (!form.name.trim()) { toast.error('请填写交易所名称'); return; }
-    let parsedConfig: Record<string, unknown> = {};
-    try { parsedConfig = JSON.parse(form.config); } catch { toast.error('Config JSON 格式有误'); return; }
-
+    const features = form.features.split(',').map((f) => f.trim()).filter(Boolean);
+    const payload = {
+      slug: form.slug.trim(),
+      name: form.name.trim(),
+      logo: form.logo.trim(),
+      description: form.description.trim(),
+      features,
+      affiliateUrl: form.affiliateUrl.trim(),
+      status: form.status,
+      sortOrder: Number(form.sortOrder) || 0,
+      isActive: form.isActive,
+    };
     setSubmitting(true);
     try {
       if (isEdit) {
-        await adminApi.put(`/admin/exchanges/${exchange!.id}`, { ...form, weight: Number(form.weight), config: parsedConfig });
+        await adminApi.put(`/admin/exchanges/${exchange!.id}`, payload);
       } else {
-        await adminApi.post('/admin/exchanges', { ...form, weight: Number(form.weight), config: parsedConfig });
+        await adminApi.post('/admin/exchanges', payload);
       }
       toast.success(isEdit ? '更新成功' : '创建成功');
       onSaved();
@@ -139,40 +161,59 @@ function ExchangeFormDialog({
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E1E2E]">
           <h3 className="text-base font-semibold text-white">{isEdit ? '编辑交易所' : '新增交易所'}</h3>
           <button onClick={onClose} className="text-[#9090A0] hover:text-white transition-colors"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-[#9090A0] mb-1">Slug <span className="text-red-400">*</span></label>
+              <input className={inputCls} value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="binance" />
+              <p className="text-xs text-[#9090A0] mt-1">唯一标识，如: binance, okx</p>
+            </div>
+            <div>
+              <label className="block text-xs text-[#9090A0] mb-1">名称 <span className="text-red-400">*</span></label>
+              <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="币安" />
+            </div>
+          </div>
           <div>
-            <label className="block text-xs text-[#9090A0] mb-1">名称</label>
-            <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Binance" />
+            <label className="block text-xs text-[#9090A0] mb-1">Logo 地址</label>
+            <input className={inputCls} value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://example.com/logo.png" />
+          </div>
+          <div>
+            <label className="block text-xs text-[#9090A0] mb-1">描述</label>
+            <textarea className={`${inputCls} resize-none h-16`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="全球最大的加密货币交易所..." />
+          </div>
+          <div>
+            <label className="block text-xs text-[#9090A0] mb-1">特性标签</label>
+            <input className={inputCls} value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} placeholder="现货, 合约, 杠杆（逗号分隔）" />
+          </div>
+          <div>
+            <label className="block text-xs text-[#9090A0] mb-1">推广链接</label>
+            <input className={inputCls} value={form.affiliateUrl} onChange={(e) => setForm({ ...form, affiliateUrl: e.target.value })} placeholder="https://www.binance.com/register?ref=..." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[#9090A0] mb-1">类型</label>
-              <select className={inputCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                <option value="cex">CEX</option>
-                <option value="dex">DEX</option>
+              <label className="block text-xs text-[#9090A0] mb-1">状态</label>
+              <select className={inputCls} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                <option value="supported">已上线</option>
+                <option value="coming_soon">即将上线</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-[#9090A0] mb-1">状态</label>
-              <select className={inputCls} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="online">已上线</option>
-                <option value="offline">已下线</option>
-                <option value="maintenance">维护中</option>
-              </select>
+              <label className="block text-xs text-[#9090A0] mb-1">排序（越小越靠前）</label>
+              <input type="number" className={inputCls} value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} min="0" />
             </div>
           </div>
-          <div>
-            <label className="block text-xs text-[#9090A0] mb-1">推荐权重</label>
-            <input type="number" className={inputCls} value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} min="0" max="1000" />
-          </div>
-          <div>
-            <label className="block text-xs text-[#9090A0] mb-1">配置 (JSON)</label>
-            <textarea className={`${inputCls} font-mono h-24 resize-none`} value={form.config} onChange={(e) => setForm({ ...form, config: e.target.value })} />
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-[#9090A0]">是否启用</label>
+            <button type="button" onClick={() => setForm({ ...form, isActive: !form.isActive })}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.isActive ? 'bg-cyan-500' : 'bg-[#1E1E2E]'}`}>
+              <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${form.isActive ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-xs text-white">{form.isActive ? '显示' : '隐藏'}</span>
           </div>
         </div>
         <div className="flex gap-2 px-6 pb-6">
@@ -198,13 +239,41 @@ function ExchangeTab() {
   const [deleteTarget, setDeleteTarget] = useState<ExchangeItem | null>(null);
   const [detailTarget, setDetailTarget] = useState<ExchangeItem | null>(null);
 
+  const statusMap = {
+    supported: { label: '已上线', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
+    coming_soon: { label: '即将上线', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' },
+  };
+
   const columns: AdminColumn<ExchangeItem>[] = [
-    { key: 'name', title: '名称', render: (row) => <span className="font-medium text-white">{row.name}</span> },
-    { key: 'type', title: '类型', align: 'center', render: (row) => <span className="uppercase text-xs text-[#9090A0]">{row.type}</span> },
-    { key: 'status', title: '状态', align: 'center', render: (row) => <AdminStatusBadge status={row.status} map={{ online: { label: '已上线', color: 'bg-green-500/10 text-green-400 border-green-500/20' }, offline: { label: '已下线', color: 'bg-[#9090A0]/10 text-[#9090A0] border-[#9090A0]/20' }, maintenance: { label: '维护中', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' } }} /> },
-    { key: 'weight', title: '推荐权重', align: 'right', render: (row) => <span className="font-mono text-cyan-400">{row.weight}</span> },
     {
-      key: 'actions', title: '操作', align: 'center', width: '130px',
+      key: 'name', title: '名称 / Slug',
+      render: (row) => (
+        <div>
+          <div className="font-medium text-white">{row.name}</div>
+          <div className="text-xs text-[#9090A0] font-mono">{row.slug}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'description', title: '描述',
+      render: (row) => <span className="text-sm text-[#9090A0] line-clamp-1">{row.description || '—'}</span>,
+    },
+    {
+      key: 'features', title: '特性',
+      render: (row) => (
+        <div className="flex flex-wrap gap-1">
+          {(row.features ?? []).slice(0, 3).map((f) => (
+            <span key={f} className="px-1.5 py-0.5 bg-[#1E1E2E] text-[#9090A0] text-xs rounded-full">{f}</span>
+          ))}
+          {(row.features ?? []).length > 3 && <span className="text-xs text-[#9090A0]">+{row.features.length - 3}</span>}
+        </div>
+      ),
+    },
+    { key: 'status', title: '状态', align: 'center', width: '110px', render: (row) => <AdminStatusBadge status={row.status} map={statusMap} /> },
+    { key: 'sortOrder', title: '排序', align: 'center', width: '60px', render: (row) => <span className="text-sm text-[#9090A0]">{row.sortOrder}</span> },
+    { key: 'isActive', title: '启用', align: 'center', width: '60px', render: (row) => <span className={`text-xs ${row.isActive ? 'text-green-400' : 'text-[#9090A0]'}`}>{row.isActive ? '是' : '否'}</span> },
+    {
+      key: 'actions', title: '操作', align: 'center', width: '100px',
       render: (row) => (
         <div className="flex items-center justify-center gap-1">
           <button onClick={() => setDetailTarget(row)} className="p-1.5 rounded hover:bg-[#1E1E2E] text-[#9090A0] hover:text-white transition-colors" title="详情"><Eye size={14} /></button>
@@ -223,9 +292,9 @@ function ExchangeTab() {
       {statsLoading ? <AdminSkeleton mode="grid" count={4} cols={4} /> : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <AdminStatCard title="总交易所" value={stats?.total ?? '-'} icon={Globe} color="bg-blue-500/20 text-blue-400" />
-          <AdminStatCard title="推荐交易所" value={stats?.recommended ?? '-'} icon={Star} color="bg-yellow-500/20 text-yellow-400" />
-          <AdminStatCard title="已上线" value={stats?.online ?? '-'} icon={Globe} color="bg-green-500/20 text-green-400" />
-          <AdminStatCard title="活跃用户" value={stats?.activeUsers ?? '-'} icon={Globe} color="bg-cyan-500/20 text-cyan-400" />
+          <AdminStatCard title="已启用" value={stats?.active ?? '-'} icon={Star} color="bg-green-500/20 text-green-400" />
+          <AdminStatCard title="已上线" value={stats?.supported ?? '-'} icon={Globe} color="bg-cyan-500/20 text-cyan-400" />
+          <AdminStatCard title="即将上线" value={stats?.comingSoon ?? '-'} icon={Clock} color="bg-yellow-500/20 text-yellow-400" />
         </div>
       )}
 
@@ -258,10 +327,28 @@ function ExchangeTab() {
               <button onClick={() => setDetailTarget(null)} className="text-[#9090A0] hover:text-white transition-colors"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-2 text-sm">
-              {[['ID', detailTarget.id], ['名称', detailTarget.name], ['类型', detailTarget.type.toUpperCase()], ['状态', detailTarget.status], ['推荐权重', String(detailTarget.weight)], ['创建时间', new Date(detailTarget.createdAt).toLocaleString('zh-CN')]].map(([k, v]) => (
+              {[
+                ['Slug', detailTarget.slug],
+                ['名称', detailTarget.name],
+                ['状态', detailTarget.status === 'supported' ? '已上线' : '即将上线'],
+                ['排序', String(detailTarget.sortOrder)],
+                ['启用', detailTarget.isActive ? '是' : '否'],
+                ['推广链接', detailTarget.affiliateUrl || '—'],
+                ['创建时间', new Date(detailTarget.createdAt).toLocaleString('zh-CN')],
+              ].map(([k, v]) => (
                 <div key={k} className="flex gap-3"><span className="w-20 text-[#9090A0] shrink-0">{k}</span><span className="text-white break-all">{v}</span></div>
               ))}
-              <div className="flex gap-3 pt-1"><span className="w-20 text-[#9090A0] shrink-0">配置</span><pre className="text-white text-xs bg-[#0A0A0F] rounded p-2 overflow-auto flex-1">{JSON.stringify(detailTarget.config, null, 2)}</pre></div>
+              {detailTarget.description && (
+                <div className="flex gap-3"><span className="w-20 text-[#9090A0] shrink-0">描述</span><span className="text-white">{detailTarget.description}</span></div>
+              )}
+              {(detailTarget.features ?? []).length > 0 && (
+                <div className="flex gap-3 flex-wrap pt-1">
+                  <span className="w-20 text-[#9090A0] shrink-0">特性</span>
+                  <div className="flex flex-wrap gap-1">
+                    {detailTarget.features.map((f) => <span key={f} className="px-1.5 py-0.5 bg-[#1E1E2E] text-[#9090A0] text-xs rounded-full">{f}</span>)}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -404,6 +491,9 @@ function AdminsTab() {
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'admin' });
   const [showPwd, setShowPwd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resetTarget, setResetTarget] = useState<AdminItem | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const handleCreate = async () => {
     if (!form.username || !form.email || !form.password) { toast.error('请填写所有必填字段'); return; }
@@ -421,6 +511,21 @@ function AdminsTab() {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!resetTarget || !newPassword.trim()) { toast.error('请输入新密码'); return; }
+    setResetLoading(true);
+    try {
+      await adminApi.post(`/admin/auth/admins/${resetTarget.id}/reset-password`, { newPassword: newPassword.trim() });
+      toast.success('密码重置成功');
+      setResetTarget(null);
+      setNewPassword('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '重置失败');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const inputCls = 'w-full px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm text-white placeholder-[#9090A0] focus:outline-none focus:border-cyan-500/50';
 
   const columns: AdminColumn<AdminItem>[] = [
@@ -428,7 +533,29 @@ function AdminsTab() {
     { key: 'email', title: '邮箱', render: (row) => <span className="text-[#9090A0] text-sm">{row.email}</span> },
     { key: 'role', title: '角色', align: 'center', render: (row) => <AdminStatusBadge status={row.role} map={{ admin: { label: '管理员', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' }, super_admin: { label: '超级管理员', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' } }} /> },
     { key: 'totp', title: '两步验证', align: 'center', render: (row) => <AdminStatusBadge status={row.totpEnabled ? 'enabled' : 'disabled'} map={{ enabled: { label: '已启用', color: 'bg-green-500/10 text-green-400 border-green-500/20' }, disabled: { label: '未启用', color: 'bg-[#9090A0]/10 text-[#9090A0] border-[#9090A0]/20' } }} /> },
-    { key: 'createdAt', title: '创建时间', align: 'right', render: (row) => <span className="text-[#9090A0] text-xs">{new Date(row.createdAt).toLocaleDateString('zh-CN')}</span> },
+    {
+      key: 'lastLogin', title: '最后登录', width: '160px',
+      render: (row) => (
+        <div>
+          <div className="text-xs text-[#9090A0]">
+            {row.lastLoginAt ? new Date(row.lastLoginAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '从未登录'}
+          </div>
+          {row.lastLoginIp && <div className="text-xs text-[#4A4A5A] font-mono">{row.lastLoginIp}</div>}
+        </div>
+      ),
+    },
+    { key: 'createdAt', title: '创建时间', align: 'right', width: '100px', render: (row) => <span className="text-[#9090A0] text-xs">{new Date(row.createdAt).toLocaleDateString('zh-CN')}</span> },
+    {
+      key: 'actions', title: '操作', align: 'center', width: '90px',
+      render: (row) => (
+        <button
+          onClick={() => { setResetTarget(row); setNewPassword(''); }}
+          className="flex items-center gap-1 px-2 py-1 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-xs rounded border border-orange-500/20 transition-colors"
+        >
+          <KeyRound size={10} />重置密码
+        </button>
+      ),
+    },
   ];
 
   if (error) return <AdminErrorState message={error} onRetry={refetch} />;
@@ -478,6 +605,37 @@ function AdminsTab() {
               <button onClick={() => setCreateOpen(false)} className="flex-1 px-4 py-2 text-sm text-[#9090A0] bg-[#1E1E2E] hover:bg-[#2A2A3A] rounded-lg transition-colors">取消</button>
               <button onClick={handleCreate} disabled={submitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-50">
                 {submitting && <Loader2 size={14} className="animate-spin" />}创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重置密码弹窗 */}
+      {resetTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setResetTarget(null)}>
+          <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E1E2E]">
+              <h3 className="text-base font-semibold text-white">重置管理员密码</h3>
+              <button onClick={() => setResetTarget(null)} className="text-[#9090A0] hover:text-white transition-colors"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-sm text-[#9090A0]">为 <span className="text-white font-medium">{resetTarget.username}</span> 重置密码</p>
+              <div>
+                <label className="block text-xs text-[#9090A0] mb-1">新密码</label>
+                <input
+                  type="password"
+                  className={inputCls}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="至少 8 位"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 px-6 pb-6">
+              <button onClick={() => setResetTarget(null)} className="flex-1 px-4 py-2 text-sm text-[#9090A0] bg-[#1E1E2E] hover:bg-[#2A2A3A] rounded-lg transition-colors">取消</button>
+              <button onClick={handleResetPassword} disabled={resetLoading} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 rounded-lg transition-colors disabled:opacity-50">
+                {resetLoading && <Loader2 size={14} className="animate-spin" />}确认重置
               </button>
             </div>
           </div>

@@ -190,6 +190,12 @@ export class AdminController {
 
   // ==================== 提现审核 ====================
 
+  // 提现统计（必须在 :id 路由之前）
+  @Get('withdraws/stats')
+  async getWithdrawStats() {
+    return this.adminService.getWithdrawStats();
+  }
+
   // 获取提现列表
   @Get('withdraws')
   async getWithdrawRequests(@Query() dto: WithdrawListDto) {
@@ -1027,6 +1033,31 @@ export class AdminController {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
     });
+    return { code: 0, message: 'success', data };
+  }
+
+  // 风控规则 CRUD（存储于 PlatformConfig key=risk_rules）
+  @Get('risk/rules')
+  async getRiskRules() {
+    const data = await this.adminService.getRiskRules();
+    return { code: 0, message: 'success', data };
+  }
+
+  @Post('risk/rules')
+  async createRiskRule(@Body() body: Record<string, unknown>) {
+    const data = await this.adminService.createRiskRule(body);
+    return { code: 0, message: 'success', data };
+  }
+
+  @Put('risk/rules/:id')
+  async updateRiskRule(@Param('id') id: string, @Body() body: Record<string, unknown>) {
+    const data = await this.adminService.updateRiskRule(id, body);
+    return { code: 0, message: 'success', data };
+  }
+
+  @Delete('risk/rules/:id')
+  async deleteRiskRule(@Param('id') id: string) {
+    const data = await this.adminService.deleteRiskRule(id);
     return { code: 0, message: 'success', data };
   }
 

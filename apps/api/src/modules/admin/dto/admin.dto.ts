@@ -196,7 +196,7 @@ export class UpdateStrategyDto {
 
 // 提现审核操作
 export class WithdrawActionDto {
-  @IsEnum(['approved', 'rejected'])
+  @IsEnum(['approved', 'rejected', 'approve', 'reject'])
   action: string;
 
   @IsOptional()

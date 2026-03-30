@@ -10,7 +10,9 @@ import {
   Calendar,
   ArrowLeftRight,
   Receipt,
+  Download,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   AdminPageHeader,
   AdminSkeleton,
@@ -23,6 +25,7 @@ import {
   AdminColumn,
 } from '@/components/admin/shared';
 import { useAdminApi, useAdminList } from '@/hooks/useAdminApi';
+import { adminApi } from '@/lib/admin-auth';
 
 // ─────────────────────────── 类型 ───────────────────────────
 
@@ -63,6 +66,7 @@ interface TransactionItem {
   type: string;
   amount: string;
   status: string;
+  description?: string;
   createdAt: string;
 }
 
@@ -86,34 +90,105 @@ const fmtUSD = (v: string | number) =>
     maximumFractionDigits: 2,
   })}`;
 
-// GAS 金额：保留 8 位有效小数（去除末尾 0）
 const fmtPoint = (v: string | number) => {
   const n = parseFloat(String(v || '0'));
   return n === 0 ? '0' : n.toFixed(8).replace(/\.?0+$/, '');
 };
 
-// 账单类型标签
 const BILLING_TYPE_MAP: Record<string, { label: string; color: string }> = {
-  subscription: { label: '订阅',   color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-  point_card:   { label: 'GAS',    color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
-  gas_fee:      { label: '燃油费', color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+  subscription:  { label: '订阅',   color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  point_card:    { label: 'GAS',    color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+  gas_fee:       { label: '燃油费', color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+  admin_adjust:  { label: '管理调整', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+  referral:      { label: '返佣', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
 };
 
-// 交易类型标签
 const TX_TYPE_MAP: Record<string, { label: string; color: string }> = {
-  deposit:  { label: '充值', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
-  withdraw: { label: '提现', color: 'bg-red-500/10 text-red-400 border-red-500/20' },
-  transfer: { label: '转账', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+  deposit:      { label: '充值', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
+  withdraw:     { label: '提现', color: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  transfer:     { label: '转账', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+  admin_adjust: { label: '管理', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' },
+  subscription: { label: '订阅', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  gas_fee:      { label: '燃油费', color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+  point_card:   { label: 'GAS', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
 };
+
+// ─────────────────────────── CSV 导出工具 ───────────────────────────
+
+function exportCSV(filename: string, headers: string[], rows: string[][]) {
+  const BOM = '\uFEFF';
+  const content = BOM + [headers.join(','), ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─────────────────────────── 日期范围筛选器 ───────────────────────────
+
+function DateRangeFilter({
+  startDate,
+  endDate,
+  onStartChange,
+  onEndChange,
+}: {
+  startDate: string;
+  endDate: string;
+  onStartChange: (v: string) => void;
+  onEndChange: (v: string) => void;
+}) {
+  const setPreset = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - days);
+    onStartChange(start.toISOString().slice(0, 10));
+    onEndChange(end.toISOString().slice(0, 10));
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1">
+        {[
+          { label: '近7天', days: 7 },
+          { label: '近30天', days: 30 },
+          { label: '近90天', days: 90 },
+        ].map(({ label, days }) => (
+          <button
+            key={days}
+            onClick={() => setPreset(days)}
+            className="px-2.5 py-1 text-xs rounded-lg bg-[#1E1E2E] text-[#9090A0] hover:text-white hover:bg-[#2A2A3A] border border-[#1E1E2E] transition-colors"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => onStartChange(e.target.value)}
+          className="px-2 py-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500/50"
+        />
+        <span className="text-[#9090A0] text-xs">至</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => onEndChange(e.target.value)}
+          className="px-2 py-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500/50"
+        />
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────── 简易柱状图 ───────────────────────────
 
 function SimpleBarChart({ data }: { data: TrendItem[] }) {
-  if (!data.length)
-    return <p className="py-8 text-center text-[#9090A0] text-sm">暂无数据</p>;
-
+  if (!data.length) return <p className="py-8 text-center text-[#9090A0] text-sm">暂无数据</p>;
   const maxVal = Math.max(...data.map((d) => parseFloat(d.revenue || '0')), 1);
-
   return (
     <div className="flex items-end gap-1 h-40">
       {data.map((item, idx) => {
@@ -121,10 +196,7 @@ function SimpleBarChart({ data }: { data: TrendItem[] }) {
         return (
           <div key={idx} className="flex-1 flex flex-col items-center justify-end group">
             <div className="relative w-full">
-              <div
-                className="w-full bg-cyan-500/30 rounded-t hover:bg-cyan-500/60 transition-colors min-h-[2px]"
-                style={{ height: `${Math.max(pct, 2)}%` }}
-              />
+              <div className="w-full bg-cyan-500/30 rounded-t hover:bg-cyan-500/60 transition-colors min-h-[2px]" style={{ height: `${Math.max(pct, 2)}%` }} />
               <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#2A2A3A] text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
                 {item.date}: {fmtUSD(item.revenue)}
               </div>
@@ -139,9 +211,7 @@ function SimpleBarChart({ data }: { data: TrendItem[] }) {
 // ─────────────────────────── 收入总览 Tab ───────────────────────────
 
 function OverviewTab() {
-  const { data: overview, loading, error, refetch } =
-    useAdminApi<FinanceOverview>('/admin/finance/overview');
-
+  const { data: overview, loading, error, refetch } = useAdminApi<FinanceOverview>('/admin/finance/overview');
   const { data: subData } = useAdminApi<RevenueRow[]>('/admin/finance/subscription?days=30');
   const { data: pcData }  = useAdminApi<RevenueRow[]>('/admin/finance/point-card?days=30');
   const { data: gfData }  = useAdminApi<RevenueRow[]>('/admin/finance/gas-fee?days=30');
@@ -151,31 +221,27 @@ function OverviewTab() {
   if (!overview) return <AdminErrorState message="数据为空" onRetry={refetch} />;
 
   const revenueColumns: AdminColumn<RevenueRow>[] = [
-    { key: 'userEmail',    title: '用户',     render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
-    { key: 'amount',       title: '金额',     align: 'right', render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
-    { key: 'date',         title: '日期',     align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
-    { key: 'description',  title: '盈利',     render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
+    { key: 'userEmail', title: '用户', render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
+    { key: 'amount', title: '金额', align: 'right', render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
+    { key: 'date', title: '日期', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
+    { key: 'description', title: '备注', render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
   ];
 
-  // 燃油费明细专用列（GAS 精度）
   const gasFeeColumns: AdminColumn<RevenueRow>[] = [
-    { key: 'userEmail',    title: '用户',     render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
-    { key: 'amount',       title: '扣费(pt)', align: 'right', render: (r) => <span className="font-mono text-white">{fmtPoint(r.amount)}</span> },
-    { key: 'date',         title: '日期',     align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
-    { key: 'description',  title: '盈利',     render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
+    { key: 'userEmail', title: '用户', render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
+    { key: 'amount', title: '扣费(pt)', align: 'right', render: (r) => <span className="font-mono text-white">{fmtPoint(r.amount)}</span> },
+    { key: 'date', title: '日期', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
+    { key: 'description', title: '备注', render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
   ];
 
   return (
     <div className="space-y-6">
-      {/* 收入汇总卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <AdminStatCard title="总收入"     value={fmtUSD(overview.totalRevenue)}        icon={DollarSign} color="bg-green-500/20 text-green-400" />
         <AdminStatCard title="订阅收入"   value={fmtUSD(overview.subscriptionRevenue)} icon={CreditCard}  color="bg-blue-500/20 text-blue-400" />
         <AdminStatCard title="GAS 收入"   value={fmtUSD(overview.pointCardRevenue)}    icon={TrendingUp}  color="bg-purple-500/20 text-purple-400" />
         <AdminStatCard title="燃油费收入" value={fmtUSD(overview.gasFeeRevenue)}       icon={Fuel}        color="bg-orange-500/20 text-orange-400" />
       </div>
-
-      {/* 时间段汇总 */}
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: '今日', value: overview.todayRevenue },
@@ -188,24 +254,18 @@ function OverviewTab() {
           </div>
         ))}
       </div>
-
-      {/* 订阅收入明细 */}
       {Array.isArray(subData) && subData.length > 0 && (
         <div>
           <p className="text-sm font-medium text-white mb-2">订阅收入（近 30 天）</p>
           <AdminTable<RevenueRow> columns={revenueColumns} data={subData} rowKey="id" />
         </div>
       )}
-
-      {/* GAS 收入明细 */}
       {Array.isArray(pcData) && pcData.length > 0 && (
         <div>
           <p className="text-sm font-medium text-white mb-2">GAS 收入（近 30 天）</p>
           <AdminTable<RevenueRow> columns={revenueColumns} data={pcData} rowKey="id" />
         </div>
       )}
-
-      {/* 燃油费收入明细 */}
       {Array.isArray((gfData as any)?.recentRecords) && (gfData as any).recentRecords.length > 0 && (
         <div>
           <p className="text-sm font-medium text-white mb-2">燃油费收入（近 30 天）</p>
@@ -224,39 +284,55 @@ function BillingTab() {
     filters, setFilter, setPage, refetch,
   } = useAdminList<BillingItem>('/admin/billing');
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ page: '1', limit: '10000' });
+      if (filters.type) params.set('type', filters.type);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      const res = await adminApi.get<{ items: BillingItem[]; total: number }>(`/admin/billing?${params}`);
+      const data = res.data?.items ?? [];
+      exportCSV(
+        `billing_export_${new Date().toISOString().slice(0, 10)}.csv`,
+        ['账单ID', '用户', '类型', '金额', '状态', '备注', '时间'],
+        data.map((r) => [
+          r.uniqueOrderId || r.id,
+          r.userEmail || r.username || '-',
+          BILLING_TYPE_MAP[r.type]?.label || r.type,
+          r.type === 'gas_fee' ? fmtPoint(r.amount) : fmtUSD(r.amount),
+          r.status,
+          r.remark || '',
+          new Date(r.createdAt).toLocaleString('zh-CN'),
+        ])
+      );
+      toast.success(`已导出 ${data.length} 条记录`);
+    } catch {
+      toast.error('导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const columns: AdminColumn<BillingItem>[] = [
     {
       key: 'uniqueOrderId', title: '账单ID', width: '180px',
       render: (r) => {
         const id = r.uniqueOrderId || r.id;
-        return (
-          <span
-            className="text-xs font-mono text-[#9090A0] cursor-default"
-            title={id}
-          >
-            {id.length > 20 ? id.slice(0, 20) + '…' : id}
-          </span>
-        );
+        return <span className="text-xs font-mono text-[#9090A0] cursor-default" title={id}>{id.length > 20 ? id.slice(0, 20) + '…' : id}</span>;
       },
     },
-    {
-      key: 'user', title: '用户',
-      render: (r) => (
-        <span className="text-[#9090A0] text-xs" title={r.username || r.userEmail || ''}>
-          {r.username || r.userEmail || '-'}
-        </span>
-      ),
-    },
+    { key: 'user', title: '用户', render: (r) => <span className="text-[#9090A0] text-xs" title={r.username || r.userEmail || ''}>{r.username || r.userEmail || '-'}</span> },
     { key: 'type',   title: '类型',  align: 'center', render: (r) => <AdminStatusBadge status={r.type} map={BILLING_TYPE_MAP} /> },
     { key: 'amount', title: '金额',  align: 'right',  render: (r) => <span className="font-mono text-white">{r.type === 'gas_fee' ? `${fmtPoint(r.amount)} pt` : fmtUSD(r.amount)}</span> },
     { key: 'status', title: '状态',  align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
     {
       key: 'remark', title: '备注',
-      render: (r) => r.remark ? (
-        <span className="text-[#9090A0] text-xs cursor-default" title={r.remark}>
-          {r.remark.length > 40 ? r.remark.slice(0, 40) + '…' : r.remark}
-        </span>
-      ) : <span className="text-[#505060] text-xs">-</span>,
+      render: (r) => r.remark ? <span className="text-[#9090A0] text-xs cursor-default" title={r.remark}>{r.remark.length > 40 ? r.remark.slice(0, 40) + '…' : r.remark}</span> : <span className="text-[#505060] text-xs">-</span>,
     },
     { key: 'createdAt', title: '时间', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{new Date(r.createdAt).toLocaleString('zh-CN')}</span> },
   ];
@@ -266,12 +342,13 @@ function BillingTab() {
   return (
     <div className="space-y-4">
       {/* 类型筛选 */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         {[
           { value: '',             label: '全部' },
           { value: 'subscription', label: '订阅' },
           { value: 'point_card',   label: 'GAS' },
           { value: 'gas_fee',      label: '燃油费' },
+          { value: 'admin_adjust', label: '管理调整' },
         ].map(({ value, label }) => (
           <button
             key={value}
@@ -285,6 +362,19 @@ function BillingTab() {
             {label}
           </button>
         ))}
+      </div>
+
+      {/* 日期范围 + 导出 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-lg border border-green-500/20 transition-colors disabled:opacity-50"
+        >
+          <Download size={13} />
+          {exporting ? '导出中...' : '导出 CSV'}
+        </button>
       </div>
 
       {loading && !items.length ? (
@@ -309,11 +399,46 @@ function TransactionsTab() {
 
   const { data: txStats } = useAdminApi<TransactionStats>('/admin/transactions/stats');
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ page: '1', limit: '10000' });
+      if (filters.type) params.set('type', filters.type);
+      if (filters.status) params.set('status', filters.status);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      const res = await adminApi.get<{ items: TransactionItem[]; total: number }>(`/admin/transactions?${params}`);
+      const data = res.data?.items ?? [];
+      exportCSV(
+        `transactions_export_${new Date().toISOString().slice(0, 10)}.csv`,
+        ['用户', '类型', '金额', '状态', '备注', '时间'],
+        data.map((r) => [
+          r.userEmail,
+          TX_TYPE_MAP[r.type]?.label || r.type,
+          fmtUSD(r.amount),
+          r.status,
+          r.description || '',
+          new Date(r.createdAt).toLocaleString('zh-CN'),
+        ])
+      );
+      toast.success(`已导出 ${data.length} 条记录`);
+    } catch {
+      toast.error('导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const columns: AdminColumn<TransactionItem>[] = [
     { key: 'userEmail', title: '用户',   render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail}</span> },
     { key: 'type',      title: '类型',   align: 'center', render: (r) => <AdminStatusBadge status={r.type} map={TX_TYPE_MAP} /> },
-    { key: 'amount',    title: '金额',   align: 'right',  render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
+    { key: 'amount',    title: '金额',   align: 'right',  render: (r) => <span className={`font-mono ${parseFloat(r.amount) >= 0 ? 'text-white' : 'text-red-400'}`}>{fmtUSD(r.amount)}</span> },
     { key: 'status',    title: '状态',   align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
+    { key: 'description', title: '备注', render: (r) => <span className="text-[#9090A0] text-xs">{r.description || '-'}</span> },
     { key: 'createdAt', title: '时间',   align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{new Date(r.createdAt).toLocaleString('zh-CN')}</span> },
   ];
 
@@ -332,12 +457,16 @@ function TransactionsTab() {
       )}
 
       {/* 类型/状态筛选 */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-1 flex-wrap">
           {[
-            { value: '',         label: '全部类型' },
-            { value: 'deposit',  label: '充值' },
-            { value: 'withdraw', label: '提现' },
+            { value: '',             label: '全部类型' },
+            { value: 'deposit',      label: '充值' },
+            { value: 'withdraw',     label: '提现' },
+            { value: 'admin_adjust', label: '管理调整' },
+            { value: 'subscription', label: '订阅' },
+            { value: 'gas_fee',      label: '燃油费' },
+            { value: 'point_card',   label: 'GAS充值' },
           ].map(({ value, label }) => (
             <button
               key={value}
@@ -354,10 +483,10 @@ function TransactionsTab() {
         </div>
         <div className="flex items-center gap-1">
           {[
-            { value: '',           label: '全部状态' },
-            { value: 'pending',    label: '待处理' },
-            { value: 'completed',  label: '已完成' },
-            { value: 'failed',     label: '失败' },
+            { value: '',          label: '全部状态' },
+            { value: 'pending',   label: '待处理' },
+            { value: 'completed', label: '已完成' },
+            { value: 'failed',    label: '失败' },
           ].map(({ value, label }) => (
             <button
               key={value}
@@ -372,6 +501,19 @@ function TransactionsTab() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 日期范围 + 导出 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DateRangeFilter startDate={startDate} endDate={endDate} onStartChange={setStartDate} onEndChange={setEndDate} />
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-lg border border-green-500/20 transition-colors disabled:opacity-50"
+        >
+          <Download size={13} />
+          {exporting ? '导出中...' : '导出 CSV'}
+        </button>
       </div>
 
       {loading && !items.length ? (
@@ -390,11 +532,7 @@ function TransactionsTab() {
 
 function TrendTab() {
   const [period, setPeriod] = useState<'7' | '30' | '90'>('30');
-
-  const { data: trend, loading, error, refetch } =
-    useAdminApi<TrendItem[]>(`/admin/finance/trend?days=${period}`, {
-      deps: [period],
-    });
+  const { data: trend, loading, error, refetch } = useAdminApi<TrendItem[]>(`/admin/finance/trend?days=${period}`, { deps: [period] });
 
   if (loading) return <AdminSkeleton mode="grid" count={1} cols={1} />;
   if (error)   return <AdminErrorState message={error} onRetry={refetch} />;
@@ -416,21 +554,14 @@ function TrendTab() {
               <button
                 key={val}
                 onClick={() => setPeriod(val)}
-                className={`px-3 py-1 text-xs rounded-lg transition-colors ${
-                  period === val
-                    ? 'bg-cyan-500/20 text-cyan-400'
-                    : 'text-[#9090A0] hover:text-white hover:bg-[#1E1E2E]'
-                }`}
+                className={`px-3 py-1 text-xs rounded-lg transition-colors ${period === val ? 'bg-cyan-500/20 text-cyan-400' : 'text-[#9090A0] hover:text-white hover:bg-[#1E1E2E]'}`}
               >
                 {label}
               </button>
             ))}
           </div>
         </div>
-
         <SimpleBarChart data={trendData} />
-
-        {/* 日期标签（首尾） */}
         {trendData.length > 1 && (
           <div className="flex justify-between mt-1 text-xs text-[#9090A0]">
             <span>{trendData[0].date}</span>
@@ -438,8 +569,6 @@ function TrendTab() {
           </div>
         )}
       </div>
-
-      {/* 明细表格 */}
       {trendData.length > 0 && (
         <div>
           <p className="text-sm font-medium text-white mb-2">每日明细</p>
@@ -472,9 +601,7 @@ export default function AdminFinancePage() {
   return (
     <div className="p-6 space-y-4">
       <AdminPageHeader title="财务中心" icon={DollarSign} subtitle="收入总览、账单记录、交易流水、收入趋势" />
-
       <AdminTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
-
       {activeTab === 'overview'     && <OverviewTab />}
       {activeTab === 'billing'      && <BillingTab />}
       {activeTab === 'transactions' && <TransactionsTab />}

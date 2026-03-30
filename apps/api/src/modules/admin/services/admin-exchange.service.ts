@@ -48,7 +48,7 @@ export class AdminExchangeService {
       this.prisma.exchange.count({ where }),
     ]);
 
-    return { items, total, page, limit };
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   // 获取单个交易所

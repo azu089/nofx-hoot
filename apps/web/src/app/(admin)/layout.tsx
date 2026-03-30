@@ -18,6 +18,8 @@ import {
   Share2,
   FileText,
   Shield,
+  ScrollText,
+  Radio,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/lib/admin-auth';
 
@@ -33,6 +35,8 @@ const adminNavItems = [
   { id: 'referral', label: '返佣管理', icon: Share2, href: '/admin/referral' },
   { id: 'content', label: '内容管理', icon: FileText, href: '/admin/content' },
   { id: 'withdraws', label: '提现审核', icon: Wallet, href: '/admin/withdraws' },
+  { id: 'blockchain', label: '区块链监控', icon: Radio, href: '/admin/blockchain' },
+  { id: 'logs', label: '日志管理', icon: ScrollText, href: '/admin/logs' },
   { id: 'settings', label: '系统设置', icon: Settings, href: '/admin/settings' },
 ];
 

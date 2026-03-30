@@ -14,6 +14,13 @@ import {
   X,
   Loader2,
   Pencil,
+  History,
+  Layers,
+  TrendingUp,
+  Mail,
+  Phone,
+  ShieldOff,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -51,6 +58,40 @@ interface UserItem {
   createdAt: string;
 }
 
+interface UserDetail extends UserItem {
+  phone?: string;
+  apiKeys?: { id: string; exchange: string; label?: string; isActive: boolean; createdAt: string }[];
+  subscriptions?: {
+    id: string;
+    status: string;
+    startAt: string;
+    expireAt?: string;
+    strategy?: { id: string; name: string };
+  }[];
+  positions?: {
+    id: string;
+    exchange: string;
+    symbol: string;
+    side: string;
+    status: string;
+    entryPrice: string;
+    amount: string;
+    closePrice?: string;
+    pnl?: string;
+    closeReason?: string;
+    createdAt: string;
+    closedAt?: string;
+  }[];
+  transactions?: {
+    id: string;
+    type: string;
+    amount: string;
+    status: string;
+    createdAt: string;
+    description?: string;
+  }[];
+}
+
 interface UserStats {
   totalUsers: number;
   activeToday: number;
@@ -75,6 +116,15 @@ interface SourceItem {
 
 // ─────────────────────────── 用户详情对话框 ───────────────────────────
 
+const DETAIL_TABS = [
+  { key: 'info', label: '基本信息' },
+  { key: 'edit', label: '编辑用户' },
+  { key: 'subscriptions', label: '订阅记录' },
+  { key: 'positions', label: '持仓记录' },
+  { key: 'transactions', label: '交易流水' },
+  { key: 'actions', label: '操作' },
+];
+
 function UserDetailDialog({
   userId,
   onClose,
@@ -84,11 +134,13 @@ function UserDetailDialog({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { data: user, loading, error, refetch } = useAdminApi<UserItem>(
+  const { data: user, loading, error, refetch } = useAdminApi<UserDetail>(
     `/admin/users/${userId}`,
     { enabled: !!userId }
   );
   const { mutate, loading: mutLoading } = useAdminMutation({ onSuccess: () => { refetch(); onChanged(); } });
+
+  const [activeTab, setActiveTab] = useState('info');
 
   // 余额调整 state
   const [balanceOpen, setBalanceOpen] = useState(false);
@@ -98,7 +150,7 @@ function UserDetailDialog({
   const [balanceReason, setBalanceReason] = useState('');
   const [balanceLoading, setBalanceLoading] = useState(false);
 
-  // 各确认对话框
+  // 确认对话框
   const [confirmDialog, setConfirmDialog] = useState<
     null | 'reset-password' | 'unbind-tg' | 'unbind-wallet'
   >(null);
@@ -107,6 +159,11 @@ function UserDetailDialog({
   const [editNickname, setEditNickname] = useState('');
   const [nicknameOpen, setNicknameOpen] = useState(false);
   const [nicknameLoading, setNicknameLoading] = useState(false);
+
+  // 用户编辑表单
+  const [editForm, setEditForm] = useState({ email: '', phone: '', nickname: '' });
+  const [editLoading, setEditLoading] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   const handleBalanceSubmit = async () => {
     if (!balanceAmount || isNaN(parseFloat(balanceAmount))) {
@@ -154,6 +211,40 @@ function UserDetailDialog({
     }
   };
 
+  const handleEditSave = async () => {
+    setEditLoading(true);
+    try {
+      const payload: Record<string, string> = {};
+      if (editForm.email.trim()) payload.email = editForm.email.trim();
+      if (editForm.phone.trim()) payload.phone = editForm.phone.trim();
+      if (editForm.nickname.trim()) payload.nickname = editForm.nickname.trim();
+      if (Object.keys(payload).length === 0) { toast.error('请填写要修改的信息'); setEditLoading(false); return; }
+      await adminApi.put(`/admin/users/${userId}`, payload);
+      toast.success('用户信息修改成功');
+      setEditForm({ email: '', phone: '', nickname: '' });
+      refetch();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '修改失败');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: 'active' | 'suspended' | 'banned') => {
+    setStatusLoading(true);
+    try {
+      await adminApi.put(`/admin/users/${userId}/status`, { status: newStatus });
+      toast.success(`状态已更新为：${newStatus === 'active' ? '正常' : newStatus === 'suspended' ? '冻结' : '封禁'}`);
+      refetch();
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '操作失败');
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (!confirmDialog) return;
     const pathMap = {
@@ -166,101 +257,317 @@ function UserDetailDialog({
     setConfirmDialog(null);
   };
 
+  const inputCls = 'w-full px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm text-white placeholder-[#9090A0] focus:outline-none focus:border-cyan-500/50';
+
+  const pnlColor = (v?: string) => {
+    if (!v) return 'text-[#9090A0]';
+    const n = parseFloat(v);
+    return n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-[#9090A0]';
+  };
+
+  const TX_TYPE: Record<string, string> = {
+    deposit: '充值', withdraw: '提现', admin_adjust: '管理调整',
+    subscription: '订阅扣费', gas_fee: '燃油费', transfer: '转账', point_card: 'GAS充值',
+  };
+
   return (
     <div
       className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <div
-        className="bg-[#12121A] border border-[#1E1E2E] rounded-xl w-full max-w-lg shadow-2xl"
+        className="bg-[#12121A] border border-[#1E1E2E] rounded-xl w-full max-w-2xl shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E1E2E]">
-          <h3 className="text-base font-semibold text-white">用户详情</h3>
+          <h3 className="text-base font-semibold text-white">
+            用户详情
+            {user && <span className="text-xs text-[#9090A0] ml-2 font-normal">{user.email}</span>}
+          </h3>
           <button onClick={onClose} className="text-[#9090A0] hover:text-white transition-colors">
             <X size={18} />
           </button>
         </div>
 
+        {/* Tab 切换 */}
+        <div className="flex border-b border-[#1E1E2E] overflow-x-auto">
+          {DETAIL_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`shrink-0 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                activeTab === t.key
+                  ? 'text-cyan-400 border-cyan-400'
+                  : 'text-[#9090A0] border-transparent hover:text-white'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* 内容 */}
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 max-h-[60vh] overflow-y-auto">
           {loading && <div className="py-8 text-center text-[#9090A0] text-sm">加载中...</div>}
           {error && <div className="py-4 text-center text-red-400 text-sm">{error}</div>}
+
           {user && (
             <>
-              {/* 基本信息 */}
-              <div className="space-y-2 text-sm">
-                {[
-                  ['短 ID', user.uid ? `USR${user.uid}` : '-'],
-                  ['邮箱', user.email],
-                  ['昵称', user.nickname || '-'],
-                  ['状态', <AdminStatusBadge key="s" status={user.status} />],
-                  ['USDT 余额', `${parseFloat(user.usdtBalance).toFixed(2)} USDT`],
-                  ['HOOT 余额', `${parseFloat(user.hootBalance).toFixed(4)} HOOT`],
-                  ['GAS 余额', `${parseFloat(user.pointBalance || '0').toFixed(2)}`],
-                  ['TG 用户名', user.telegramUsername || '未绑定'],
-                  ['钱包地址', user.walletAddress ? `${user.walletAddress.slice(0, 10)}...` : '未绑定'],
-                  ['注册时间', new Date(user.createdAt).toLocaleString('zh-CN')],
-                ].map(([label, val]) => (
-                  <div key={String(label)} className="flex items-center gap-3">
-                    <span className="w-24 text-[#9090A0] shrink-0">{label}</span>
-                    <span className="text-white">{val}</span>
+              {/* Tab: 基本信息 */}
+              {activeTab === 'info' && (
+                <div className="space-y-2 text-sm">
+                  {[
+                    ['短 ID', user.uid ? `USR${user.uid}` : '-'],
+                    ['邮箱', user.email],
+                    ['昵称', user.nickname || '-'],
+                    ['手机', (user as UserDetail).phone || '未填写'],
+                    ['状态', <AdminStatusBadge key="s" status={user.status} />],
+                    ['USDT 余额', `${parseFloat(user.usdtBalance).toFixed(2)} USDT`],
+                    ['HOOT 余额', `${parseFloat(user.hootBalance).toFixed(4)} HOOT`],
+                    ['GAS 余额', `${parseFloat(user.pointBalance || '0').toFixed(2)}`],
+                    ['TG 用户名', user.telegramUsername || '未绑定'],
+                    ['钱包地址', user.walletAddress ? `${user.walletAddress.slice(0, 10)}...${user.walletAddress.slice(-6)}` : '未绑定'],
+                    ['API Key 数', `${(user as UserDetail).apiKeys?.length ?? 0} 个`],
+                    ['注册时间', new Date(user.createdAt).toLocaleString('zh-CN')],
+                  ].map(([label, val]) => (
+                    <div key={String(label)} className="flex items-center gap-3 py-1 border-b border-[#1E1E2E]/50 last:border-0">
+                      <span className="w-24 text-[#9090A0] shrink-0">{label}</span>
+                      <span className="text-white">{val}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-start gap-3 pt-1 border-t border-[#1E1E2E]">
+                    <span className="w-24 text-[#9090A0] shrink-0 text-xs pt-0.5">用户 UUID</span>
+                    <span
+                      className="text-[#64748B] text-xs font-mono break-all cursor-pointer hover:text-[#9090A0] transition-colors"
+                      title="点击复制"
+                      onClick={() => { navigator.clipboard.writeText(user.id); toast.success('已复制'); }}
+                    >
+                      {user.id}
+                    </span>
                   </div>
-                ))}
-                {/* 完整 UUID（仅详情显示） */}
-                <div className="flex items-start gap-3 pt-1 border-t border-[#1E1E2E]">
-                  <span className="w-24 text-[#9090A0] shrink-0 text-xs pt-0.5">用户 UUID</span>
-                  <span
-                    className="text-[#64748B] text-xs font-mono break-all cursor-pointer hover:text-[#9090A0] transition-colors"
-                    title="点击复制"
-                    onClick={() => { navigator.clipboard.writeText(user.id); }}
-                  >
-                    {user.id}
-                  </span>
                 </div>
-              </div>
+              )}
 
-              {/* 操作按钮 */}
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <button
-                  onClick={() => { setEditNickname(user.nickname || ''); setNicknameOpen(true); }}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-sm rounded-lg border border-green-500/20 transition-colors col-span-2"
-                >
-                  <Pencil size={14} />
-                  编辑昵称
-                </button>
-                <button
-                  onClick={() => setBalanceOpen(true)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-sm rounded-lg border border-cyan-500/20 transition-colors"
-                >
-                  <Wallet size={14} />
-                  余额调整
-                </button>
-                <button
-                  onClick={() => setConfirmDialog('reset-password')}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-sm rounded-lg border border-yellow-500/20 transition-colors"
-                >
-                  <KeyRound size={14} />
-                  密码重置
-                </button>
-                <button
-                  onClick={() => setConfirmDialog('unbind-tg')}
-                  disabled={!user.telegramUsername}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-sm rounded-lg border border-blue-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <MessageSquare size={14} />
-                  解绑 TG
-                </button>
-                <button
-                  onClick={() => setConfirmDialog('unbind-wallet')}
-                  disabled={!user.walletAddress}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm rounded-lg border border-purple-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Wallet size={14} />
-                  解绑钱包
-                </button>
-              </div>
+              {/* Tab: 编辑用户 */}
+              {activeTab === 'edit' && (
+                <div className="space-y-5">
+                  {/* 修改基本信息 */}
+                  <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-medium text-[#9090A0] mb-3">修改用户信息（留空表示不修改）</p>
+                    <div>
+                      <label className="block text-xs text-[#9090A0] mb-1">
+                        <Mail size={11} className="inline mr-1" />新邮箱
+                      </label>
+                      <input
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                        placeholder={`当前: ${user.email}`}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9090A0] mb-1">
+                        <Phone size={11} className="inline mr-1" />手机号
+                      </label>
+                      <input
+                        type="tel"
+                        value={editForm.phone}
+                        onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                        placeholder={`当前: ${(user as UserDetail).phone || '未填写'}`}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9090A0] mb-1">
+                        <Pencil size={11} className="inline mr-1" />昵称
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.nickname}
+                        onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })}
+                        placeholder={`当前: ${user.nickname || '未设置'}`}
+                        maxLength={32}
+                        className={inputCls}
+                      />
+                    </div>
+                    <button
+                      onClick={handleEditSave}
+                      disabled={editLoading}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {editLoading && <Loader2 size={14} className="animate-spin" />}
+                      保存修改
+                    </button>
+                  </div>
+
+                  {/* 账号状态管理 */}
+                  <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-4">
+                    <p className="text-xs font-medium text-[#9090A0] mb-3">账号状态管理</p>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-[#9090A0] w-20">当前状态</span>
+                      <AdminStatusBadge status={user.status} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      <button
+                        onClick={() => handleStatusChange('active')}
+                        disabled={statusLoading || user.status === 'active'}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-lg border border-green-500/20 transition-colors disabled:opacity-40"
+                      >
+                        <ShieldCheck size={12} />正常
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange('suspended')}
+                        disabled={statusLoading || user.status === 'suspended'}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-xs rounded-lg border border-yellow-500/20 transition-colors disabled:opacity-40"
+                      >
+                        <ShieldOff size={12} />冻结
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange('banned')}
+                        disabled={statusLoading || user.status === 'banned'}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs rounded-lg border border-red-500/20 transition-colors disabled:opacity-40"
+                      >
+                        <Ban size={12} />封禁
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: 订阅记录 */}
+              {activeTab === 'subscriptions' && (
+                <div>
+                  {!(user as UserDetail).subscriptions?.length ? (
+                    <p className="text-center text-[#9090A0] text-sm py-8">暂无订阅记录</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(user as UserDetail).subscriptions!.map((sub) => (
+                        <div key={sub.id} className="flex items-center justify-between px-4 py-3 bg-[#0A0A0F] rounded-lg border border-[#1E1E2E]">
+                          <div>
+                            <p className="text-sm text-white font-medium">{sub.strategy?.name || '未知策略'}</p>
+                            <p className="text-xs text-[#9090A0] mt-0.5">
+                              {new Date(sub.startAt).toLocaleDateString('zh-CN')}
+                              {sub.expireAt && ` → ${new Date(sub.expireAt).toLocaleDateString('zh-CN')}`}
+                            </p>
+                          </div>
+                          <AdminStatusBadge status={sub.status} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: 持仓记录 */}
+              {activeTab === 'positions' && (
+                <div>
+                  {!(user as UserDetail).positions?.length ? (
+                    <p className="text-center text-[#9090A0] text-sm py-8">暂无持仓记录</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(user as UserDetail).positions!.map((pos) => (
+                        <div key={pos.id} className="px-4 py-3 bg-[#0A0A0F] rounded-lg border border-[#1E1E2E]">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-white font-mono font-medium">{pos.symbol}</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${pos.side === 'long' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                {pos.side === 'long' ? '多' : '空'}
+                              </span>
+                              <AdminStatusBadge status={pos.status} />
+                            </div>
+                            {pos.pnl && (
+                              <span className={`text-sm font-mono font-semibold ${pnlColor(pos.pnl)}`}>
+                                {parseFloat(pos.pnl) >= 0 ? '+' : ''}{parseFloat(pos.pnl).toFixed(2)} USDT
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-[#9090A0]">
+                            <span>入场 {parseFloat(pos.entryPrice).toFixed(4)}</span>
+                            {pos.closePrice && <span>出场 {parseFloat(pos.closePrice).toFixed(4)}</span>}
+                            <span>数量 {pos.amount}</span>
+                            {pos.closeReason && <span className="text-yellow-400/80">{pos.closeReason}</span>}
+                          </div>
+                          <p className="text-[10px] text-[#9090A0] mt-1">
+                            {new Date(pos.createdAt).toLocaleString('zh-CN')}
+                            {pos.closedAt && ` → ${new Date(pos.closedAt).toLocaleString('zh-CN')}`}
+                          </p>
+                        </div>
+                      ))}
+                      <p className="text-xs text-[#9090A0] text-center pt-2">显示最近 10 条</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: 交易流水 */}
+              {activeTab === 'transactions' && (
+                <div>
+                  {!(user as UserDetail).transactions?.length ? (
+                    <p className="text-center text-[#9090A0] text-sm py-8">暂无交易记录</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(user as UserDetail).transactions!.map((tx) => (
+                        <div key={tx.id} className="flex items-center justify-between px-4 py-3 bg-[#0A0A0F] rounded-lg border border-[#1E1E2E]">
+                          <div>
+                            <p className="text-sm text-white">{TX_TYPE[tx.type] || tx.type}</p>
+                            <p className="text-xs text-[#9090A0] mt-0.5">{new Date(tx.createdAt).toLocaleString('zh-CN')}</p>
+                            {tx.description && <p className="text-xs text-[#9090A0] mt-0.5">{tx.description}</p>}
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-sm font-mono font-semibold ${parseFloat(tx.amount) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {parseFloat(tx.amount) >= 0 ? '+' : ''}{parseFloat(tx.amount).toFixed(2)}
+                            </p>
+                            <AdminStatusBadge status={tx.status} />
+                          </div>
+                        </div>
+                      ))}
+                      <p className="text-xs text-[#9090A0] text-center pt-2">显示最近 20 条</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab: 操作 */}
+              {activeTab === 'actions' && (
+                <div className="space-y-3">
+                  <button
+                    onClick={() => { setEditNickname(user.nickname || ''); setNicknameOpen(true); }}
+                    className="w-full flex items-center gap-2 px-4 py-3 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-sm rounded-lg border border-green-500/20 transition-colors"
+                  >
+                    <Pencil size={14} />快速编辑昵称
+                  </button>
+                  <button
+                    onClick={() => setBalanceOpen(true)}
+                    className="w-full flex items-center gap-2 px-4 py-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-sm rounded-lg border border-cyan-500/20 transition-colors"
+                  >
+                    <Wallet size={14} />余额调整
+                  </button>
+                  <button
+                    onClick={() => setConfirmDialog('reset-password')}
+                    className="w-full flex items-center gap-2 px-4 py-3 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-sm rounded-lg border border-yellow-500/20 transition-colors"
+                  >
+                    <KeyRound size={14} />重置密码（发送邮件）
+                  </button>
+                  <button
+                    onClick={() => setConfirmDialog('unbind-tg')}
+                    disabled={!user.telegramUsername}
+                    className="w-full flex items-center gap-2 px-4 py-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-sm rounded-lg border border-blue-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <MessageSquare size={14} />解绑 Telegram
+                    {!user.telegramUsername && <span className="text-[#9090A0] text-xs ml-auto">未绑定</span>}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDialog('unbind-wallet')}
+                    disabled={!user.walletAddress}
+                    className="w-full flex items-center gap-2 px-4 py-3 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-sm rounded-lg border border-purple-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Wallet size={14} />解绑钱包地址
+                    {!user.walletAddress && <span className="text-[#9090A0] text-xs ml-auto">未绑定</span>}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -428,8 +735,10 @@ function UserListTab() {
     loading,
     error,
     search,
+    filters,
     setPage,
     setSearch,
+    setFilter,
     refetch,
   } = useAdminList<UserItem>('/admin/users');
 
@@ -459,7 +768,7 @@ function UserListTab() {
           <span
             className="font-mono text-[#4A4A5A] text-[10px] cursor-pointer hover:text-[#9090A0] transition-colors truncate max-w-[100px]"
             title={row.id}
-            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.id); }}
+            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.id); toast.success('已复制'); }}
           >
             {row.id.slice(0, 8)}…
           </span>
@@ -478,7 +787,7 @@ function UserListTab() {
     },
     {
       key: 'usdtBalance',
-      title: 'USDT 余额',
+      title: 'USDT',
       align: 'right',
       render: (row) => (
         <span className="font-mono text-white">
@@ -488,22 +797,27 @@ function UserListTab() {
     },
     {
       key: 'hootBalance',
-      title: 'HOOT 余额',
+      title: 'HOOT',
       align: 'right',
       render: (row) => (
         <span className="font-mono text-cyan-400">
-          {parseFloat(row.hootBalance).toFixed(4)}
+          {parseFloat(row.hootBalance).toFixed(2)}
         </span>
       ),
     },
     {
-      key: 'pointBalance',
-      title: 'GAS 余额',
-      align: 'right',
+      key: 'binding',
+      title: '绑定',
+      align: 'center',
       render: (row) => (
-        <span className="font-mono text-yellow-400">
-          {parseFloat(row.pointBalance || '0').toFixed(2)}
-        </span>
+        <div className="flex items-center justify-center gap-1.5">
+          <span title={row.telegramUsername ? `TG: @${row.telegramUsername}` : '未绑定TG'} className={`text-[10px] px-1 py-0.5 rounded ${row.telegramUsername ? 'bg-blue-500/10 text-blue-400' : 'text-[#4A4A5A]'}`}>
+            TG
+          </span>
+          <span title={row.walletAddress || '未绑定钱包'} className={`text-[10px] px-1 py-0.5 rounded ${row.walletAddress ? 'bg-purple-500/10 text-purple-400' : 'text-[#4A4A5A]'}`}>
+            钱包
+          </span>
+        </div>
       ),
     },
     {
@@ -539,7 +853,7 @@ function UserListTab() {
     },
     {
       key: 'createdAt',
-      title: '注册时间',
+      title: '注册',
       align: 'center',
       render: (row) => (
         <span className="text-[#9090A0] text-xs">
@@ -551,7 +865,7 @@ function UserListTab() {
       key: 'actions',
       title: '操作',
       align: 'center',
-      width: '140px',
+      width: '130px',
       render: (row) => (
         <div className="flex items-center justify-center gap-2">
           <button
@@ -587,12 +901,46 @@ function UserListTab() {
 
   return (
     <div className="space-y-4">
-      <AdminSearchBar
-        value={search}
-        onChange={setSearch}
-        onSearch={refetch}
-        placeholder="搜索 UID、邮箱、昵称..."
-      />
+      {/* 搜索 + 筛选 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <AdminSearchBar
+          value={search}
+          onChange={setSearch}
+          onSearch={refetch}
+          placeholder="搜索 UID、邮箱、昵称..."
+        />
+        {/* TG 绑定筛选 */}
+        <select
+          value={filters.hasTelegram ?? ''}
+          onChange={(e) => setFilter('hasTelegram', e.target.value)}
+          className="px-3 py-2 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-xs text-[#9090A0] focus:outline-none focus:border-cyan-500/50"
+        >
+          <option value="">全部TG状态</option>
+          <option value="true">已绑TG</option>
+          <option value="false">未绑TG</option>
+        </select>
+        {/* 钱包绑定筛选 */}
+        <select
+          value={filters.hasWallet ?? ''}
+          onChange={(e) => setFilter('hasWallet', e.target.value)}
+          className="px-3 py-2 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-xs text-[#9090A0] focus:outline-none focus:border-cyan-500/50"
+        >
+          <option value="">全部钱包</option>
+          <option value="true">已绑钱包</option>
+          <option value="false">未绑钱包</option>
+        </select>
+        {/* 账号状态筛选 */}
+        <select
+          value={filters.status ?? ''}
+          onChange={(e) => setFilter('status', e.target.value)}
+          className="px-3 py-2 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-xs text-[#9090A0] focus:outline-none focus:border-cyan-500/50"
+        >
+          <option value="">全部状态</option>
+          <option value="active">正常</option>
+          <option value="suspended">冻结</option>
+          <option value="banned">封禁</option>
+        </select>
+      </div>
 
       {loading && !items.length ? (
         <AdminSkeleton mode="table" count={8} />
@@ -649,30 +997,10 @@ function UserStatsTab() {
     <div className="space-y-6">
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <AdminStatCard
-          title="总用户"
-          value={stats?.totalUsers ?? '-'}
-          icon={Users}
-          color="bg-blue-500/20 text-blue-400"
-        />
-        <AdminStatCard
-          title="今日活跃"
-          value={stats?.activeToday ?? '-'}
-          icon={UserCheck}
-          color="bg-green-500/20 text-green-400"
-        />
-        <AdminStatCard
-          title="今日新增"
-          value={stats?.newToday ?? '-'}
-          icon={UserPlus}
-          color="bg-cyan-500/20 text-cyan-400"
-        />
-        <AdminStatCard
-          title="本周新增"
-          value={stats?.newThisWeek ?? '-'}
-          icon={BarChart3}
-          color="bg-purple-500/20 text-purple-400"
-        />
+        <AdminStatCard title="总用户" value={stats?.totalUsers ?? '-'} icon={Users} color="bg-blue-500/20 text-blue-400" />
+        <AdminStatCard title="今日活跃" value={stats?.activeToday ?? '-'} icon={UserCheck} color="bg-green-500/20 text-green-400" />
+        <AdminStatCard title="今日新增" value={stats?.newToday ?? '-'} icon={UserPlus} color="bg-cyan-500/20 text-cyan-400" />
+        <AdminStatCard title="本周新增" value={stats?.newThisWeek ?? '-'} icon={BarChart3} color="bg-purple-500/20 text-purple-400" />
       </div>
 
       {/* 增长趋势 */}
@@ -721,7 +1049,6 @@ function UserStatsTab() {
             <p className="text-[#9090A0] text-sm">暂无数据</p>
           )}
         </div>
-
         <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
           <p className="text-sm font-medium text-white mb-3">注册来源</p>
           {Array.isArray(sources) && sources.length > 0 ? (
@@ -754,10 +1081,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <AdminPageHeader title="用户管理" icon={Users} subtitle={`共两个视图：列表与统计`} />
-
+      <AdminPageHeader title="用户管理" icon={Users} subtitle="用户列表管理、详情查看、统计分析" />
       <AdminTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
-
       {activeTab === 'list' && <UserListTab />}
       {activeTab === 'stats' && <UserStatsTab />}
     </div>
