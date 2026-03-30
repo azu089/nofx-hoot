@@ -887,8 +887,8 @@ function gridSystemPromptZh(
 - **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（用户配置百分比优先，未配置则用 ATR 自动计算）③ 持仓按入场价就近映射到新层 ④ 本轮结束，下轮 AI 基于新网格决策。当价格偏离网格中心较远时应主动调用，保持挂单距离当前价近，提高成交频率
 - **hold**: 保持当前状态不操作
 
-### 技术约束（交易所规则，不可违反）
-- place_buy/sell_limit 只能在 empty 层操作
+### 技术约束（不可违反）
+- place_buy/sell_limit 只能在 empty 层操作，且应遵循该层标注的买卖方向
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ### 暂停模式（isPaused=true）
@@ -962,8 +962,8 @@ Each cycle fetches real-time data from exchange and maps to grid levels by prior
 - **adjust_grid**: Rebuild grid. Effect: ① cancel all orders ② recalculate boundaries centered on current price ③ remap positions to nearest new levels ④ current cycle ends; next cycle AI works on new grid. Call this when price has drifted far from grid center to keep orders close to current price and increase fill rate
 - **hold**: Maintain current state
 
-### Technical Constraints (exchange rules, must not violate)
-- place_buy/sell_limit can ONLY be used on empty levels
+### Technical Constraints (must not violate)
+- place_buy/sell_limit can ONLY be used on empty levels, and should follow the level's indicated buy/sell direction
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ### Pause Mode (isPaused=true)

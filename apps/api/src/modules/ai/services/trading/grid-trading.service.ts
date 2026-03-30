@@ -4715,6 +4715,31 @@ export class GridTradingService {
       // 无匹配层 → AI 从 exchangeOpenOrders 看到并撤
     }
 
+    // Step 3: 重算 empty 层的 side（持仓感知）
+    // 有持仓时以入场价为分界，无持仓时以市价为分界
+    const filledLayers = display.filter(d => d.st === 'filled');
+    const avgEntry = filledLayers.length > 0 && filledLayers[0].ep > 0
+      ? filledLayers[0].ep
+      : 0;
+    const posSide = filledLayers.length > 0 ? filledLayers[0].s : null;
+
+    for (const d of display) {
+      if (d.st !== 'empty') continue;
+      if (avgEntry > 0 && posSide) {
+        // 有持仓：以入场价为分界
+        // 多头→入场价上方卖出盈利，下方买入加仓
+        // 空头→入场价下方买回盈利，上方卖出加仓
+        if (posSide === 'buy') {
+          d.s = d.p >= avgEntry ? 'sell' : 'buy';
+        } else {
+          d.s = d.p <= avgEntry ? 'buy' : 'sell';
+        }
+      } else {
+        // 无持仓：以市价为分界
+        d.s = currentPrice > 0 ? (d.p <= currentPrice ? 'buy' : 'sell') : 'buy';
+      }
+    }
+
     return display;
   }
 
