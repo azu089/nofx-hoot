@@ -981,7 +981,7 @@ function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext,
     ? (l.side === 'buy' ? (isEn ? 'Long' : '持多') : (isEn ? 'Short' : '持空'))
     : l.state === 'pending'
       ? (l.side === 'buy' ? (isEn ? 'Bid' : '挂买') : (isEn ? 'Ask' : '挂卖'))
-      : (l.side === 'buy' ? (isEn ? 'buy' : '买') : (isEn ? 'sell' : '卖'));
+      : '—';
   const stateStr = l.state === 'pending' ? (isEn ? 'Pending' : '待成交') : l.state === 'filled' ? (isEn ? 'Filled' : '持仓') : (isEn ? 'Empty' : '空格');
   const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
   const posSizeStr = l.state === 'filled' && l.positionSize && l.positionSize > 0 ? l.positionSize.toFixed(4) : '-';
