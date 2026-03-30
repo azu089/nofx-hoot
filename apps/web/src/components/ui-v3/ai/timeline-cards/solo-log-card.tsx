@@ -1258,8 +1258,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                           style={{ backgroundColor: `${color}12` }}
                         >
                           <span className="font-mono" style={{ color: textColor }}>L{gl.lv}</span>
-                          <span style={{ color: gl.s === 'buy' ? '#10B981' : '#F23645', fontSize: '8px' }}>
-                            {gl.s === 'buy' ? '买' : '卖'}
+                          <span style={{ color: isFilled || isPending ? (gl.s === 'buy' ? '#10B981' : '#F23645') : '#505060', fontSize: '8px' }}>
+                            {isFilled || isPending ? (gl.s === 'buy' ? '买' : '卖') : '—'}
                           </span>
                           <span className="font-mono" style={{ color: isFilled ? '#06B6D4' : '#9090A0' }}>{Number(gl.p).toFixed(2)}</span>
                           {(isFilled || isPending) && gl.qty > 0 && (
