@@ -875,16 +875,30 @@ function gridSystemPromptZh(
 - **empty 层**：无持仓无挂单，可下新单
 
 ### 可执行的操作
-- place_buy_limit: 在指定价格下买入限价单
-- place_sell_limit: 在指定价格下卖出限价单
-- cancel_order: 取消指定订单
-- cancel_all_orders: 取消所有订单
-- pause_grid: 暂停网格交易（趋势市场时）
-- resume_grid: 恢复网格交易（震荡市场时）
-- adjust_grid: 调整网格边界
-- hold: 保持当前状态不操作
+- **place_buy_limit**: 在任意 empty 层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在任意 empty 层挂卖单（fields: level, price, quantity）
+- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分（<positionSize）或全额（=positionSize）
+- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）。quantity 同上
+- **cancel_order**: 取消指定挂单（field: orderId）
+- **cancel_all_orders**: 取消所有挂单
+- **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
+- **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
+- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（用户配置百分比优先，未配置则用 ATR 自动计算）③ 持仓按入场价就近映射到新层 ④ 本轮结束，下轮 AI 基于新网格决策。当价格偏离网格中心较远时应主动调用，保持挂单距离当前价近，提高成交频率
+- **hold**: 保持当前状态不操作
 
-注意：place_buy/sell_limit 只能在 empty 层操作，不能在持仓层或挂单层下新单。
+### 技术约束（交易所规则，不可违反）
+- place_buy/sell_limit 只能在 empty 层操作
+- close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
+
+### 暂停模式（isPaused=true）
+网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
+- close_long / close_short：平仓
+- cancel_order / cancel_all_orders：撤单
+- resume_grid：解除暂停，下轮周期干净重建（推荐）
+- adjust_grid：以当前价重建网格并解除暂停
+- hold：继续观察
+
+⚠️ place_buy_limit / place_sell_limit 暂停期间不可用。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
 
 ## 输出格式
 输出JSON，包含分析和决策数组:
@@ -935,16 +949,30 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - **empty levels**: No position, no order — can place new orders
 
 ### Available Actions
-- place_buy_limit: Place buy limit order at specified price
-- place_sell_limit: Place sell limit order at specified price
-- cancel_order: Cancel specific order
-- cancel_all_orders: Cancel all orders
-- pause_grid: Pause grid trading (in trending market)
-- resume_grid: Resume grid trading (in ranging market)
-- adjust_grid: Adjust grid boundaries
-- hold: Maintain current state
+- **place_buy_limit**: Place buy order on any empty level (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order on any empty level (fields: level, price, quantity)
+- **close_long** (fields: level, quantity): Close long position (filled level with side=buy). quantity can be partial (<positionSize) or full (=positionSize)
+- **close_short** (fields: level, quantity): Close short position (filled level with side=sell). quantity same as above
+- **cancel_order**: Cancel a specific order (field: orderId)
+- **cancel_all_orders**: Cancel all pending orders
+- **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
+- **resume_grid**: Resume grid. Effect: next cycle auto-clears all levels and rebuilds clean state from exchange
+- **adjust_grid**: Rebuild grid. Effect: ① cancel all orders ② recalculate boundaries centered on current price ③ remap positions to nearest new levels ④ current cycle ends; next cycle AI works on new grid. Call this when price has drifted far from grid center to keep orders close to current price and increase fill rate
+- **hold**: Maintain current state
 
-Note: place_buy/sell_limit can ONLY be used on empty levels, not on filled or pending levels.
+### Technical Constraints (exchange rules, must not violate)
+- place_buy/sell_limit can ONLY be used on empty levels
+- close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
+
+### Pause Mode (isPaused=true)
+All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
+- close_long / close_short: close positions
+- cancel_order / cancel_all_orders: cancel orders
+- resume_grid: lift pause, next cycle rebuilds cleanly (recommended)
+- adjust_grid: rebuild grid at current price and lift pause
+- hold: observe
+
+⚠️ place_buy_limit / place_sell_limit are NOT available while paused. Use resume_grid or adjust_grid first.
 
 ## Output Format
 Output JSON with analysis and actions array:
