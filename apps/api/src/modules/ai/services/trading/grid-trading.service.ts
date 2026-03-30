@@ -3055,7 +3055,6 @@ export class GridTradingService {
     }
 
     // 对齐 nofx placeGridLimitOrder：不纠正 AI 的 buy/sell 方向，AI 全权决策
-    // 之前的强制纠正（低于市价=buy，高于市价=sell）在有持仓时会扭曲 AI 的策略意图
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
@@ -3090,6 +3089,24 @@ export class GridTradingService {
       const skipReason = `无效参数: price=${price}, quantity=${quantity}`;
       this.logger.warn(`[网格] 跳过下单: ${skipReason} (level=${levelIndex})`);
       return { executed: false, skipReason };
+    }
+
+    // 限价单基本校验：买单价格必须低于市价，卖单价格必须高于市价
+    // 否则会立即以市价成交，不是限价单行为（导致无限循环加仓）
+    const currentPrice = state.lastPrice ?? 0;
+    if (currentPrice > 0) {
+      if (side === 'buy' && price > currentPrice) {
+        this.logger.warn(
+          `[网格] 拦截: 买单价格 ${price.toFixed(2)} > 市价 ${currentPrice.toFixed(2)}，会立即成交，跳过`,
+        );
+        return { executed: false, skipReason: `买单价格 ${price.toFixed(2)} > 市价 ${currentPrice.toFixed(2)}` };
+      }
+      if (side === 'sell' && price < currentPrice) {
+        this.logger.warn(
+          `[网格] 拦截: 卖单价格 ${price.toFixed(2)} < 市价 ${currentPrice.toFixed(2)}，会立即成交，跳过`,
+        );
+        return { executed: false, skipReason: `卖单价格 ${price.toFixed(2)} < 市价 ${currentPrice.toFixed(2)}` };
+      }
     }
 
     // Step 1: per-level 仓位上限检查
