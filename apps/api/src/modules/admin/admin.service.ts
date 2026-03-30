@@ -93,6 +93,7 @@ export class AdminService {
         select: {
           id: true,
           uid: true,
+          userCode: true,
           email: true,
           nickname: true,
           telegramId: true,

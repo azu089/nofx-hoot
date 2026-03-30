@@ -347,11 +347,13 @@ export default function AdminBlockchainPage() {
 
       {/* ── Gas 钱包余额（归集手续费发送方） ── */}
       <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-          <Zap size={14} className="text-yellow-400" />Gas 钱包余额
-          <span className="text-xs text-[#9090A0] font-normal">向派生地址发送手续费的钱包，需保持足量 BNB / TRX</span>
+        <h3 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
+          <Zap size={14} className="text-yellow-400" />Gas 发送方钱包余额
           {gasLoading && <RefreshCw size={12} className="text-[#9090A0] animate-spin" />}
         </h3>
+        <p className="text-xs text-[#9090A0] mb-4">
+          由 <span className="font-mono text-[#707080]">WITHDRAW_WALLET_PRIVATE_KEY</span> 衍生的地址，负责向用户充值（派生）地址发送 BNB / TRX 作为归集手续费
+        </p>
         {gasBalances.length === 0 && !gasLoading ? (
           <div className="flex items-center gap-2 py-4 text-sm text-[#9090A0]">
             <AlertTriangle size={14} className="text-yellow-400" />Gas 钱包未配置或查询失败
@@ -371,10 +373,19 @@ export default function AdminBlockchainPage() {
                 {gasBalances.map(b => {
                   const style = getChainStyle(b.chain);
                   const gasLow = parseFloat(b.gasBalance) < 0.01;
+                  const isSameAsCollect = sweepBalance && (
+                    (b.chain === 'BSC' && sweepBalance.evm?.address?.toLowerCase() === b.address?.toLowerCase()) ||
+                    (b.chain === 'TRON' && sweepBalance.tron?.address === b.address)
+                  );
                   return (
                     <tr key={b.chain} className="hover:bg-[#1A1A24] transition-colors">
                       <td className="py-3 px-3"><span className={`text-xs font-bold ${style.text}`}>{b.chain}</span></td>
-                      <td className="py-3 px-3"><span className="text-xs text-[#9090A0] font-mono break-all">{b.address}</span></td>
+                      <td className="py-3 px-3">
+                        <span className="text-xs text-[#9090A0] font-mono break-all">{b.address}</span>
+                        {isSameAsCollect && (
+                          <span className="ml-2 text-[10px] text-yellow-500/70 bg-yellow-500/10 px-1.5 py-0.5 rounded">= 归集地址</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-right">
                         <span className={`text-xs font-mono ${gasLow ? 'text-red-400' : 'text-white'}`}>
                           {parseFloat(b.gasBalance).toFixed(6)} {b.gasSymbol}

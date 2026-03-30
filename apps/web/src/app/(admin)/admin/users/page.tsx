@@ -45,6 +45,7 @@ import { adminApi } from '@/lib/admin-auth';
 interface UserItem {
   id: string;
   uid?: number;
+  userCode?: string;
   email: string;
   nickname: string;
   status: string;
@@ -759,21 +760,28 @@ function UserListTab() {
     {
       key: 'uid',
       title: 'ID',
-      width: '110px',
-      render: (row) => (
-        <div className="flex flex-col gap-0.5">
-          <span className="font-mono text-cyan-400 text-xs font-semibold">
-            {row.uid ? `USR${row.uid}` : '—'}
-          </span>
-          <span
-            className="font-mono text-[#4A4A5A] text-[10px] cursor-pointer hover:text-[#9090A0] transition-colors truncate max-w-[100px]"
-            title={row.id}
-            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.id); toast.success('已复制'); }}
-          >
-            {row.id.slice(0, 8)}…
-          </span>
-        </div>
-      ),
+      width: '120px',
+      render: (row) => {
+        const shortId = row.userCode || (row.uid ? `USR${String(row.uid).padStart(5, '0')}` : '—');
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span
+              className="font-mono text-cyan-400 text-xs font-semibold cursor-pointer hover:text-cyan-300 transition-colors"
+              title="点击复制ID"
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(shortId); toast.success(`已复制 ${shortId}`); }}
+            >
+              {shortId}
+            </span>
+            <span
+              className="font-mono text-[#4A4A5A] text-[10px] cursor-pointer hover:text-[#9090A0] transition-colors truncate max-w-[110px]"
+              title={`UUID: ${row.id} (点击复制)`}
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.id); toast.success('已复制 UUID'); }}
+            >
+              {row.id.slice(0, 8)}…
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: 'email',
@@ -802,6 +810,16 @@ function UserListTab() {
       render: (row) => (
         <span className="font-mono text-cyan-400">
           {parseFloat(row.hootBalance).toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      key: 'pointBalance',
+      title: 'Gas',
+      align: 'right',
+      render: (row) => (
+        <span className="font-mono text-green-400 text-xs">
+          {parseFloat(row.pointBalance).toFixed(2)}
         </span>
       ),
     },
