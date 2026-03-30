@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Link as LinkIcon,
-  Unlink,
   Play,
   Square,
   RefreshCw,
@@ -13,6 +12,8 @@ import {
   CheckCircle,
   XCircle,
   Radio,
+  Layers,
+  Zap,
 } from 'lucide-react';
 import {
   AdminPageHeader,
@@ -49,6 +50,22 @@ interface ChainBalance {
   hoot?: string;
 }
 
+interface SweepAddress {
+  chain: string;
+  address: string;
+  index: number;
+  usdt: string;
+  gasBalance: string;
+  gasSymbol: string;
+}
+
+interface SweepResult {
+  scanned: number;
+  swept: number;
+  totalUsdt: string;
+  results: { address: string; chain: string; status: string; txHash?: string; error?: string }[];
+}
+
 // ─── 链颜色 ──────────────────────────────────────────────────────
 
 const CHAIN_COLORS: Record<string, { text: string; bg: string; dot: string }> = {
@@ -73,6 +90,12 @@ export default function AdminBlockchainPage() {
   const [balanceLoading, setBalanceLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // 归集状态
+  const [sweepAddresses, setSweepAddresses] = useState<SweepAddress[]>([]);
+  const [sweepLoading, setSweepLoading] = useState(false);
+  const [sweepExecuting, setSweepExecuting] = useState(false);
+  const [sweepResult, setSweepResult] = useState<SweepResult | null>(null);
 
   // ── 加载监听状态 ──────────────────────────────────────────────
   const fetchStatus = useCallback(async () => {
@@ -128,10 +151,49 @@ export default function AdminBlockchainPage() {
     }
   };
 
+  // ── 扫描归集地址 ───────────────────────────────────────────────
+  const handleScanSweep = async () => {
+    setSweepLoading(true);
+    setSweepAddresses([]);
+    setSweepResult(null);
+    try {
+      const res = await adminApi.get<{ addresses: SweepAddress[] }>('/blockchain/sweep/scan');
+      setSweepAddresses(res.data?.addresses ?? []);
+      if ((res.data?.addresses ?? []).length === 0) {
+        toast.success('扫描完成，暂无可归集余额');
+      } else {
+        toast.success(`发现 ${res.data.addresses.length} 个有余额的地址`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '扫描失败');
+    } finally {
+      setSweepLoading(false);
+    }
+  };
+
+  // ── 执行归集 ──────────────────────────────────────────────────
+  const handleExecuteSweep = async () => {
+    setSweepExecuting(true);
+    setSweepResult(null);
+    try {
+      const res = await adminApi.post<SweepResult>('/blockchain/sweep/execute', {});
+      setSweepResult(res.data);
+      toast.success(`归集完成，共转移 ${res.data?.totalUsdt ?? '0'} USDT`);
+      fetchBalances();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '归集失败');
+    } finally {
+      setSweepExecuting(false);
+    }
+  };
+
   // ── 渲染 ──────────────────────────────────────────────────────
 
   const connectedChains = status?.chains?.filter((c) => c.connected).length ?? 0;
-  const totalChains = status?.chains?.length ?? 0;
+  // TRON 单独计入
+  const tronCount = status?.tronEnabled ? 1 : 0;
+  const totalChains = (status?.chains?.length ?? 0) + tronCount;
+  const displayConnected = connectedChains + tronCount;
 
   return (
     <div className="p-6 space-y-6">
@@ -180,7 +242,7 @@ export default function AdminBlockchainPage() {
             />
             <AdminStatCard
               title="已连接链"
-              value={`${connectedChains} / ${totalChains}`}
+              value={`${displayConnected} / ${totalChains}`}
               icon={LinkIcon}
               color="bg-cyan-500/20 text-cyan-400"
             />
@@ -203,10 +265,11 @@ export default function AdminBlockchainPage() {
             <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
               <Radio size={14} className="text-cyan-400" />链状态详情
             </h3>
-            {status.chains.length === 0 ? (
+            {status.chains.length === 0 && !status.tronEnabled ? (
               <p className="text-sm text-[#9090A0] text-center py-4">暂无链配置</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* EVM 链 */}
                 {status.chains.map((chain) => {
                   const style = getChainStyle(chain.name);
                   return (
@@ -241,6 +304,23 @@ export default function AdminBlockchainPage() {
                     </div>
                   );
                 })}
+                {/* TRON 链（单独渲染） */}
+                {status.tronEnabled && (
+                  <div className={`flex items-start gap-3 p-4 rounded-lg border ${getChainStyle('TRON').bg}`}>
+                    <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${getChainStyle('TRON').dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-sm font-bold ${getChainStyle('TRON').text}`}>TRON</span>
+                        <span className="flex items-center gap-1 text-xs text-green-400">
+                          <CheckCircle size={11} />已连接
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <span className="px-1.5 py-0.5 bg-[#1A1A24] text-[#9090A0] text-xs rounded font-mono">USDT</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -309,6 +389,107 @@ export default function AdminBlockchainPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* 一键归集 */}
+      <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Layers size={14} className="text-cyan-400" />一键归集
+            <span className="text-xs text-[#9090A0] font-normal">将充值地址余额转入热钱包</span>
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleScanSweep}
+              disabled={sweepLoading || sweepExecuting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-cyan-500/20 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
+            >
+              {sweepLoading ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              扫描余额
+            </button>
+            <button
+              onClick={handleExecuteSweep}
+              disabled={sweepExecuting || sweepLoading || sweepAddresses.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-green-500/20 bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+            >
+              {sweepExecuting ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
+              执行归集
+            </button>
+          </div>
+        </div>
+
+        {/* 扫描结果 */}
+        {sweepLoading ? (
+          <AdminSkeleton mode="table" count={3} />
+        ) : sweepAddresses.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#1E1E2E]">
+                  <th className="text-left py-2 px-3 text-xs text-[#9090A0] font-medium">链</th>
+                  <th className="text-left py-2 px-3 text-xs text-[#9090A0] font-medium">地址</th>
+                  <th className="text-right py-2 px-3 text-xs text-[#9090A0] font-medium">USDT</th>
+                  <th className="text-right py-2 px-3 text-xs text-[#9090A0] font-medium">Gas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1E1E2E]">
+                {sweepAddresses.map((a, i) => {
+                  const style = getChainStyle(a.chain);
+                  return (
+                    <tr key={i} className="hover:bg-[#1A1A24] transition-colors">
+                      <td className="py-2 px-3">
+                        <span className={`text-xs font-bold ${style.text}`}>{a.chain}</span>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className="text-xs text-[#9090A0] font-mono">
+                          {a.address.slice(0, 10)}...{a.address.slice(-6)}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <span className="text-xs font-mono text-white">
+                          {parseFloat(a.usdt).toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <span className="text-xs font-mono text-[#9090A0]">
+                          {parseFloat(a.gasBalance).toFixed(6)} {a.gasSymbol}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : sweepResult ? null : (
+          <p className="text-sm text-[#9090A0] text-center py-6">点击「扫描余额」查找有余额的充值地址</p>
+        )}
+
+        {/* 归集结果 */}
+        {sweepResult && (
+          <div className="mt-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <p className="text-sm text-green-400 font-medium mb-2">
+              归集完成 — 共扫描 {sweepResult.scanned} 个地址，成功归集 {sweepResult.swept} 个，转移 {sweepResult.totalUsdt} USDT
+            </p>
+            {sweepResult.results?.length > 0 && (
+              <div className="space-y-1 mt-2 max-h-40 overflow-y-auto">
+                {sweepResult.results.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    {r.status === 'success' ? (
+                      <CheckCircle size={11} className="text-green-400 shrink-0" />
+                    ) : (
+                      <XCircle size={11} className="text-red-400 shrink-0" />
+                    )}
+                    <span className="text-[#9090A0] font-mono">{r.address.slice(0, 10)}...{r.address.slice(-6)}</span>
+                    <span className={`ml-auto ${r.status === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                      {r.status === 'success' ? (r.txHash ? `TX: ${r.txHash.slice(0, 10)}...` : '成功') : r.error}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
