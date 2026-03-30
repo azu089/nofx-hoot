@@ -875,8 +875,8 @@ function gridSystemPromptZh(
 - **empty 层**：无持仓无挂单，可下新单
 
 ### 可执行的操作
-- place_buy_limit: 买入限价单（价格必须低于当前市价，等价格跌到该位置时买入）
-- place_sell_limit: 卖出限价单（价格必须高于当前市价，等价格涨到该位置时卖出）
+- place_buy_limit: 在指定价格下买入限价单
+- place_sell_limit: 在指定价格下卖出限价单
 - cancel_order: 取消指定订单
 - cancel_all_orders: 取消所有订单
 - pause_grid: 暂停网格交易（趋势市场时）
@@ -933,8 +933,8 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - **empty levels**: No position, no order — can place new orders
 
 ### Available Actions
-- place_buy_limit: Buy limit order (price must be below current market price — wait for price to drop to that level)
-- place_sell_limit: Sell limit order (price must be above current market price — wait for price to rise to that level)
+- place_buy_limit: Place buy limit order at specified price
+- place_sell_limit: Place sell limit order at specified price
 - cancel_order: Cancel specific order
 - cancel_all_orders: Cancel all orders
 - pause_grid: Pause grid trading (in trending market)
