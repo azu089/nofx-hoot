@@ -379,7 +379,7 @@ export default function AdminBlockchainPage() {
                         <span className={`text-xs font-mono ${gasLow ? 'text-red-400' : 'text-white'}`}>
                           {parseFloat(b.gasBalance).toFixed(6)} {b.gasSymbol}
                         </span>
-                        {gasLow && <AlertTriangle size={11} className="inline-block ml-1 text-yellow-400" title="Gas 不足，归集前请充值" />}
+                        {gasLow && <AlertTriangle size={11} className="inline-block ml-1 text-yellow-400" aria-label="Gas 不足，归集前请充值" />}
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="text-xs font-mono text-[#9090A0]">
