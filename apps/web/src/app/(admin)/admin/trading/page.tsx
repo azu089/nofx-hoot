@@ -570,8 +570,8 @@ function PositionMonitorTab() {
     {
       key: 'pnl', title: '当前盈亏', align: 'right',
       render: (r) => (
-        <span className={`text-sm font-medium ${r.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {r.pnl >= 0 ? '+' : ''}{r.pnl?.toFixed(2)} ({r.pnlPercent?.toFixed(1)}%)
+        <span className={`text-sm font-medium ${Number(r.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+          {Number(r.pnl) >= 0 ? '+' : ''}{Number(r.pnl || 0).toFixed(2)} ({Number(r.pnlPercent || 0).toFixed(1)}%)
         </span>
       ),
     },
@@ -588,9 +588,9 @@ function PositionMonitorTab() {
           <AdminStatCard title="已平仓" value={stats.closed} icon={BarChart3} color="bg-[#9090A0]/10 text-[#9090A0]" />
           <AdminStatCard
             title="总盈亏"
-            value={`${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl?.toFixed(2)}`}
+            value={`${Number(stats.totalPnl) >= 0 ? '+' : ''}$${Number(stats.totalPnl || 0).toFixed(2)}`}
             icon={TrendingUp}
-            color={stats.totalPnl >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}
+            color={Number(stats.totalPnl) >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}
           />
         </div>
       )}
