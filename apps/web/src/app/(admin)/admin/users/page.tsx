@@ -21,6 +21,8 @@ import {
   Phone,
   ShieldOff,
   ShieldCheck,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -725,6 +727,24 @@ function UserDetailDialog({
   );
 }
 
+// ─────────────────────────── 复制按钮 ───────────────────────────
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); });
+      }}
+      className="inline-flex items-center justify-center w-5 h-5 rounded hover:bg-[#2A2A3A] text-[#4A4A5A] hover:text-cyan-400 transition-colors shrink-0"
+      title="复制"
+    >
+      {copied ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
+    </button>
+  );
+}
+
 // ─────────────────────────── 用户列表 Tab ───────────────────────────
 
 function UserListTab() {
@@ -760,25 +780,16 @@ function UserListTab() {
     {
       key: 'uid',
       title: 'ID',
-      width: '120px',
+      width: '110px',
       render: (row) => {
         const shortId = row.userCode || (row.uid ? `USR${String(row.uid).padStart(5, '0')}` : '—');
         return (
           <div className="flex flex-col gap-0.5">
-            <span
-              className="font-mono text-cyan-400 text-xs font-semibold cursor-pointer hover:text-cyan-300 transition-colors"
-              title="点击复制ID"
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(shortId); toast.success(`已复制 ${shortId}`); }}
-            >
-              {shortId}
+            <span className="inline-flex items-center gap-0.5">
+              <span className="font-mono text-cyan-400 text-xs font-semibold">{shortId}</span>
+              <CopyBtn text={shortId} />
             </span>
-            <span
-              className="font-mono text-[#4A4A5A] text-[10px] cursor-pointer hover:text-[#9090A0] transition-colors truncate max-w-[110px]"
-              title={`UUID: ${row.id} (点击复制)`}
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.id); toast.success('已复制 UUID'); }}
-            >
-              {row.id.slice(0, 8)}…
-            </span>
+            <span className="font-mono text-[#4A4A5A] text-[10px] truncate max-w-[100px]">{row.id.slice(0, 8)}…</span>
           </div>
         );
       },
@@ -786,12 +797,22 @@ function UserListTab() {
     {
       key: 'email',
       title: '邮箱',
-      render: (row) => <span className="text-white">{row.email}</span>,
+      render: (row) => (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-white text-xs truncate max-w-[180px]">{row.email}</span>
+          <CopyBtn text={row.email} />
+        </span>
+      ),
     },
     {
       key: 'nickname',
       title: '昵称',
-      render: (row) => <span className="text-[#9090A0]">{row.nickname || '-'}</span>,
+      render: (row) => row.nickname ? (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-[#9090A0] text-xs">{row.nickname}</span>
+          <CopyBtn text={row.nickname} />
+        </span>
+      ) : <span className="text-[#4A4A5A] text-xs">-</span>,
     },
     {
       key: 'usdtBalance',
