@@ -31,7 +31,9 @@ export class AgentGuard implements CanActivate {
 
     try {
       // 验证 Token
+      console.log('[AgentGuard] verifying token...');
       const payload = this.jwtService.verify(token);
+      console.log('[AgentGuard] payload:', JSON.stringify(payload));
 
       // 检查是否为代理商令牌
       if (payload.type !== 'agent') {
