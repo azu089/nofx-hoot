@@ -786,18 +786,42 @@ export class AdminService {
 
     const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
+    // 聚合辅助：对 transactions 表按 type 求 sum(|amount|)
+    const txAggregate = (types: string[], dateFrom?: Date) => {
+      const where: any = {
+        type: { in: types },
+        status: 'completed',
+      };
+      if (dateFrom) where.createdAt = { gte: dateFrom };
+      return this.prisma.transaction.aggregate({ where, _sum: { amount: true } });
+    };
+
     const [
       totalUsers,
+      todayNewUsers,
       activeUsers,
       totalStrategies,
       activeStrategies,
       pendingWithdraws,
       openPositions,
+      // 收入（membership/subscription/fee 扣费，amount < 0）
       revenueResult,
       todayRevenueResult,
+      // 充值（deposit + admin_credit，amount > 0）
+      totalDepositResult,
+      todayDepositResult,
+      // 提现（withdraw，amount < 0）
+      totalWithdrawResult,
+      todayWithdrawResult,
+      // Gas 兑换（exchange 类型）
+      totalGasExchangeResult,
+      todayGasExchangeResult,
+      // Gas 费（gas_fee 类型，amount < 0）
+      totalGasFeeResult,
+      todayGasFeeResult,
     ] = await Promise.all([
       this.prisma.user.count(),
-      // 7日内有持仓活动的用户数（代理活跃用户）
+      this.prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
       this.prisma.position.groupBy({
         by: ['userId'],
         where: { updatedAt: { gte: weekStart } },
@@ -806,39 +830,41 @@ export class AdminService {
       this.prisma.strategy.count({ where: { isActive: true } }),
       this.prisma.withdrawRequest.count({ where: { status: 'pending' } }),
       this.prisma.position.count({ where: { status: 'open' } }),
-      // 总收入：已完成的 membership/subscription 类型交易（USDT）
-      this.prisma.transaction.aggregate({
-        where: {
-          type: { in: ['membership', 'subscription', 'fee'] },
-          asset: 'USDT',
-          status: 'completed',
-          amount: { lt: 0 },
-        },
-        _sum: { amount: true },
-      }),
-      // 今日收入
-      this.prisma.transaction.aggregate({
-        where: {
-          type: { in: ['membership', 'subscription', 'fee'] },
-          asset: 'USDT',
-          status: 'completed',
-          amount: { lt: 0 },
-          createdAt: { gte: todayStart },
-        },
-        _sum: { amount: true },
-      }),
+      // 收入
+      txAggregate(['membership', 'subscription', 'fee']),
+      txAggregate(['membership', 'subscription', 'fee'], todayStart),
+      // 充值
+      txAggregate(['deposit', 'admin_credit']),
+      txAggregate(['deposit', 'admin_credit'], todayStart),
+      // 提现
+      txAggregate(['withdraw']),
+      txAggregate(['withdraw'], todayStart),
+      // Gas 兑换
+      txAggregate(['exchange']),
+      txAggregate(['exchange'], todayStart),
+      // Gas 费
+      txAggregate(['gas_fee']),
+      txAggregate(['gas_fee'], todayStart),
     ]);
 
-    const totalRevenue = Math.abs(Number(revenueResult._sum.amount || 0)).toFixed(2);
-    const todayRevenue = Math.abs(Number(todayRevenueResult._sum.amount || 0)).toFixed(2);
+    const abs = (v: any) => Math.abs(Number(v || 0)).toFixed(2);
 
     return {
       totalUsers,
+      todayNewUsers,
       activeUsers,
       totalStrategies,
       activeStrategies,
-      totalRevenue,
-      todayRevenue,
+      totalRevenue: abs(revenueResult._sum.amount),
+      todayRevenue: abs(todayRevenueResult._sum.amount),
+      totalDeposit: abs(totalDepositResult._sum.amount),
+      todayDeposit: abs(todayDepositResult._sum.amount),
+      totalWithdraw: abs(totalWithdrawResult._sum.amount),
+      todayWithdraw: abs(todayWithdrawResult._sum.amount),
+      totalGasExchange: abs(totalGasExchangeResult._sum.amount),
+      todayGasExchange: abs(todayGasExchangeResult._sum.amount),
+      totalGasFee: abs(totalGasFeeResult._sum.amount),
+      todayGasFee: abs(todayGasFeeResult._sum.amount),
       totalPositions: openPositions,
       openPositions,
       pendingWithdraws,
