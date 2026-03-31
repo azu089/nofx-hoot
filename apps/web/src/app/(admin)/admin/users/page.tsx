@@ -797,9 +797,10 @@ function UserListTab() {
     {
       key: 'email',
       title: '邮箱',
+      width: '160px',
       render: (row) => (
-        <span className="inline-flex items-center gap-1">
-          <span className="text-white text-xs truncate max-w-[180px]">{row.email}</span>
+        <span className="inline-flex items-center gap-0.5 max-w-[155px]">
+          <span className="text-white text-xs truncate">{row.email}</span>
           <CopyBtn text={row.email} />
         </span>
       ),
@@ -807,9 +808,10 @@ function UserListTab() {
     {
       key: 'nickname',
       title: '昵称',
+      width: '100px',
       render: (row) => row.nickname ? (
-        <span className="inline-flex items-center gap-1">
-          <span className="text-[#9090A0] text-xs">{row.nickname}</span>
+        <span className="inline-flex items-center gap-0.5 max-w-[95px]">
+          <span className="text-[#9090A0] text-xs truncate">{row.nickname}</span>
           <CopyBtn text={row.nickname} />
         </span>
       ) : <span className="text-[#4A4A5A] text-xs">-</span>,
@@ -817,9 +819,10 @@ function UserListTab() {
     {
       key: 'usdtBalance',
       title: 'USDT',
+      width: '70px',
       align: 'right',
       render: (row) => (
-        <span className="font-mono text-white">
+        <span className="font-mono text-white text-xs whitespace-nowrap">
           {parseFloat(row.usdtBalance).toFixed(2)}
         </span>
       ),
@@ -827,9 +830,10 @@ function UserListTab() {
     {
       key: 'hootBalance',
       title: 'HOOT',
+      width: '70px',
       align: 'right',
       render: (row) => (
-        <span className="font-mono text-cyan-400">
+        <span className="font-mono text-cyan-400 text-xs whitespace-nowrap">
           {parseFloat(row.hootBalance).toFixed(2)}
         </span>
       ),
@@ -837,9 +841,10 @@ function UserListTab() {
     {
       key: 'pointBalance',
       title: 'Gas',
+      width: '60px',
       align: 'right',
       render: (row) => (
-        <span className="font-mono text-green-400 text-xs">
+        <span className="font-mono text-green-400 text-xs whitespace-nowrap">
           {parseFloat(row.pointBalance).toFixed(2)}
         </span>
       ),
@@ -847,9 +852,10 @@ function UserListTab() {
     {
       key: 'binding',
       title: '绑定',
+      width: '55px',
       align: 'center',
       render: (row) => (
-        <div className="flex items-center justify-center gap-1.5">
+        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
           <span title={row.telegramUsername ? `TG: @${row.telegramUsername}` : '未绑定TG'} className={`text-[10px] px-1 py-0.5 rounded ${row.telegramUsername ? 'bg-blue-500/10 text-blue-400' : 'text-[#4A4A5A]'}`}>
             TG
           </span>
@@ -862,6 +868,7 @@ function UserListTab() {
     {
       key: 'status',
       title: '状态',
+      width: '50px',
       align: 'center',
       render: (row) => <AdminStatusBadge status={row.status} />,
     },
@@ -893,9 +900,10 @@ function UserListTab() {
     {
       key: 'createdAt',
       title: '注册',
+      width: '75px',
       align: 'center',
       render: (row) => (
-        <span className="text-[#9090A0] text-xs">
+        <span className="text-[#9090A0] text-xs whitespace-nowrap">
           {new Date(row.createdAt).toLocaleDateString('zh-CN')}
         </span>
       ),
@@ -904,7 +912,7 @@ function UserListTab() {
       key: 'actions',
       title: '操作',
       align: 'center',
-      width: '130px',
+      width: '100px',
       render: (row) => (
         <div className="flex items-center justify-center gap-2">
           <button
