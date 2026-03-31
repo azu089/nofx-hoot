@@ -418,7 +418,6 @@ export class GridTradingService {
         hold:             '观望',
         pause_grid:       '暂停网格',
         resume_grid:      '恢复网格',
-        place_order:      '挂单',
         place_buy_limit:  '挂买单',
         place_sell_limit: '挂卖单',
         cancel_order:     '取消订单',
@@ -2651,30 +2650,14 @@ export class GridTradingService {
     this.logger.debug(`[网格] 执行决策: action=${this.actionLabel(action, locale)}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
 
     switch (action) {
-      // AI 驱动补单 — place_order 由层 side 自动决定方向，兼容旧 place_buy/sell_limit
-      case 'place_order':
+      // AI 驱动补单
       case 'place_buy_limit':
-      case 'place_sell_limit': {
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        // 从层的预设 side 决定方向（根源修复：AI 不再选择方向）
-        const rawLevel = decision.level_index ?? decision.level ?? 0;
-        const levelIdx = rawLevel > 0 ? rawLevel - 1 : -1;
-        const targetLine = levelIdx >= 0 ? state.gridLines[levelIdx] : undefined;
-        // 层 side 优先；若层不存在（越界等），回退到 AI 指定的 action 方向
-        const side: 'buy' | 'sell' = targetLine
-          ? targetLine.side
-          : (action === 'place_buy_limit' ? 'buy' : 'sell');
-        if (targetLine && action !== 'place_order') {
-          // 兼容旧指令：如果 AI 发了 place_buy_limit 但层 side=sell，以层 side 为准
-          if ((action === 'place_buy_limit' && targetLine.side === 'sell') ||
-              (action === 'place_sell_limit' && targetLine.side === 'buy')) {
-            this.logger.warn(
-              `[网格] 方向纠正: AI 发 ${action} 在 L${rawLevel}(side=${targetLine.side})，以层方向 ${targetLine.side} 为准`,
-            );
-          }
-        }
-        return this.placeGridLimitOrder(state, decision, side, adapter as GridExchangeAdapter, useMakerOnly);
-      }
+        return this.placeGridLimitOrder(state, decision, 'buy', adapter as GridExchangeAdapter, useMakerOnly);
+
+      case 'place_sell_limit':
+        if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
+        return this.placeGridLimitOrder(state, decision, 'sell', adapter as GridExchangeAdapter, useMakerOnly);
 
       case 'cancel_order': {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
@@ -4765,13 +4748,16 @@ export class GridTradingService {
       for (const d of decisions) {
         counts[d.action] = (counts[d.action] || 0) + 1;
       }
-      const placeCount = (counts['place_order'] || 0) + (counts['place_buy_limit'] || 0) + (counts['place_sell_limit'] || 0);
+      const buyCount = (counts['place_buy_limit'] || 0);
+      const sellCount = (counts['place_sell_limit'] || 0);
       const cancelCount = (counts['cancel_order'] || 0);
       const parts: string[] = [];
-      if (placeCount) parts.push(`${placeCount}P`);
+      if (buyCount) parts.push(`${buyCount}B`);
+      if (sellCount) parts.push(`${sellCount}S`);
       if (cancelCount) parts.push(`${cancelCount}C`);
       for (const [act, cnt] of Object.entries(counts)) {
-        if (!['place_order', 'place_buy_limit', 'place_sell_limit', 'cancel_order', 'hold', 'wait'].includes(act)) {
+        // hold/wait 不纳入摘要（actionsOnly 模式下这些条目会被过滤掉，无需展示）
+        if (!['place_buy_limit', 'place_sell_limit', 'cancel_order', 'hold', 'wait'].includes(act)) {
           parts.push(`${this.actionLabel(act, locale)}×${cnt}`);
         }
       }
