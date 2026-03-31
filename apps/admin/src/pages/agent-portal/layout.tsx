@@ -71,7 +71,7 @@ export default function AgentLayout() {
 
       // 服务端验证 token 有效性
       try {
-        const response = await fetch(`${API_BASE}/agent/auth/me`, {
+        const response = await fetch(`${API_BASE}/agent/auth/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
