@@ -3179,33 +3179,8 @@ export class GridTradingService {
       percentPriceUp = precision.percentPriceUp;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
 
-    // Step 2.5: 价格偏差保护（动态读取交易所 PERCENT_PRICE，替代硬编码）
-    // Binance PERCENT_PRICE 因品种而异（如 multiplierDown=0.95 表示不低于标记价×0.95）
-    // 加 2% 安全余量：lastPrice ≠ markPrice，防止下单瞬间标记价微移导致被拒
-    const marketPrice = state.lastPrice;
-    if (marketPrice > 0) {
-      const sellFloor = percentPriceDown
-        ? marketPrice * percentPriceDown * 1.02   // 动态值 + 2% 安全余量（向上收紧）
-        : marketPrice * 0.95;                      // 无数据时回退默认 5%
-      const buyCeiling = percentPriceUp
-        ? marketPrice * percentPriceUp * 0.98     // 动态值 - 2% 安全余量（向下收紧）
-        : marketPrice * 1.10;                      // 无数据时回退默认 10%
-
-      if (side === 'sell' && price < sellFloor) {
-        const devPct = ((marketPrice - price) / marketPrice * 100).toFixed(1);
-        const limitPct = percentPriceDown ? ((1 - percentPriceDown) * 100).toFixed(1) : '5.0';
-        const skipReason = `卖单价格偏低: ${price.toFixed(4)} 低于市价 ${devPct}%（交易所限制约 ${limitPct}%）`;
-        this.logger.warn(`[网格] 价格偏差跳过: SELL level=${levelIndex} price=${price.toFixed(4)} < floor=${sellFloor.toFixed(4)} (market=${marketPrice.toFixed(4)}, ppDown=${percentPriceDown ?? 'N/A'})`);
-        return { executed: false, skipReason };
-      }
-      if (side === 'buy' && price > buyCeiling) {
-        const devPct = ((price - marketPrice) / marketPrice * 100).toFixed(1);
-        const limitPct = percentPriceUp ? ((percentPriceUp - 1) * 100).toFixed(1) : '10.0';
-        const skipReason = `买单价格偏高: ${price.toFixed(4)} 高于市价 ${devPct}%（交易所限制约 ${limitPct}%）`;
-        this.logger.warn(`[网格] 价格偏差跳过: BUY level=${levelIndex} price=${price.toFixed(4)} > ceiling=${buyCeiling.toFixed(4)} (market=${marketPrice.toFixed(4)}, ppUp=${percentPriceUp ?? 'N/A'})`);
-        return { executed: false, skipReason };
-      }
-    }
+    // 对齐 nofx：不做 PERCENT_PRICE 预拦截，直接发给交易所裁判
+    // nofx placeGridLimitOrder 无此检查，交易所拒绝后上层 catch 记录日志
     // floor 取整可能导致 finalQty=0（如 BTC 0.000914 → 0）
     // 当原始数量 >= minQty 的 80% 时，snap up 到 minQty，避免因精度丢失空转
     if (finalQty <= 0 && minQty > 0 && quantity >= minQty * 0.8) {
