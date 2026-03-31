@@ -116,8 +116,8 @@ function AgentFormDialog({
     const payload: Record<string, unknown> = {
       name: form.name,
       email: form.email,
-      level: Number(form.level),
-      commissionRate: Number(form.commissionRate),
+      level: String(form.level),
+      commissionRate: Number(form.commissionRate) / 100, // 前端输入百分比，后端接收小数 (15% → 0.15)
     };
     if (!editAgent && form.password) {
       payload.password = form.password;
