@@ -876,8 +876,7 @@ function gridSystemPromptZh(
 - **empty 层**：无持仓无挂单，可下新单
 
 ### 可执行的操作
-- **place_buy_limit**: 在任意 empty 层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在任意 empty 层挂卖单（fields: level, price, quantity）
+- **place_order**: 在 empty 层补挂限价单（fields: level, price, quantity）。方向由该层标注的买/卖方向自动决定，无需指定 buy/sell
 - **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分（<positionSize）或全额（=positionSize）
 - **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）。quantity 同上
 - **cancel_order**: 取消指定挂单（field: orderId）
@@ -888,7 +887,7 @@ function gridSystemPromptZh(
 - **hold**: 保持当前状态不操作
 
 ### 技术约束（不可违反）
-- place_buy/sell_limit 只能在 empty 层操作，且应遵循该层标注的买卖方向
+- place_order 只能在 empty 层操作，方向由层标注的买/卖自动决定（买方层→挂买单，卖方层→挂卖单）
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ### 暂停模式（isPaused=true）
@@ -899,7 +898,7 @@ function gridSystemPromptZh(
 - adjust_grid：以当前价重建网格并解除暂停
 - hold：继续观察
 
-⚠️ place_buy_limit / place_sell_limit 暂停期间不可用。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
+⚠️ place_order 暂停期间不可用。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
 
 ## 输出格式
 输出JSON，包含分析和决策数组:
@@ -908,7 +907,7 @@ function gridSystemPromptZh(
 {
   "analysis": "市场状态分析和决策理由",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"第5层价格接近，下买单"},
+    {"action":"place_order","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"第5层空格，补挂"},
     {"action":"hold","confidence":90,"reasoning":"市场震荡，保持当前网格"}
   ]
 }
@@ -951,8 +950,7 @@ Each cycle fetches real-time data from exchange and maps to grid levels by prior
 - **empty levels**: No position, no order — can place new orders
 
 ### Available Actions
-- **place_buy_limit**: Place buy order on any empty level (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order on any empty level (fields: level, price, quantity)
+- **place_order**: Place limit order on an empty level (fields: level, price, quantity). Direction is auto-determined by the level's labeled buy/sell side — no need to specify buy/sell
 - **close_long** (fields: level, quantity): Close long position (filled level with side=buy). quantity can be partial (<positionSize) or full (=positionSize)
 - **close_short** (fields: level, quantity): Close short position (filled level with side=sell). quantity same as above
 - **cancel_order**: Cancel a specific order (field: orderId)
@@ -963,7 +961,7 @@ Each cycle fetches real-time data from exchange and maps to grid levels by prior
 - **hold**: Maintain current state
 
 ### Technical Constraints (must not violate)
-- place_buy/sell_limit can ONLY be used on empty levels, and should follow the level's indicated buy/sell direction
+- place_order can ONLY be used on empty levels. Direction is auto-determined by the level's labeled side (buy level → buy order, sell level → sell order)
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ### Pause Mode (isPaused=true)
@@ -974,7 +972,7 @@ All grid orders cancelled. AI continues running to manage positions. Available a
 - adjust_grid: rebuild grid at current price and lift pause
 - hold: observe
 
-⚠️ place_buy_limit / place_sell_limit are NOT available while paused. Use resume_grid or adjust_grid first.
+⚠️ place_order is NOT available while paused. Use resume_grid or adjust_grid first.
 
 ## Output Format
 Output JSON with analysis and actions array:
@@ -983,7 +981,7 @@ Output JSON with analysis and actions array:
 {
   "analysis": "Market regime assessment and decision reasoning",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"Level 5 price approaching, place buy order"},
+    {"action":"place_order","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"Level 5 empty, fill it"},
     {"action":"hold","confidence":90,"reasoning":"Market ranging, maintain current grid"}
   ]
 }
