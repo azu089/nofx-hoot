@@ -73,16 +73,18 @@ interface Strategy {
 interface Position {
   id: string;
   userId: string;
-  userEmail: string;
+  username: string;
   exchange: string;
   symbol: string;
-  side: 'long' | 'short';
-  qty: number;
-  entryPrice: number;
-  pnl: number;
-  pnlPercent: number;
+  side: string;
+  amount: string;
+  entryPrice: string;
+  pnl: string | null;
+  realizedPnl: string | null;
   status: string;
-  openedAt: string;
+  createdAt: string;
+  closedAt: string | null;
+  closeReason: string | null;
 }
 
 interface PositionStats {
@@ -554,7 +556,7 @@ function PositionMonitorTab() {
   if (error) return <AdminErrorState message={error} onRetry={refetch} />;
 
   const columns: AdminColumn<Position>[] = [
-    { key: 'user', title: '用户', render: (r) => <span className="text-xs text-[#9090A0]">{r.userEmail}</span> },
+    { key: 'user', title: '用户', render: (r) => <span className="text-xs text-[#9090A0]">{r.username}</span> },
     { key: 'exchange', title: '交易所', render: (r) => <span className="text-xs font-mono text-[#9090A0]">{r.exchange}</span> },
     { key: 'symbol', title: '交易对', render: (r) => <span className="font-mono text-cyan-400 text-xs">{r.symbol}</span> },
     {
@@ -565,18 +567,27 @@ function PositionMonitorTab() {
         </span>
       ),
     },
-    { key: 'qty', title: '数量', align: 'right', render: (r) => <span className="text-sm">{r.qty}</span> },
-    { key: 'entryPrice', title: '入场价', align: 'right', render: (r) => <span className="text-sm">${r.entryPrice?.toLocaleString()}</span> },
+    { key: 'amount', title: '数量', align: 'right', render: (r) => <span className="text-xs font-mono">{r.amount}</span> },
+    { key: 'entryPrice', title: '入场价', align: 'right', render: (r) => <span className="text-xs font-mono">${Number(r.entryPrice).toFixed(4)}</span> },
     {
-      key: 'pnl', title: '当前盈亏', align: 'right',
-      render: (r) => (
-        <span className={`text-sm font-medium ${Number(r.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {Number(r.pnl) >= 0 ? '+' : ''}{Number(r.pnl || 0).toFixed(2)} ({Number(r.pnlPercent || 0).toFixed(1)}%)
-        </span>
-      ),
+      key: 'pnl', title: '盈亏', align: 'right',
+      render: (r) => {
+        const pnl = Number(r.realizedPnl || r.pnl || 0);
+        return (
+          <span className={`text-xs font-medium font-mono ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+          </span>
+        );
+      },
     },
     { key: 'status', title: '状态', align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
-    { key: 'openedAt', title: '开仓时间', render: (r) => new Date(r.openedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) },
+    {
+      key: 'createdAt', title: '开仓时间',
+      render: (r) => {
+        const d = new Date(r.createdAt);
+        return <span className="text-xs text-[#9090A0] whitespace-nowrap">{isNaN(d.getTime()) ? '-' : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>;
+      },
+    },
   ];
 
   return (
