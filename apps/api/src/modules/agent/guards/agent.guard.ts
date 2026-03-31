@@ -68,6 +68,7 @@ export class AgentGuard implements CanActivate {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
+      console.error('[AgentGuard] JWT verify failed:', error.message);
       throw new UnauthorizedException('令牌无效或已过期');
     }
   }
