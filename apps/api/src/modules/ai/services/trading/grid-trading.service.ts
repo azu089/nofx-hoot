@@ -2232,9 +2232,10 @@ export class GridTradingService {
       }
 
       return {
+        // 对齐 nofx：empty 层 quantity=0
         price: l.price,
         side: l.side as 'buy' | 'sell',
-        quantity: normalQty,
+        quantity: 0,
         positionSize: 0,
         state: 'cancelled' as const,
         orderId: undefined,
@@ -2453,7 +2454,8 @@ export class GridTradingService {
           };
         }
         return {
-          price: d.p, side: d.s as 'buy' | 'sell', quantity: normalQty,
+          // 对齐 nofx：empty 层 OrderQuantity=0（不填建议量，避免 AI 误以为"已有单"）
+          price: d.p, side: d.s as 'buy' | 'sell', quantity: 0,
           positionSize: 0, state: 'empty' as const, orderId: undefined,
           fillPrice: undefined, profit: undefined,
         };
@@ -2465,9 +2467,7 @@ export class GridTradingService {
       exchangeLevels = state.gridLines.map((gl) => ({
         price: gl.price,
         side: gl.side as 'buy' | 'sell',
-        quantity: gl.allocatedUSD > 0 && currentPrice > 0
-          ? (gl.allocatedUSD * (state.leverage ?? 1)) / currentPrice
-          : 0,
+        quantity: 0,
         positionSize: 0,
         state: 'cancelled' as const,
         orderId: undefined,

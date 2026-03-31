@@ -1165,14 +1165,13 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   };
   const dirNote = dirExplain[ctx.currentDirection] ?? ctx.currentDirection;
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}（${dirNote}）`);
-  lines.push(`方向自适应: ${ctx.enableDirectionAdjust ? '已启用（箱体突破→自动偏转）' : '未启用（突破→pause/reduce）'}`);
-  const _exchOrderCount = ctx.exchangeOpenOrders?.length ?? 0;
-  const _mappedOrderCount = ctx.activeOrderCount;
+  // 对齐 nofx：简洁展示活跃订单数、已成交层数、空格数
+  const emptyCount = ctx.levels.filter(l => l.state === 'empty').length;
+  lines.push(`活跃订单数: ${ctx.activeOrderCount} | 已成交层数: ${ctx.filledLevelCount} | 空格: ${emptyCount}`);
+  if (ctx.isPaused) {
+    lines.push(`网格已暂停: 是 [来源:${ctx.pauseSource ?? '未知'}${ctx.pauseReason ? ` | ${ctx.pauseReason}` : ''}]`);
+  }
   const _unmappedCount = ctx.unmappedOrderIds?.length ?? 0;
-  const pauseStr = ctx.isPaused
-    ? `是 [来源:${ctx.pauseSource ?? '未知'}${ctx.pauseReason ? ` | 原因:${ctx.pauseReason}` : ''}]`
-    : '否';
-  lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${pauseStr}`);
   // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
   if (_unmappedCount > 0) {
     lines.push(`⚠️ ${_unmappedCount} 个挂单在当前映射中无对应 empty 层（可能是持仓层占位导致无处映射）：`);
