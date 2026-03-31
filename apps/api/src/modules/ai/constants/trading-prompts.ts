@@ -984,37 +984,10 @@ function calcFilledQty(levels: GridContext['levels'], side: string): number {
   return levels.filter(l => l.state === 'filled' && l.side === side).reduce((s, l) => s + (l.positionSize ?? 0), 0);
 }
 
-/** 构建层级表行 */
+/** 构建层级表行 — 对齐 nofx: | 层级 | 价格 | 状态 | 方向 | 订单数量 | 持仓数量 | 未实现盈亏 | */
 function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext, isEn: boolean): string {
-  const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
-  const dirStr = l.state === 'filled'
-    ? (l.side === 'buy' ? (isEn ? 'Long' : '持多') : (isEn ? 'Short' : '持空'))
-    : l.state === 'pending'
-      ? (l.side === 'buy' ? (isEn ? 'Bid' : '挂买') : (isEn ? 'Ask' : '挂卖'))
-      : (l.side === 'buy' ? (isEn ? 'buy' : '买') : (isEn ? 'sell' : '卖'));
-  const stateStr = l.state === 'pending' ? (isEn ? 'Pending' : '待成交') : l.state === 'filled' ? (isEn ? 'Filled' : '持仓') : (isEn ? 'Empty' : '空格');
-  const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
-  const posSizeStr = l.state === 'filled' && l.positionSize && l.positionSize > 0 ? l.positionSize.toFixed(4) : '-';
-  const lossStr = (l.state === 'filled' && l.fillPrice && l.fillPrice > 0 && ctx.currentPrice > 0)
-    ? (() => {
-        const pct = Math.abs(ctx.currentPrice - l.fillPrice) / l.fillPrice * 100;
-        const isLoss = l.side === 'buy' ? ctx.currentPrice < l.fillPrice : ctx.currentPrice > l.fillPrice;
-        const threshLabel = isEn ? '/thresh' : '/阈';
-        // 对齐 nofx：盈亏都显示，亏损时附带止损阈值
-        if (isLoss) {
-          const lossLabel = isEn ? 'loss' : '亏';
-          return ` [${lossLabel}${pct.toFixed(1)}%${ctx.stopLossPct ? `${threshLabel}${ctx.stopLossPct}%` : ''}]`;
-        } else {
-          const profitLabel = isEn ? 'profit' : '盈';
-          return ` [${profitLabel}${pct.toFixed(1)}%]`;
-        }
-      })()
-    : '';
-  // filled 层：显示入场价（@entry），quantity=0 表示禁止在此层下单
-  const entryStr = (l.state === 'filled' && l.fillPrice && l.fillPrice > 0)
-    ? ` @${l.fillPrice.toFixed(4)}`
-    : '';
-  return `${String(i + 1).padStart(3)} | ${l.price.toFixed(4)}${entryStr} | ${dirStr} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`;
+  const pnl = l.profit ?? 0;
+  return `| ${i} | $${l.price.toFixed(2)} | ${l.state} | ${l.side} | ${l.quantity.toFixed(4)} | ${(l.positionSize ?? 0).toFixed(4)} | $${pnl.toFixed(2)} |`;
 }
 
 /** 构建持仓行 */
@@ -1162,66 +1135,28 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     short:      '做空 (100%卖)',
   };
   const dirNote = dirExplain[ctx.currentDirection] ?? ctx.currentDirection;
-  lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}（${dirNote}）`);
-  // 对齐 nofx：简洁展示活跃订单数、已成交层数、空格数
-  const emptyCount = ctx.levels.filter(l => l.state === 'empty').length;
-  lines.push(`活跃订单数: ${ctx.activeOrderCount} | 已成交层数: ${ctx.filledLevelCount} | 空格: ${emptyCount}`);
-  if (ctx.isPaused) {
-    lines.push(`网格已暂停: 是 [来源:${ctx.pauseSource ?? '未知'}${ctx.pauseReason ? ` | ${ctx.pauseReason}` : ''}]`);
+  // 对齐 nofx：5 行简洁网格状态
+  lines.push(`- 活跃订单数: ${ctx.activeOrderCount}`);
+  lines.push(`- 已成交层数: ${ctx.filledLevelCount}`);
+  lines.push(`- 网格已暂停: ${ctx.isPaused}`);
+  if (ctx.currentDirection) {
+    lines.push(`- 网格方向: ${dirNote}`);
   }
-  const _unmappedCount = ctx.unmappedOrderIds?.length ?? 0;
-  // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
-  if (_unmappedCount > 0) {
-    lines.push(`⚠️ ${_unmappedCount} 个挂单在当前映射中无对应 empty 层（可能是持仓层占位导致无处映射）：`);
-    for (const oid of ctx.unmappedOrderIds!) {
-      const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
-      if (matchOrder) {
-        lines.push(`  - orderId: ${oid} (${matchOrder.side} @${matchOrder.price.toFixed(2)} x${matchOrder.quantity})`);
-      } else {
-        lines.push(`  - orderId: ${oid}`);
-      }
-    }
-  }
-  if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）。系统将在短期箱体内连续3轮稳定后自动解除；如需立即解除可调用 adjust_grid。`);
-  }
-  const _exchLong = ctx.positionLong?.quantity ?? 0;
-  const _exchShort = ctx.positionShort?.quantity ?? 0;
-  lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} | 空头 ${_exchShort.toFixed(4)}`);
-  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false'}`);
-  if (ctx.upperBoundPct && ctx.lowerBoundPct) {
-    lines.push(`⚙️ 用户网格边界配置: 上+${ctx.upperBoundPct}% / 下-${ctx.lowerBoundPct}%（adjust_grid 重建时将按此百分比计算，不使用ATR）`);
-  } else {
-    lines.push(`⚙️ 用户网格边界配置: 未设置（adjust_grid 重建时将用ATR自动计算边界）`);
-  }
-  if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
-    lines.push(`逐层止损阈值: ${ctx.stopLossPct}%`);
-  }
-  if (ctx.profitTargetPct !== undefined && ctx.profitTargetPct > 0) {
-    lines.push(`止盈目标: ${ctx.profitTargetPct}%`);
-  }
-  // Section 5: 网格层级表
+  // Section 5: 网格层级详情 — 对齐 nofx markdown 表格
   lines.push('');
-  lines.push('--- 网格层级 ---');
-  lines.push('层号 | 价格 | 方向 | 数量 | 持仓量 | 状态 | 盈亏 | 订单ID');
+  lines.push('## 网格层级详情');
+  lines.push('| 层级 | 价格 | 状态 | 方向 | 订单数量 | 持仓数量 | 未实现盈亏 |');
+  lines.push('|------|------|------|------|----------|----------|------------|');
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, false));
   }
-  // Section 6: 账户状态
+  // Section 6: 账户状态 — 对齐 nofx 4 行
   lines.push('');
-  lines.push('--- 账户状态 ---');
-  lines.push(`总权益: ${ctx.totalEquity.toFixed(2)} USDT`);
-  lines.push(`可用保证金: ${ctx.availableBalance.toFixed(2)} USDT`);
-  if (ctx.positionLong || ctx.positionShort) {
-    lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, '多仓', false) : '多仓: 无');
-    lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, '空仓', false) : '空仓: 无');
-    // avgEntry 摘要：filled 层均显示此价格，是网格层映射的参考基准
-    if (ctx.positionLong) lines.push(`avgEntry(多头均价): ${ctx.positionLong.entryPrice.toFixed(4)} — filled层均以此为入场参考`);
-    if (ctx.positionShort) lines.push(`avgEntry(空头均价): ${ctx.positionShort.entryPrice.toFixed(4)} — filled层均以此为入场参考`);
-  } else {
-    lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
-  }
-  lines.push(`未实现盈亏: ${ctx.unrealizedPnl > 0 ? '+' : ''}${ctx.unrealizedPnl.toFixed(2)} USDT`);
+  lines.push('## 账户状态');
+  lines.push(`- 总权益: $${ctx.totalEquity.toFixed(2)}`);
+  lines.push(`- 可用余额: $${ctx.availableBalance.toFixed(2)}`);
+  lines.push(`- 当前持仓: ${ctx.currentPosition.toFixed(4)} (净头寸)`);
+  lines.push(`- 未实现盈亏: $${ctx.unrealizedPnl.toFixed(2)}`);
 
   // Section 7: 绩效统计
   lines.push('');
