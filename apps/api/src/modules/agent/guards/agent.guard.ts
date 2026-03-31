@@ -30,10 +30,9 @@ export class AgentGuard implements CanActivate {
     const token = authHeader.substring(7);
 
     try {
-      // 验证 Token
-      console.log('[AgentGuard] verifying token...');
-      const payload = this.jwtService.verify(token);
-      console.log('[AgentGuard] payload:', JSON.stringify(payload));
+      // 验证 Token — 使用显式 secret 避免 NestJS 多模块 JwtService 注入冲突
+      const secret = process.env.JWT_SECRET || 'hoot-agent-secret-key-2026';
+      const payload = this.jwtService.verify(token, { secret });
 
       // 检查是否为代理商令牌
       if (payload.type !== 'agent') {
