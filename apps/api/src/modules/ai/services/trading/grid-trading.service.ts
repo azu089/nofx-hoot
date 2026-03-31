@@ -2640,7 +2640,7 @@ export class GridTradingService {
     adapter: ExchangeAdapter,
     userId: string,
     apiKeyId: string,
-    useMakerOnly = false,
+    useMakerOnly = true,
     currentPrice?: number,
     locale?: string,
   ): Promise<{ executed: boolean; skipReason?: string }> {
@@ -3036,7 +3036,7 @@ export class GridTradingService {
     decision: GridDecision,
     side: 'buy' | 'sell',
     adapter: GridExchangeAdapter,
-    useMakerOnly = false,
+    useMakerOnly = true,
   ): Promise<{ executed: boolean; skipReason?: string }> {
     // Prompt 中 level 从 1 开始（用户友好），转为 0-based 数组下标
     const rawLevel = decision.level_index ?? decision.level ?? 0;
