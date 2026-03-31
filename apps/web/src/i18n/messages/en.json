@@ -1345,6 +1345,7 @@
     "insufficientFunds": "Insufficient exchange balance",
     "rateLimited": "Rate limit exceeded. Try again later",
     "exchangeUnavailable": "Exchange temporarily unavailable. Try again later",
+    "postOnlyRejected": "Order price too close to market price, rejected by PostOnly (auto-retry next cycle)",
     "invalidOrder": "Invalid order parameters (below exchange minimum)",
     "orderNotFound": "Order not found",
     "modelNotFound": "AI model unavailable. Try a different model",

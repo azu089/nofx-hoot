@@ -1360,6 +1360,7 @@
     "insufficientFunds": "取引所の残高不足です",
     "rateLimited": "リクエスト頻度制限。しばらくしてから再試行してください",
     "exchangeUnavailable": "取引所は一時的に利用不可です。しばらくしてから再試行してください",
+    "postOnlyRejected": "注文価格が市場価格に近すぎ、PostOnlyモードで拒否されました（次サイクルで自動再試行）",
     "invalidOrder": "注文パラメータ無効（取引所の最小要件を満たしていません）",
     "orderNotFound": "注文が見つかりません",
     "modelNotFound": "AI モデル利用不可。別のモデルをお試しください",

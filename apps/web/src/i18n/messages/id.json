@@ -1360,6 +1360,7 @@
     "insufficientFunds": "Saldo bursa tidak mencukupi",
     "rateLimited": "Batas permintaan terlampaui. Coba lagi nanti",
     "exchangeUnavailable": "Bursa sementara tidak tersedia. Coba lagi nanti",
+    "postOnlyRejected": "Harga order terlalu dekat dengan harga pasar, ditolak oleh PostOnly (otomatis retry siklus berikutnya)",
     "invalidOrder": "Parameter order tidak valid (di bawah minimum bursa)",
     "orderNotFound": "Order tidak ditemukan",
     "modelNotFound": "Model AI tidak tersedia. Coba model lain",

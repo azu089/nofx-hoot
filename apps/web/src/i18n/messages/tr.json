@@ -1360,6 +1360,7 @@
     "insufficientFunds": "Borsa bakiyesi yetersiz",
     "rateLimited": "İstek sınırı aşıldı. Daha sonra tekrar deneyin",
     "exchangeUnavailable": "Borsa geçici olarak kullanılamıyor. Daha sonra tekrar deneyin",
+    "postOnlyRejected": "Emir fiyatı piyasa fiyatına çok yakın, PostOnly modunda reddedildi (sonraki döngüde otomatik yeniden deneme)",
     "invalidOrder": "Geçersiz emir parametreleri (borsa minimum gereksiniminin altında)",
     "orderNotFound": "Emir bulunamadı",
     "modelNotFound": "AI modeli kullanılamıyor. Farklı bir model deneyin",

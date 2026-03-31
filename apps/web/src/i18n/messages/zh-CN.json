@@ -1358,6 +1358,7 @@
     "insufficientFunds": "交易所余额不足",
     "rateLimited": "请求频率超限，请稍后重试",
     "exchangeUnavailable": "交易所暂时不可用，请稍后重试",
+    "postOnlyRejected": "挂单价格接近市价，PostOnly 模式下被拒绝（下轮自动重试）",
     "invalidOrder": "订单参数无效（不满足交易所最小要求）",
     "orderNotFound": "订单不存在",
     "modelNotFound": "AI 模型不可用，请更换模型",

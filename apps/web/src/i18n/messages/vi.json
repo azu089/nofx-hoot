@@ -1361,6 +1361,7 @@
     "insufficientFunds": "Số dư sàn không đủ",
     "rateLimited": "Vượt giới hạn yêu cầu. Thử lại sau",
     "exchangeUnavailable": "Sàn tạm thời không khả dụng. Thử lại sau",
+    "postOnlyRejected": "Giá đặt lệnh quá gần giá thị trường, bị từ chối ở chế độ PostOnly (tự động thử lại chu kỳ tiếp)",
     "invalidOrder": "Tham số lệnh không hợp lệ (dưới mức tối thiểu của sàn)",
     "orderNotFound": "Không tìm thấy lệnh",
     "modelNotFound": "Mô hình AI không khả dụng. Thử mô hình khác",

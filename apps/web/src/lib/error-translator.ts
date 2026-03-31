@@ -188,6 +188,7 @@ export function translateExchangeOrderError(
   if (/\[API限流\]/.test(rawError)) return t('rateLimited');
   if (/\[网络问题\]/.test(rawError)) return t('networkError');
   if (/\[风控限制\]/.test(rawError)) return t('exchangeRestricted');
+  if (/\[PostOnly拒绝\]/.test(rawError)) return t('postOnlyRejected');
   if (/\[交易所拒绝\]/.test(rawError)) return t('invalidOrder');
 
   // 4. 无匹配 — 返回提取的 msg 或截断的原始文本

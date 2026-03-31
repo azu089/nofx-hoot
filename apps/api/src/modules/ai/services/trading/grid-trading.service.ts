@@ -275,6 +275,7 @@ type ExchangeErrorCategory =
   | '数量不足'      // -4164 min notional / -4003 qty too small / -1111 precision
   | '认证失败'      // Invalid API key / signature error
   | '账户配置错误'   // OKX 51010：账户模式不支持合约交易，需用户手动开通
+  | 'PostOnly拒绝'  // Binance -5022 / OKX 51119：限价单价格会立即成交，PostOnly 模式下被拒绝
   | '交易所拒绝';   // 其他交易所错误
 
 /**
@@ -352,6 +353,15 @@ function classifyExchangeError(e: any): ExchangeErrorCategory {
     msg.includes('-1021') || msg.includes('timestamp') ||
     msg.includes('-2014') || msg.includes('api-key')
   ) return '认证失败';
+
+  // PostOnly 拒绝（限价单价格穿越市价，会立即成交）
+  // Binance: -5022 "Post Only order will be rejected"
+  // OKX: 51119 "Order price is not within the price limit" 或包含 post_only/maker
+  if (
+    msg.includes('-5022') || msg.includes('post only') || msg.includes('postonly') ||
+    msg.includes('executed as maker') ||
+    (msg.includes('51119') && msg.includes('price'))
+  ) return 'PostOnly拒绝';
 
   return '交易所拒绝';
 }
