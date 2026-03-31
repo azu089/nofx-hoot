@@ -60,13 +60,14 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated && !pathname.includes('admin-login')) {
     // 客户端重定向，期间显示 loading 避免黑屏
     if (typeof window !== 'undefined') {
-      window.location.href = '/admin-login';
+      // 使用 replace 而非 href 赋值，避免浏览器历史栈污染
+      window.location.replace('/admin-login');
     }
     return (
       <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-[#9090A0]">正在跳转登录...</p>
+          <p className="text-[#9090A0] text-sm">正在跳转登录...</p>
         </div>
       </div>
     );

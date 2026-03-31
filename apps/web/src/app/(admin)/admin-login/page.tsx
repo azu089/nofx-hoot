@@ -17,10 +17,17 @@ export default function AdminLoginPage() {
   const [showTotp, setShowTotp] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 已登录则跳转
+  // 已登录则跳转（显示 loading 而非 null，避免黑屏闪烁）
   if (isAuthenticated) {
     router.push('/admin');
-    return null;
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#9090A0] text-sm">正在进入管理后台...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleSubmit = async (e: FormEvent) => {
