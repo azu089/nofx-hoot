@@ -895,11 +895,13 @@ function gridSystemPromptZh(
 - **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（用户配置百分比优先，未配置则用 ATR 自动计算）③ 持仓按入场价就近映射到新层 ④ 本轮结束，下轮 AI 基于新网格决策。当价格偏离网格中心较远时应主动调用，保持挂单距离当前价近，提高成交频率
 - **hold**: 保持当前状态不操作
 
+### 网格核心原则：低买高卖
+- 买入后，在入场价**以上**挂卖单等待卖出获利，不要在入场价以上再挂买单（追高无意义）
+- 卖出后，在入场价**以下**挂买单等待买回获利，不要在入场价以下再挂卖单（追低无意义）
+- 简记：持仓入场价是分界线，买单在下方，卖单在上方
+
 ### 技术约束（不可违反）
 - place_buy/sell_limit 只能在 empty 层操作，且应遵循该层标注的买卖方向
-- 有多头持仓时：禁止在高于持仓入场价的层挂买单（买单只能在入场价以下，用于低位加仓）
-- 有空头持仓时：禁止在低于持仓入场价的层挂卖单（卖单只能在入场价以上，用于高位加空）
-- 违反以上方向规则的限价单会被交易所 PostOnly 机制拒绝
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ### 暂停模式（isPaused=true）
@@ -981,11 +983,13 @@ Result: filled levels cluster around entry price. For long positions, levels abo
 - **adjust_grid**: Rebuild grid. Effect: ① cancel all orders ② recalculate boundaries centered on current price ③ remap positions to nearest new levels ④ current cycle ends; next cycle AI works on new grid. Call this when price has drifted far from grid center to keep orders close to current price and increase fill rate
 - **hold**: Maintain current state
 
+### Grid Core Principle: Buy Low, Sell High
+- After buying, place sell orders **above** entry price to take profit — do NOT place more buy orders above entry (chasing is pointless)
+- After selling, place buy orders **below** entry price to buy back at profit — do NOT place more sell orders below entry (chasing is pointless)
+- Rule of thumb: entry price is the dividing line — buy orders below, sell orders above
+
 ### Technical Constraints (must not violate)
 - place_buy/sell_limit can ONLY be used on empty levels, and should follow the level's indicated buy/sell direction
-- When holding long positions: NEVER place buy orders above entry price (buy orders must be below entry — for adding at lower prices)
-- When holding short positions: NEVER place sell orders below entry price (sell orders must be above entry — for adding at higher prices)
-- Orders violating the above direction rules will be rejected by exchange PostOnly mechanism
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ### Pause Mode (isPaused=true)
