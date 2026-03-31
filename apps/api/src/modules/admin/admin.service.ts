@@ -106,6 +106,8 @@ export class AdminService {
           status: true,
           membershipStatus: true,
           membershipExpireAt: true,
+          lastLoginIp: true,
+          lastLoginAt: true,
           createdAt: true,
           updatedAt: true,
           _count: {

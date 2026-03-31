@@ -68,6 +68,11 @@ model User {
   membershipStatus   String    @default("none") @map("membership_status") // none, active, expired
   membershipExpireAt DateTime? @map("membership_expire_at") // 会员到期时间
 
+  // 登录信息
+  loginAttempts Int       @default(0) @map("login_attempts")
+  lastLoginAt   DateTime? @map("last_login_at")
+  lastLoginIp   String?   @map("last_login_ip")
+
   // 关系
   apiKeys            ApiKey[]
   positions          Position[]

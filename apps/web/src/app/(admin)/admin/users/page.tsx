@@ -58,6 +58,8 @@ interface UserItem {
   membershipExpireAt?: string | null;
   telegramUsername?: string;
   walletAddress?: string;
+  lastLoginIp?: string | null;
+  lastLoginAt?: string | null;
   createdAt: string;
 }
 
@@ -868,32 +870,34 @@ function UserListTab() {
     {
       key: 'status',
       title: '状态',
-      width: '50px',
+      width: '40px',
       align: 'center',
-      render: (row) => <AdminStatusBadge status={row.status} />,
+      render: (row) => {
+        const map: Record<string, { label: string; cls: string }> = {
+          active: { label: '正常', cls: 'text-green-400' },
+          suspended: { label: '冻结', cls: 'text-yellow-400' },
+          banned: { label: '封禁', cls: 'text-red-400' },
+        };
+        const s = map[row.status] || { label: row.status, cls: 'text-[#9090A0]' };
+        return <span className={`text-[10px] font-medium whitespace-nowrap ${s.cls}`}>{s.label}</span>;
+      },
     },
     {
       key: 'membershipStatus',
       title: '会员',
+      width: '70px',
       align: 'center',
       render: (row) => {
         const s = row.membershipStatus;
         if (!s || s === 'none') return <span className="text-[#4A4A5A] text-xs">—</span>;
         const expireAt = row.membershipExpireAt ? new Date(row.membershipExpireAt) : null;
         const expired = expireAt && expireAt < new Date();
-        const labelMap: Record<string, string> = { pro: 'Pro', basic: 'Basic', vip: 'VIP', enterprise: '企业版' };
+        const labelMap: Record<string, string> = { pro: 'Pro', basic: 'Basic', vip: 'VIP', enterprise: '企业' };
         const label = labelMap[s] || s;
         return (
-          <div className="flex flex-col items-center gap-0.5">
-            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${expired ? 'bg-red-500/10 text-red-400' : 'bg-cyan-500/10 text-cyan-400'}`}>
-              {label}{expired ? '(过期)' : ''}
-            </span>
-            {expireAt && (
-              <span className="text-[10px] text-[#9090A0]">
-                {expireAt.toLocaleDateString('zh-CN')}
-              </span>
-            )}
-          </div>
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${expired ? 'bg-red-500/10 text-red-400' : 'bg-cyan-500/10 text-cyan-400'}`}>
+            {label}{expireAt ? ` ${expireAt.getMonth() + 1}/${expireAt.getDate()}` : ''}{expired ? '过期' : ''}
+          </span>
         );
       },
     },
@@ -909,33 +913,38 @@ function UserListTab() {
       ),
     },
     {
+      key: 'lastLoginIp',
+      title: 'IP',
+      width: '100px',
+      render: (row) => row.lastLoginIp ? (
+        <span className="inline-flex items-center gap-0.5">
+          <span className="text-[#9090A0] text-[10px] font-mono">{row.lastLoginIp}</span>
+          <CopyBtn text={row.lastLoginIp} />
+        </span>
+      ) : <span className="text-[#4A4A5A] text-[10px]">—</span>,
+    },
+    {
       key: 'actions',
       title: '操作',
       align: 'center',
       width: '100px',
       render: (row) => (
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
           <button
             onClick={() => handleStatusToggle(row)}
             disabled={statusLoadingId === row.id}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors disabled:opacity-50 ${
+            className={`inline-flex items-center gap-0.5 px-1.5 py-1 rounded text-[10px] transition-colors disabled:opacity-50 ${
               row.status === 'active'
                 ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
                 : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
             }`}
           >
-            {statusLoadingId === row.id ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : row.status === 'active' ? (
-              <Ban size={12} />
-            ) : (
-              <CheckCircle size={12} />
-            )}
+            {statusLoadingId === row.id ? <Loader2 size={10} className="animate-spin" /> : row.status === 'active' ? <Ban size={10} /> : <CheckCircle size={10} />}
             {row.status === 'active' ? '封禁' : '解封'}
           </button>
           <button
             onClick={() => setDetailUserId(row.id)}
-            className="px-2 py-1 bg-[#1E1E2E] hover:bg-[#2A2A3A] text-[#9090A0] hover:text-white rounded text-xs transition-colors"
+            className="px-1.5 py-1 bg-[#1E1E2E] hover:bg-[#2A2A3A] text-[#9090A0] hover:text-white rounded text-[10px] transition-colors"
           >
             详情
           </button>
