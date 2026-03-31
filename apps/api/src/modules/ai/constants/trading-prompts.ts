@@ -880,7 +880,6 @@ function gridSystemPromptZh(
 - adjust_grid: 以当前价重建网格
 - hold: 保持当前状态
 
-### 低买高卖
 有持仓时，入场价是分界线：买单挂在入场价以下，卖单挂在入场价以上。
 
 ### 暂停模式（isPaused=true）
@@ -944,7 +943,6 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - adjust_grid: rebuild grid at current price
 - hold: maintain current state
 
-### Buy Low, Sell High
 When holding positions, entry price is the dividing line: buy orders below entry, sell orders above entry.
 
 ### Pause Mode (isPaused=true)
