@@ -17,6 +17,8 @@ import {
   Settings,
   X,
   Save,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   AdminPageHeader,
@@ -69,6 +71,27 @@ const CHAIN_COLORS: Record<string, { text: string; bg: string; dot: string }> = 
 };
 function getChainStyle(name: string) {
   return CHAIN_COLORS[name.toUpperCase()] ?? { text: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20', dot: 'bg-cyan-400' };
+}
+
+// ─── 复制按钮 ───────────────────────────────────────────────────
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-[#2A2A3A] text-[#5E5E6E] hover:text-cyan-400 transition-colors shrink-0"
+      title="复制地址"
+    >
+      {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+    </button>
+  );
 }
 
 // ─── 主页面 ─────────────────────────────────────────────────────
@@ -317,7 +340,7 @@ export default function AdminBlockchainPage() {
                 <td className="py-3 px-3"><span className="text-xs font-bold text-yellow-400">BSC</span></td>
                 <td className="py-3 px-3">
                   {sweepConfig.evmAddress
-                    ? <span className="text-xs text-[#9090A0] font-mono break-all">{sweepConfig.evmAddress}</span>
+                    ? <span className="inline-flex items-center gap-1.5"><span className="text-xs text-[#9090A0] font-mono break-all">{sweepConfig.evmAddress}</span><CopyBtn text={sweepConfig.evmAddress} /></span>
                     : <span className="text-xs text-red-400 italic">未配置</span>}
                 </td>
                 <td className="py-3 px-3 text-right">
@@ -331,7 +354,7 @@ export default function AdminBlockchainPage() {
                 <td className="py-3 px-3"><span className="text-xs font-bold text-red-400">TRON</span></td>
                 <td className="py-3 px-3">
                   {sweepConfig.tronAddress
-                    ? <span className="text-xs text-[#9090A0] font-mono break-all">{sweepConfig.tronAddress}</span>
+                    ? <span className="inline-flex items-center gap-1.5"><span className="text-xs text-[#9090A0] font-mono break-all">{sweepConfig.tronAddress}</span><CopyBtn text={sweepConfig.tronAddress} /></span>
                     : <span className="text-xs text-red-400 italic">未配置</span>}
                 </td>
                 <td className="py-3 px-3 text-right">
@@ -381,7 +404,10 @@ export default function AdminBlockchainPage() {
                     <tr key={b.chain} className="hover:bg-[#1A1A24] transition-colors">
                       <td className="py-3 px-3"><span className={`text-xs font-bold ${style.text}`}>{b.chain}</span></td>
                       <td className="py-3 px-3">
-                        <span className="text-xs text-[#9090A0] font-mono break-all">{b.address}</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="text-xs text-[#9090A0] font-mono break-all">{b.address}</span>
+                          <CopyBtn text={b.address} />
+                        </span>
                         {isSameAsCollect && (
                           <span className="ml-2 text-[10px] text-yellow-500/70 bg-yellow-500/10 px-1.5 py-0.5 rounded">= 归集地址</span>
                         )}
@@ -451,7 +477,7 @@ export default function AdminBlockchainPage() {
                     return (
                       <tr key={i} className="hover:bg-[#1A1A24] transition-colors">
                         <td className="py-2 px-3"><span className={`text-xs font-bold ${style.text}`}>{a.chain}</span></td>
-                        <td className="py-2 px-3 max-w-xs"><span className="text-xs text-[#9090A0] font-mono break-all">{a.address}</span></td>
+                        <td className="py-2 px-3 max-w-xs"><span className="inline-flex items-center gap-1.5"><span className="text-xs text-[#9090A0] font-mono break-all">{a.address}</span><CopyBtn text={a.address} /></span></td>
                         <td className="py-2 px-3 text-right"><span className="text-xs font-mono text-white">{parseFloat(a.usdt).toFixed(2)}</span></td>
                         <td className="py-2 px-3 text-right"><span className="text-xs font-mono text-[#9090A0]">{parseFloat(a.gasBalance).toFixed(6)} {a.gasSymbol}</span></td>
                       </tr>
