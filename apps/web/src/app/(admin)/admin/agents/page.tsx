@@ -98,6 +98,7 @@ function AgentFormDialog({
   const [form, setForm] = useState({
     name: editAgent?.name ?? '',
     email: editAgent?.email ?? '',
+    password: '',
     level: String(editAgent?.level ?? 1),
     commissionRate: String(editAgent?.commissionRate ?? 5),
   });
@@ -108,12 +109,19 @@ function AgentFormDialog({
       toast.error('请填写姓名和邮箱');
       return;
     }
-    const payload = {
+    if (!editAgent && !form.password) {
+      toast.error('新增代理商必须设置密码');
+      return;
+    }
+    const payload: Record<string, unknown> = {
       name: form.name,
       email: form.email,
       level: Number(form.level),
       commissionRate: Number(form.commissionRate),
     };
+    if (!editAgent && form.password) {
+      payload.password = form.password;
+    }
     if (editAgent) {
       await mutate(`/admin/agents/${editAgent.id}`, 'put', payload);
     } else {
@@ -139,6 +147,7 @@ function AgentFormDialog({
           {[
             { label: '姓名', key: 'name', type: 'text', placeholder: '请输入姓名' },
             { label: '邮箱', key: 'email', type: 'email', placeholder: '请输入邮箱' },
+            ...(!editAgent ? [{ label: '登录密码', key: 'password', type: 'password', placeholder: '请设置密码（至少6位）' }] : []),
           ].map(({ label, key, type, placeholder }) => (
             <div key={key}>
               <label className="text-xs text-[#9090A0] mb-1 block">{label}</label>
