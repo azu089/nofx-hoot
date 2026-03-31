@@ -71,18 +71,20 @@ export class AgentService {
       ]);
 
     // 获取活跃用户数（7天内有交易）
-    const activeUsers = await this.prisma.user.count({
-      where: {
-        agentId,
-        positions: {
-          some: {
-            createdAt: {
-              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-            },
-          },
-        },
-      },
-    });
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [activeUsers, newUsersToday, newUsersThisWeek, newUsersThisMonth, subscribedUsers] =
+      await Promise.all([
+        this.prisma.user.count({
+          where: { agentId, positions: { some: { createdAt: { gte: weekStart } } } },
+        }),
+        this.prisma.user.count({ where: { agentId, createdAt: { gte: todayStart } } }),
+        this.prisma.user.count({ where: { agentId, createdAt: { gte: weekStart } } }),
+        this.prisma.user.count({ where: { agentId, createdAt: { gte: startOfMonth } } }),
+        this.prisma.user.count({ where: { agentId, subscriptions: { some: {} } } }),
+      ]);
 
     return {
       agent: {
@@ -95,6 +97,10 @@ export class AgentService {
         activeUsers,
         totalProfit: agent?.totalProfit.toString() || '0',
         totalCommission: agent?.totalCommission.toString() || '0',
+        newUsersToday,
+        newUsersThisWeek,
+        newUsersThisMonth,
+        subscribedUsers,
       },
       monthly: {
         sourceAmount: monthlyCommissions._sum.sourceAmount?.toString() || '0',
