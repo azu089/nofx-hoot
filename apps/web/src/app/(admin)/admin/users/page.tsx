@@ -124,6 +124,7 @@ interface SourceItem {
 const DETAIL_TABS = [
   { key: 'info', label: '基本信息' },
   { key: 'edit', label: '编辑用户' },
+  { key: 'invitees', label: '下级用户' },
   { key: 'subscriptions', label: '订阅记录' },
   { key: 'positions', label: '持仓记录' },
   { key: 'transactions', label: '交易流水' },
@@ -353,6 +354,9 @@ function UserDetailDialog({
                   </div>
                 </div>
               )}
+
+              {/* Tab: 下级用户 */}
+              {activeTab === 'invitees' && <InviteesTab userId={userId} />}
 
               {/* Tab: 编辑用户 */}
               {activeTab === 'edit' && (
@@ -725,6 +729,41 @@ function UserDetailDialog({
         variant="danger"
         loading={mutLoading}
       />
+    </div>
+  );
+}
+
+// ─────────────────────────── 下级用户 Tab ───────────────────────────
+
+function InviteesTab({ userId }: { userId: string }) {
+  const { data, loading, error } = useAdminApi<{
+    items: { id: string; email: string; nickname: string; usdtBalance: string; subscriptionCount: number; positionCount: number; rewardGenerated: string; createdAt: string }[];
+    total: number;
+  }>(`/admin/referral/users/${userId}/invitees?limit=50`, { enabled: !!userId });
+
+  if (loading) return <div className="py-8 text-center text-[#9090A0] text-sm">加载中...</div>;
+  if (error) return <div className="py-4 text-center text-red-400 text-sm">{error}</div>;
+
+  const items = data?.items ?? [];
+  if (items.length === 0) return <p className="text-center text-[#9090A0] text-sm py-8">暂无下级用户</p>;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-[#9090A0] mb-2">共 {data?.total ?? items.length} 个下级用户</p>
+      {items.map(inv => (
+        <div key={inv.id} className="flex items-center justify-between px-4 py-3 bg-[#0A0A0F] rounded-lg border border-[#1E1E2E]">
+          <div>
+            <p className="text-sm text-white">{inv.nickname || inv.email}</p>
+            <p className="text-xs text-[#9090A0] mt-0.5">
+              USDT {parseFloat(inv.usdtBalance || '0').toFixed(2)} · 订阅 {inv.subscriptionCount} · 持仓 {inv.positionCount}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-green-400 font-mono">+{parseFloat(inv.rewardGenerated || '0').toFixed(2)}</p>
+            <p className="text-[10px] text-[#5E5E6E] mt-0.5">{new Date(inv.createdAt).toLocaleDateString('zh-CN')}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

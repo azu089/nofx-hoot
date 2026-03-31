@@ -33,6 +33,7 @@ const adminNavItems = [
   { id: 'ecosystem', label: '生态管理', icon: Globe, href: '/admin/ecosystem' },
   { id: 'agents', label: '代理商', icon: UserCheck, href: '/admin/agents' },
   { id: 'referral', label: '返佣管理', icon: Share2, href: '/admin/referral' },
+  { id: 'exchanges', label: '交易所管理', icon: BarChart3, href: '/admin/exchanges' },
   { id: 'content', label: '内容管理', icon: FileText, href: '/admin/content' },
   { id: 'withdraws', label: '提现审核', icon: Wallet, href: '/admin/withdraws' },
   { id: 'blockchain', label: '区块链监控', icon: Radio, href: '/admin/blockchain' },
