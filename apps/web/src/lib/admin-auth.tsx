@@ -168,6 +168,16 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     const storedAdmin = localStorage.getItem(ADMIN_USER_KEY);
 
     if (storedToken) {
+      // Cookie/localStorage 一致性修复：
+      // Cookie 24h 过期但 localStorage 永不过期，cookie 消失后
+      // middleware 拦截 /admin 路由 → 重定向 /admin-login，
+      // 但 AdminAuthProvider 读 localStorage 认为已登录 → 死循环转圈
+      // 修复：从 localStorage 恢复 cookie（token 本身可能仍有效）
+      const cookieHasToken = document.cookie.includes(ADMIN_TOKEN_KEY + '=');
+      if (!cookieHasToken) {
+        setAdminAuthCookie(storedToken);
+      }
+
       setToken(storedToken);
       adminApi.setToken(storedToken);
     }
