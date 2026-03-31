@@ -875,6 +875,14 @@ function gridSystemPromptZh(
 - **pending 层**：已挂单，等待成交
 - **empty 层**：无持仓无挂单，可下新单
 
+### 持仓映射规则
+交易所只返回整体持仓（总量+均价），系统将其映射到网格层：
+1. 锚点：距离入场价最近的空层
+2. 铺开：从锚点向内侧连续占用 N 层（多头→锚点及以下，空头→锚点及以上）
+3. 多个 filled 层显示相同入场价，持仓量均分
+
+结果：持仓层集中在入场价附近。多头持仓时，入场价以上为卖方区域（平仓获利），以下为买方区域（加仓）。空头持仓时相反。
+
 ### 可执行的操作
 - **place_buy_limit**: 在任意 empty 层挂买单（fields: level, price, quantity）
 - **place_sell_limit**: 在任意 empty 层挂卖单（fields: level, price, quantity）
@@ -889,6 +897,9 @@ function gridSystemPromptZh(
 
 ### 技术约束（不可违反）
 - place_buy/sell_limit 只能在 empty 层操作，且应遵循该层标注的买卖方向
+- 有多头持仓时：禁止在高于持仓入场价的层挂买单（买单只能在入场价以下，用于低位加仓）
+- 有空头持仓时：禁止在低于持仓入场价的层挂卖单（卖单只能在入场价以上，用于高位加空）
+- 违反以上方向规则的限价单会被交易所 PostOnly 机制拒绝
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ### 暂停模式（isPaused=true）
@@ -950,6 +961,14 @@ Each cycle fetches real-time data from exchange and maps to grid levels by prior
 - **pending levels**: Orders on exchange, awaiting fill
 - **empty levels**: No position, no order — can place new orders
 
+### Position Mapping Logic
+Exchange returns aggregate position (total qty + avg entry price). System maps it to grid levels:
+1. Anchor: nearest empty level to entry price
+2. Spread: occupy N consecutive levels inward from anchor (long → anchor and below, short → anchor and above)
+3. Multiple filled levels show same entry price, position size evenly split
+
+Result: filled levels cluster around entry price. For long positions, levels above entry are sell zone (take profit), below are buy zone (add position). For short positions, the opposite.
+
 ### Available Actions
 - **place_buy_limit**: Place buy order on any empty level (fields: level, price, quantity)
 - **place_sell_limit**: Place sell order on any empty level (fields: level, price, quantity)
@@ -964,6 +983,9 @@ Each cycle fetches real-time data from exchange and maps to grid levels by prior
 
 ### Technical Constraints (must not violate)
 - place_buy/sell_limit can ONLY be used on empty levels, and should follow the level's indicated buy/sell direction
+- When holding long positions: NEVER place buy orders above entry price (buy orders must be below entry — for adding at lower prices)
+- When holding short positions: NEVER place sell orders below entry price (sell orders must be above entry — for adding at higher prices)
+- Orders violating the above direction rules will be rejected by exchange PostOnly mechanism
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ### Pause Mode (isPaused=true)
