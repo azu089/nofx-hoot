@@ -97,22 +97,25 @@ interface PositionStats {
 interface Order {
   id: string;
   userId: string;
-  userEmail: string;
+  username: string;
   exchange: string;
   symbol: string;
-  side: 'buy' | 'sell';
-  type: string;
-  qty: number;
-  price: number;
+  side: string;
+  signalPrice: string;
+  executedPrice: string | null;
+  executedAmount: string | null;
   status: string;
+  errorMessage: string | null;
   createdAt: string;
 }
 
 interface OrderStats {
-  total: number;
-  pending: number;
-  filled: number;
-  cancelled: number;
+  totalOrders: number;
+  todayOrders: number;
+  successOrders: number;
+  failedOrders: number;
+  pendingOrders: number;
+  successRate: string;
 }
 
 interface Signal {
@@ -120,17 +123,21 @@ interface Signal {
   strategyId: string;
   strategyName: string;
   symbol: string;
-  side: 'buy' | 'sell';
-  signalType: string;
-  status: string;
+  side: string;
+  price: string;
+  subscriberCount: number;
+  executedCount: number;
+  failedCount: number;
   createdAt: string;
 }
 
 interface SignalStats {
-  total: number;
-  pending: number;
-  executed: number;
-  failed: number;
+  todaySignals: number;
+  totalExecutions: number;
+  successExecutions: number;
+  successRate: string;
+  runningStrategies: number;
+  errorStrategies: number;
 }
 
 interface StrategyRunStatus {
@@ -634,7 +641,7 @@ function OrderMonitorTab() {
   if (error) return <AdminErrorState message={error} onRetry={refetch} />;
 
   const columns: AdminColumn<Order>[] = [
-    { key: 'user', title: '用户', render: (r) => <span className="text-xs text-[#9090A0]">{r.userEmail}</span> },
+    { key: 'user', title: '用户', render: (r) => <span className="text-xs text-[#9090A0]">{r.username}</span> },
     { key: 'exchange', title: '交易所', render: (r) => <span className="text-xs font-mono text-[#9090A0]">{r.exchange}</span> },
     { key: 'symbol', title: '交易对', render: (r) => <span className="font-mono text-cyan-400 text-xs">{r.symbol}</span> },
     {
@@ -645,21 +652,21 @@ function OrderMonitorTab() {
         </span>
       ),
     },
-    { key: 'type', title: '类型', align: 'center', render: (r) => <span className="text-xs text-[#9090A0]">{r.type}</span> },
-    { key: 'qty', title: '数量', align: 'right', render: (r) => <span className="text-sm">{r.qty}</span> },
-    { key: 'price', title: '价格', align: 'right', render: (r) => <span className="text-sm">${r.price?.toLocaleString()}</span> },
+    { key: 'executedAmount', title: '数量', align: 'right', render: (r) => <span className="text-xs font-mono">{r.executedAmount || '-'}</span> },
+    { key: 'executedPrice', title: '成交价', align: 'right', render: (r) => <span className="text-xs font-mono">{r.executedPrice ? `$${Number(r.executedPrice).toFixed(2)}` : '-'}</span> },
     { key: 'status', title: '状态', align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
-    { key: 'createdAt', title: '时间', render: (r) => new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) },
+    { key: 'error', title: '错误', render: (r) => r.errorMessage ? <span className="text-[10px] text-red-400 truncate max-w-[120px] block">{r.errorMessage}</span> : <span className="text-[#4A4A5A] text-xs">-</span> },
+    { key: 'createdAt', title: '时间', render: (r) => { const d = new Date(r.createdAt); return <span className="text-xs text-[#9090A0] whitespace-nowrap">{isNaN(d.getTime()) ? '-' : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>; } },
   ];
 
   return (
     <div className="space-y-4">
       {stats && (
         <div className="grid grid-cols-4 gap-4">
-          <AdminStatCard title="总订单" value={stats.total} icon={BarChart3} color="bg-cyan-500/10 text-cyan-400" />
-          <AdminStatCard title="待成交" value={stats.pending} icon={Activity} color="bg-yellow-500/10 text-yellow-400" />
-          <AdminStatCard title="已成交" value={stats.filled} icon={TrendingUp} color="bg-green-500/10 text-green-400" />
-          <AdminStatCard title="已撤销" value={stats.cancelled} icon={BarChart3} color="bg-[#9090A0]/10 text-[#9090A0]" />
+          <AdminStatCard title="总订单" value={stats.totalOrders} icon={BarChart3} color="bg-cyan-500/10 text-cyan-400" sub={`今日 ${stats.todayOrders}`} />
+          <AdminStatCard title="待处理" value={stats.pendingOrders} icon={Activity} color="bg-yellow-500/10 text-yellow-400" />
+          <AdminStatCard title="成功" value={stats.successOrders} icon={TrendingUp} color="bg-green-500/10 text-green-400" />
+          <AdminStatCard title="成功率" value={stats.successRate} icon={BarChart3} color="bg-blue-500/10 text-blue-400" sub={`失败 ${stats.failedOrders}`} />
         </div>
       )}
       <div className="flex items-center gap-2 flex-wrap">
@@ -692,7 +699,7 @@ function SignalMonitorTab() {
   if (error) return <AdminErrorState message={error} onRetry={refetch} />;
 
   const columns: AdminColumn<Signal>[] = [
-    { key: 'strategy', title: '策略', render: (r) => <span className="text-sm text-white">{r.strategyName}</span> },
+    { key: 'strategy', title: '策略', render: (r) => <span className="text-xs text-white">{r.strategyName}</span> },
     { key: 'symbol', title: '交易对', render: (r) => <span className="font-mono text-cyan-400 text-xs">{r.symbol}</span> },
     {
       key: 'side', title: '方向', align: 'center',
@@ -702,19 +709,19 @@ function SignalMonitorTab() {
         </span>
       ),
     },
-    { key: 'signalType', title: '信号类型', align: 'center', render: (r) => <span className="text-xs text-[#9090A0]">{r.signalType}</span> },
-    { key: 'status', title: '状态', align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
-    { key: 'createdAt', title: '时间', render: (r) => new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) },
+    { key: 'price', title: '价格', align: 'right', render: (r) => <span className="text-xs font-mono">{r.price ? `$${Number(r.price).toFixed(2)}` : '-'}</span> },
+    { key: 'subscribers', title: '订阅/执行/失败', align: 'center', render: (r) => <span className="text-xs text-[#9090A0]">{r.subscriberCount}/{r.executedCount}/{r.failedCount}</span> },
+    { key: 'createdAt', title: '时间', render: (r) => { const d = new Date(r.createdAt); return <span className="text-xs text-[#9090A0] whitespace-nowrap">{isNaN(d.getTime()) ? '-' : d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>; } },
   ];
 
   return (
     <div className="space-y-4">
       {stats && (
         <div className="grid grid-cols-4 gap-4">
-          <AdminStatCard title="总信号" value={stats.total} icon={Radio} color="bg-cyan-500/10 text-cyan-400" />
-          <AdminStatCard title="待处理" value={stats.pending} icon={Activity} color="bg-yellow-500/10 text-yellow-400" />
-          <AdminStatCard title="已执行" value={stats.executed} icon={TrendingUp} color="bg-green-500/10 text-green-400" />
-          <AdminStatCard title="失败" value={stats.failed} icon={ShieldAlert} color="bg-red-500/10 text-red-400" />
+          <AdminStatCard title="今日信号" value={stats.todaySignals} icon={Radio} color="bg-cyan-500/10 text-cyan-400" />
+          <AdminStatCard title="总执行" value={stats.totalExecutions} icon={Activity} color="bg-blue-500/10 text-blue-400" />
+          <AdminStatCard title="成功率" value={stats.successRate} icon={TrendingUp} color="bg-green-500/10 text-green-400" sub={`成功 ${stats.successExecutions}`} />
+          <AdminStatCard title="运行策略" value={stats.runningStrategies} icon={ShieldAlert} color="bg-purple-500/10 text-purple-400" sub={`异常 ${stats.errorStrategies}`} />
         </div>
       )}
       {(runStatus?.items ?? []).length > 0 && (

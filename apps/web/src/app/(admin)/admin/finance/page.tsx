@@ -29,14 +29,26 @@ import { adminApi } from '@/lib/admin-auth';
 
 // ─────────────────────────── 类型 ───────────────────────────
 
-interface FinanceOverview {
-  totalRevenue: string;
-  subscriptionRevenue: string;
-  pointCardRevenue: string;
-  gasFeeRevenue: string;
-  todayRevenue: string;
-  weekRevenue: string;
-  monthRevenue: string;
+/** 后端 getFinanceOverview() 实际返回的嵌套结构 */
+interface FinanceOverviewRaw {
+  summary: {
+    totalRevenue: string;
+    subscriptionRevenue: string;
+    pointCardRevenue: string;
+    gasFeeRevenue: string;
+    pendingWithdraws: string;
+  };
+  subscription: { total: string; count: number; recentRecords: RevenueRecord[] };
+  pointCard: { total: string; count: number; recentRecords: RevenueRecord[] };
+  gasFee: { total: string; totalProfit: string; count: number; recentRecords: RevenueRecord[] };
+}
+
+interface RevenueRecord {
+  id: string;
+  userId?: string;
+  amount: string;
+  createdAt: string;
+  [key: string]: unknown;
 }
 
 interface RevenueRow {
@@ -79,7 +91,11 @@ interface TransactionStats {
 
 interface TrendItem {
   date: string;
-  revenue: string;
+  revenue?: string;
+  total?: string;    // 后端返回 total，兼容两种
+  subscription?: string;
+  pointCard?: string;
+  gasFee?: string;
 }
 
 // ─────────────────────────── 工具 ───────────────────────────
@@ -186,19 +202,22 @@ function DateRangeFilter({
 
 // ─────────────────────────── 简易柱状图 ───────────────────────────
 
+/** 从 TrendItem 取收入值（兼容 total / revenue 两种后端字段名） */
+const getTrendVal = (d: TrendItem) => parseFloat(d.total || d.revenue || '0');
+
 function SimpleBarChart({ data }: { data: TrendItem[] }) {
   if (!data.length) return <p className="py-8 text-center text-[#9090A0] text-sm">暂无数据</p>;
-  const maxVal = Math.max(...data.map((d) => parseFloat(d.revenue || '0')), 1);
+  const maxVal = Math.max(...data.map(getTrendVal), 1);
   return (
     <div className="flex items-end gap-1 h-40">
       {data.map((item, idx) => {
-        const pct = (parseFloat(item.revenue || '0') / maxVal) * 100;
+        const pct = (getTrendVal(item) / maxVal) * 100;
         return (
           <div key={idx} className="flex-1 flex flex-col items-center justify-end group">
             <div className="relative w-full">
               <div className="w-full bg-cyan-500/30 rounded-t hover:bg-cyan-500/60 transition-colors min-h-[2px]" style={{ height: `${Math.max(pct, 2)}%` }} />
               <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#2A2A3A] text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-                {item.date}: {fmtUSD(item.revenue)}
+                {item.date}: {fmtUSD(String(getTrendVal(item)))}
               </div>
             </div>
           </div>
@@ -211,65 +230,48 @@ function SimpleBarChart({ data }: { data: TrendItem[] }) {
 // ─────────────────────────── 收入总览 Tab ───────────────────────────
 
 function OverviewTab() {
-  const { data: overview, loading, error, refetch } = useAdminApi<FinanceOverview>('/admin/finance/overview');
-  const { data: subData } = useAdminApi<RevenueRow[]>('/admin/finance/subscription?days=30');
-  const { data: pcData }  = useAdminApi<RevenueRow[]>('/admin/finance/point-card?days=30');
-  const { data: gfData }  = useAdminApi<RevenueRow[]>('/admin/finance/gas-fee?days=30');
+  const { data: raw, loading, error, refetch } = useAdminApi<FinanceOverviewRaw>('/admin/finance/overview');
 
   if (loading) return <AdminSkeleton mode="grid" count={4} cols={4} />;
   if (error)   return <AdminErrorState message={error} onRetry={refetch} />;
-  if (!overview) return <AdminErrorState message="数据为空" onRetry={refetch} />;
+  if (!raw?.summary) return <AdminErrorState message="数据为空" onRetry={refetch} />;
 
-  const revenueColumns: AdminColumn<RevenueRow>[] = [
-    { key: 'userEmail', title: '用户', render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
+  const s = raw.summary;
+
+  const recordColumns: AdminColumn<RevenueRecord>[] = [
+    { key: 'userId', title: '用户', render: (r) => <span className="text-[#9090A0] text-xs font-mono">{String(r.userId || r.userEmail || r.id).slice(0, 10)}...</span> },
     { key: 'amount', title: '金额', align: 'right', render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
-    { key: 'date', title: '日期', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
-    { key: 'description', title: '备注', render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
+    { key: 'createdAt', title: '日期', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{new Date(r.createdAt).toLocaleDateString('zh-CN')}</span> },
   ];
 
-  const gasFeeColumns: AdminColumn<RevenueRow>[] = [
-    { key: 'userEmail', title: '用户', render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
-    { key: 'amount', title: '扣费(pt)', align: 'right', render: (r) => <span className="font-mono text-white">{fmtPoint(r.amount)}</span> },
-    { key: 'date', title: '日期', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
-    { key: 'description', title: '备注', render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
-  ];
+  const subRecords = raw.subscription?.recentRecords ?? [];
+  const pcRecords = raw.pointCard?.recentRecords ?? [];
+  const gfRecords = raw.gasFee?.recentRecords ?? [];
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <AdminStatCard title="总收入"     value={fmtUSD(overview.totalRevenue)}        icon={DollarSign} color="bg-green-500/20 text-green-400" />
-        <AdminStatCard title="订阅收入"   value={fmtUSD(overview.subscriptionRevenue)} icon={CreditCard}  color="bg-blue-500/20 text-blue-400" />
-        <AdminStatCard title="GAS 收入"   value={fmtUSD(overview.pointCardRevenue)}    icon={TrendingUp}  color="bg-purple-500/20 text-purple-400" />
-        <AdminStatCard title="燃油费收入" value={fmtUSD(overview.gasFeeRevenue)}       icon={Fuel}        color="bg-orange-500/20 text-orange-400" />
+        <AdminStatCard title="总收入"     value={fmtUSD(s.totalRevenue)}        icon={DollarSign} color="bg-green-500/20 text-green-400" sub={`待审提现 ${fmtUSD(s.pendingWithdraws)}`} />
+        <AdminStatCard title="订阅收入"   value={fmtUSD(s.subscriptionRevenue)} icon={CreditCard}  color="bg-blue-500/20 text-blue-400" sub={`${raw.subscription?.count ?? 0} 笔`} />
+        <AdminStatCard title="GAS 收入"   value={fmtUSD(s.pointCardRevenue)}    icon={TrendingUp}  color="bg-purple-500/20 text-purple-400" sub={`${raw.pointCard?.count ?? 0} 笔`} />
+        <AdminStatCard title="燃油费收入" value={fmtUSD(s.gasFeeRevenue)}       icon={Fuel}        color="bg-orange-500/20 text-orange-400" sub={`${raw.gasFee?.count ?? 0} 笔`} />
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: '今日', value: overview.todayRevenue },
-          { label: '本周', value: overview.weekRevenue },
-          { label: '本月', value: overview.monthRevenue },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4 text-center">
-            <p className="text-xs text-[#9090A0] mb-1">{label}</p>
-            <p className="text-lg font-bold text-white font-mono">{fmtUSD(value)}</p>
-          </div>
-        ))}
-      </div>
-      {Array.isArray(subData) && subData.length > 0 && (
+      {subRecords.length > 0 && (
         <div>
-          <p className="text-sm font-medium text-white mb-2">订阅收入（近 30 天）</p>
-          <AdminTable<RevenueRow> columns={revenueColumns} data={subData} rowKey="id" />
+          <p className="text-sm font-medium text-white mb-2">订阅收入（近期）</p>
+          <AdminTable<RevenueRecord> columns={recordColumns} data={subRecords} rowKey="id" />
         </div>
       )}
-      {Array.isArray(pcData) && pcData.length > 0 && (
+      {pcRecords.length > 0 && (
         <div>
-          <p className="text-sm font-medium text-white mb-2">GAS 收入（近 30 天）</p>
-          <AdminTable<RevenueRow> columns={revenueColumns} data={pcData} rowKey="id" />
+          <p className="text-sm font-medium text-white mb-2">GAS 收入（近期）</p>
+          <AdminTable<RevenueRecord> columns={recordColumns} data={pcRecords} rowKey="id" />
         </div>
       )}
-      {Array.isArray((gfData as any)?.recentRecords) && (gfData as any).recentRecords.length > 0 && (
+      {gfRecords.length > 0 && (
         <div>
-          <p className="text-sm font-medium text-white mb-2">燃油费收入（近 30 天）</p>
-          <AdminTable<RevenueRow> columns={gasFeeColumns} data={(gfData as any).recentRecords} rowKey="id" />
+          <p className="text-sm font-medium text-white mb-2">燃油费收入（近期）</p>
+          <AdminTable<RevenueRecord> columns={recordColumns} data={gfRecords} rowKey="id" />
         </div>
       )}
     </div>
@@ -538,7 +540,7 @@ function TrendTab() {
   if (error)   return <AdminErrorState message={error} onRetry={refetch} />;
 
   const trendData = Array.isArray(trend) ? trend : [];
-  const totalRevenue = trendData.reduce((sum, d) => sum + parseFloat(d.revenue || '0'), 0);
+  const totalRevenue = trendData.reduce((sum, d) => sum + getTrendVal(d), 0);
 
   return (
     <div className="space-y-4">
@@ -575,7 +577,7 @@ function TrendTab() {
           <AdminTable<TrendItem>
             columns={[
               { key: 'date',    title: '日期', render: (r) => <span className="text-[#9090A0]">{r.date}</span> },
-              { key: 'revenue', title: '收入', align: 'right', render: (r) => <span className="font-mono text-white">{fmtUSD(r.revenue)}</span> },
+              { key: 'revenue', title: '收入', align: 'right', render: (r) => <span className="font-mono text-white">{fmtUSD(String(getTrendVal(r)))}</span> },
             ]}
             data={trendData}
             rowKey="date"
