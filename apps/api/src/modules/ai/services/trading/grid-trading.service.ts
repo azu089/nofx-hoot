@@ -3091,23 +3091,10 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // 限价单基本校验：买单价格必须低于市价，卖单价格必须高于市价
-    // 否则会立即以市价成交，不是限价单行为（导致无限循环加仓）
-    const currentPrice = state.lastPrice ?? 0;
-    if (currentPrice > 0) {
-      if (side === 'buy' && price > currentPrice) {
-        this.logger.warn(
-          `[网格] 拦截: 买单价格 ${price.toFixed(2)} > 市价 ${currentPrice.toFixed(2)}，会立即成交，跳过`,
-        );
-        return { executed: false, skipReason: `买单价格 ${price.toFixed(2)} > 市价 ${currentPrice.toFixed(2)}` };
-      }
-      if (side === 'sell' && price < currentPrice) {
-        this.logger.warn(
-          `[网格] 拦截: 卖单价格 ${price.toFixed(2)} < 市价 ${currentPrice.toFixed(2)}，会立即成交，跳过`,
-        );
-        return { executed: false, skipReason: `卖单价格 ${price.toFixed(2)} < 市价 ${currentPrice.toFixed(2)}` };
-      }
-    }
+    // 对齐 nofx：不做价格方向拦截（nofx placeGridLimitOrder 无此校验）
+    // 价格穿越场景（卖单<市价 / 买单>市价）= 立即成交，在网格中属于合理平仓锁利行为
+    // 若 useMakerOnly=true，交易所 PostOnly 机制会自行拒绝 taker 单
+    // 若 useMakerOnly=false，允许 taker 成交（平仓/锁利）
 
     // Step 1: per-level 仓位上限检查
     // 对齐 nofx：直接使用当前交易所杠杆（state.leverage），无 MAX_LEVERAGE_CAP
