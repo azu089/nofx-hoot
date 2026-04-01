@@ -989,7 +989,7 @@ function calcFilledQty(levels: GridContext['levels'], side: string): number {
 /** 构建层级表行 — 对齐 nofx: | 层级 | 价格 | 状态 | 方向 | 订单数量 | 持仓数量 | 未实现盈亏 | */
 function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext, isEn: boolean): string {
   const pnl = l.profit ?? 0;
-  return `| ${i} | $${l.price.toFixed(2)} | ${l.state} | ${l.side} | ${l.quantity.toFixed(4)} | ${(l.positionSize ?? 0).toFixed(4)} | $${pnl.toFixed(2)} |`;
+  return `| ${i + 1} | $${l.price.toFixed(2)} | ${l.state} | ${l.side} | ${l.quantity.toFixed(4)} | ${(l.positionSize ?? 0).toFixed(4)} | $${pnl.toFixed(2)} |`;
 }
 
 /** 构建持仓行 */
