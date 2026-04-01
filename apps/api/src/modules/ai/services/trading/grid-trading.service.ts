@@ -75,7 +75,7 @@ export interface GridConfig {
 export type GridDirection = 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias';
 
 /** 市场状态 */
-export type RegimeLevel = 'ultra_narrow' | 'narrow' | 'standard' | 'wide' | 'volatile';
+export type RegimeLevel = 'ultra_narrow' | 'narrow' | 'standard' | 'wide' | 'volatile' | 'trending';
 
 /** 突破级别 */
 export type BreakoutLevel = 'none' | 'short' | 'mid' | 'long';
@@ -252,6 +252,7 @@ const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
   standard: 3,     // 标准：正常运行
   wide: 2,         // 宽幅：谨慎
   volatile: 1,     // 高波动：最低杠杆
+  trending: 1,     // 趋势：AI 判断暂停时的显示标签
 };
 // REGIME_POSITION_PCT 已删除（2026-03-19）
 // nofx checkTotalPositionLimit 不使用 regime 百分比，公式为 TotalInvestment × Leverage
@@ -400,7 +401,7 @@ export class GridTradingService {
   /** 市场状态英文→中文（用于日志显示） */
   private regimeLabel(regime: string): string {
     const map: Record<string, string> = {
-      ultra_narrow: '极窄幅', narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动',
+      ultra_narrow: '极窄幅', narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动', trending: '趋势',
     };
     return map[regime] ?? regime;
   }
@@ -1372,6 +1373,7 @@ export class GridTradingService {
           const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
           this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           if (!state.isPaused) {
+            state.currentRegime = 'standard' as RegimeLevel;
             this.logger.log(`[网格] 价格回归，暂停自动解除，继续正常运行`);
           }
           // 仍暂停 → AI 受限模式继续，不再执行突破检测（避免重复设置 isPaused）
@@ -1569,6 +1571,16 @@ export class GridTradingService {
               this.logger.error(`[网格] 账户配置错误（如 OKX 未开通合约交易），本轮停止下单: ${e.message}`);
             }
           }
+        }
+
+        // 市场形态标签跟随 AI 决策：AI 暂停 → 趋势，AI 恢复/继续 → 标准
+        // 仅影响前端显示，不影响杠杆/仓位等运行逻辑
+        const aiPaused = execDecisions.some(d => d.action === 'pause_grid');
+        const aiResumed = execDecisions.some(d => d.action === 'resume_grid');
+        if (aiPaused) {
+          state.currentRegime = 'trending' as RegimeLevel;
+        } else if (aiResumed || !state.isPaused) {
+          state.currentRegime = 'standard' as RegimeLevel;
         }
 
         // 保存本轮决策摘要，供下轮 AI 参考（防止决策震荡）
