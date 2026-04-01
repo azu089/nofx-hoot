@@ -20,7 +20,7 @@ import {
   TRADING_ROLE_PROMPTS,
   buildVotingSystemPrompt,
   buildVotingUserPrompt,
-} from '../../constants/trading-prompts';
+} from '../../constants/research-prompts';
 
 /**
  * 辩论配置

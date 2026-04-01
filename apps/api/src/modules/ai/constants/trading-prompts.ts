@@ -575,7 +575,7 @@ function gridSystemPromptZh(
 
 ## 角色定义
 你是一个经验丰富的网格交易专家，负责管理 ${symbol} 的网格交易策略。你的任务是：
-1. 判断当前市场状态（震荡/趋势/高波动）
+1. 判断当前市场状态（震荡/趋势）
 2. 决定是否需要调整网格或暂停交易
 3. 管理每个网格层级的订单（优先锁定持仓盈利）
 
@@ -590,8 +590,8 @@ function gridSystemPromptZh(
 
 ### 市场状态判断
 - **震荡市场** (适合网格): 布林带宽度 < 3%, EMA20/50 距离 < 1%, 价格在布林带中轨附近
-- **宽幅/高波动** (谨慎操作，减小仓位): 布林带宽度 > 4%, ATR偏大
-- **强趋势市场** (考虑暂停): EMA20/50 距离 > 2%, 价格持续单方向突破
+- **趋势市场** (暂停网格): 布林带宽度 > 4%, EMA20/50 距离 > 2%, 价格持续突破布林带
+- **高波动市场** (谨慎): ATR异常放大, 价格剧烈波动
 
 ### 可执行的操作
 - place_buy_limit: 在指定价格下买入限价单
@@ -637,7 +637,7 @@ function gridSystemPromptEn(
 
 ## Role Definition
 You are an experienced grid trading expert managing a grid strategy for ${symbol}. Your tasks are:
-1. Assess current market regime (ranging/trending/volatile)
+1. Assess current market state (ranging/trending)
 2. Decide whether to adjust grid or pause trading
 3. Manage orders at each grid level (prioritize locking in profits)
 
@@ -652,8 +652,8 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 
 ### Market Regime Assessment
 - **Ranging Market** (ideal for grid): Bollinger width < 3%, EMA20/50 distance < 1%, price near middle band
-- **Wide/High Volatility** (trade cautiously, reduce position size): Bollinger width > 4%, ATR elevated
-- **Strong Trend** (consider pausing): EMA20/50 distance > 2%, price breaking in one direction persistently
+- **Trending Market** (pause grid): Bollinger width > 4%, EMA20/50 distance > 2%, price breaking bands
+- **High Volatility** (caution): ATR spike, erratic price movement
 
 ### Available Actions
 - place_buy_limit: Place buy limit order at specified price
@@ -817,19 +817,16 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('--- 技术指标 ---');
   lines.push(`RSI(14)[5m]: ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7)[5m]: ${ctx.rsi7.toFixed(1)}` : ''}`);
   lines.push(`MACD[5m]: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
-  lines.push(`EMA(20)[1h]: ${ctx.ema20.toFixed(2)} | EMA(50)[1h]: ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
+  lines.push(`EMA(20)[5m]: ${ctx.ema20.toFixed(2)} | EMA(50)[4h]: ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   if (ctx.rsi4h !== undefined) {
     lines.push(`4h 指标: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
-  lines.push(`Bollinger[1h]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
+  lines.push(`Bollinger[5m]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
   if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
     lines.push(`RSI背离: ${ctx.rsiDivergenceType === 'bullish' ? '底背离' : '顶背离'}`);
   }
-  if (ctx.currentRegime) {
-    const regimeLabel: Record<string, string> = { ultra_narrow: '极窄幅震荡', narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动' };
-    lines.push(`市场形态: ${regimeLabel[ctx.currentRegime] ?? ctx.currentRegime}`);
-  }
+  // 对齐 nofx：regime 不传给 AI（nofx 中 classifyRegimeLevel 未接入主循环，AI 不感知 regime）
   lines.push(`保证金使用率: ${ctx.marginUsedPct.toFixed(1)}%`);
 
   // Section 3: 箱体数据
@@ -939,19 +936,16 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('--- Technical Indicators ---');
   lines.push(`RSI(14)[5m]: ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7)[5m]: ${ctx.rsi7.toFixed(1)}` : ''}`);
   lines.push(`MACD[5m]: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
-  lines.push(`EMA(20)[1h]: ${ctx.ema20.toFixed(2)} | EMA(50)[1h]: ${ctx.ema50.toFixed(2)} | Distance: ${ctx.emaDistance.toFixed(2)}%`);
+  lines.push(`EMA(20)[5m]: ${ctx.ema20.toFixed(2)} | EMA(50)[4h]: ${ctx.ema50.toFixed(2)} | Distance: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   if (ctx.rsi4h !== undefined) {
     lines.push(`4h Indicators: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
-  lines.push(`Bollinger[1h]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (Width: ${ctx.bollingerWidth.toFixed(2)}%)`);
+  lines.push(`Bollinger[5m]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (Width: ${ctx.bollingerWidth.toFixed(2)}%)`);
   if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
     lines.push(`RSI Divergence: ${ctx.rsiDivergenceType === 'bullish' ? 'Bullish' : 'Bearish'}`);
   }
-  if (ctx.currentRegime) {
-    const regimeLabelEn: Record<string, string> = { ultra_narrow: 'ultra-narrow range', narrow: 'narrow range', standard: 'standard', wide: 'wide range', volatile: 'high volatility' };
-    lines.push(`Market Regime: ${regimeLabelEn[ctx.currentRegime] ?? ctx.currentRegime}`);
-  }
+  // 对齐 nofx：regime 不传给 AI
   lines.push(`Margin Used: ${ctx.marginUsedPct.toFixed(1)}%`);
 
   // Section 3: Box Data (Donchian Channels)

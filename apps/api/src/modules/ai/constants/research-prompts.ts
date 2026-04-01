@@ -1,16 +1,21 @@
 /**
- * 深研模式 — AI 提示词与辩论配置
+ * 深研/辩论模式 — AI 提示词与辩论配置
  *
  * 包含:
  * - 5角色辩论系统提示词 (DEFAULT_ROLE_PROMPTS)
  * - 辩论通用系统提示 (SYSTEM_PROMPT_BASE)
  * - 轮次描述 (ROUND_DESCRIPTIONS)
  * - 记忆注入模板 (formatMemoryPrompt)
+ * - 辩论角色短提示词 (TRADING_ROLE_PROMPTS, PERSONALITY_EMOJIS)
+ * - 投票阶段输出格式与 Prompt 构建 (buildVotingOutputFormat, buildVotingSystemPrompt, buildVotingUserPrompt)
  * - 类型定义 (RolePromptData)
+ *
+ * 注意: 极速策略的提示词在 PromptBuilderService（prompt-builder.service.ts）
+ *       网格策略的提示词在 trading-prompts.ts
  */
 
 import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT, buildAnalysisOutputFormat } from './models';
-import { buildLanguageInstruction } from './locale-instructions';
+import { buildLanguageInstruction, buildReasoningLanguageHint } from './locale-instructions';
 
 // ==================== 角色提示词 ====================
 
@@ -394,6 +399,142 @@ export function formatMemoryPrompt(memories: Array<{
 
   lines.push('Use these as Bayesian priors — update your belief based on current data, do not blindly copy past decisions.');
 
+  return lines.join('\n');
+}
+
+// ==================== 辩论角色短提示词（快速模式辩论专用） ====================
+
+export const TRADING_ROLE_PROMPTS: Record<AIRole, string> = {
+  [AI_ROLES.BULL]: 'Aggressive Bull - You are optimistic and look for long opportunities. You believe in upward momentum and trend continuation. Focus on bullish signals and support levels.',
+  [AI_ROLES.BEAR]: 'Cautious Bear - You are skeptical and focus on risks. You look for short opportunities and warning signs. Question bullish narratives and highlight resistance levels.',
+  [AI_ROLES.ANALYST]: 'Data Analyst - You are neutral and purely data-driven. Present technical analysis without bias. Let the indicators speak for themselves.',
+  [AI_ROLES.CONTRARIAN]: 'Contrarian - You challenge majority opinions and look for overlooked opportunities. Question consensus views and find alternative interpretations of the data.',
+  [AI_ROLES.RISK_MANAGER]: 'Risk Manager - You focus on position sizing, stop losses, and capital preservation. Evaluate risk/reward ratios and warn about potential downsides.',
+};
+
+export const PERSONALITY_EMOJIS: Record<AIRole, string> = {
+  [AI_ROLES.BULL]: '🐂',
+  [AI_ROLES.BEAR]: '🐻',
+  [AI_ROLES.ANALYST]: '📊',
+  [AI_ROLES.CONTRARIAN]: '🔄',
+  [AI_ROLES.RISK_MANAGER]: '🛡️',
+};
+
+// ==================== 投票阶段输出格式 ====================
+
+/**
+ * 构建投票输出格式（支持动态语言）
+ */
+export function buildVotingOutputFormat(locale?: string): string {
+  const reasoningHint = buildReasoningLanguageHint(locale);
+  return `
+### CRITICAL: Output your votes in STRICT JSON ARRAY format (one vote per coin):
+<final_vote>
+[
+  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "position_pct": 0.20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. SL=2% below entry, TP=4% above entry, R:R=2.0:1."},
+  {"symbol": "ETH/USDT:USDT", "action": "wait", "confidence": 35, "leverage": 1, "position_pct": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
+]
+</final_vote>
+
+### IMPORTANT: action field MUST be exactly one of:
+- "open_long" (Open a new LONG position)
+- "open_short" (Open a new SHORT position)
+- "close_long" (Close an existing LONG position)
+- "close_short" (Close an existing SHORT position)
+- "hold" (Keep current positions unchanged)
+- "wait" (Not enough clarity, wait for better setup)
+
+### Fields:
+- symbol: Trading pair, use the EXACT symbol from the market data above (e.g. "BTC/USDT:USDT")
+- action: One of the 6 actions above
+- confidence: 0-100 (how confident you are)
+- leverage: 1-20 (recommended leverage, default 5)
+- position_pct: 0.01-1.0 (decimal, e.g. 0.20 = 20% of available balance, default 0.10)
+- stop_loss: 0.01-0.10 (stop loss as decimal percentage, e.g. 0.03 = 3%)
+- take_profit: 0.01-0.20 (take profit as decimal percentage, e.g. 0.06 = 6%)
+- reasoning: Detailed analysis (100-300 chars): include key indicators, signal interpretation, support/resistance levels, and risk assessment ${reasoningHint}
+`;
+}
+
+/** 默认投票输出格式（向后兼容，使用 zh-CN） */
+export const VOTING_OUTPUT_FORMAT = buildVotingOutputFormat('zh-CN');
+
+// ==================== 投票阶段 Prompt 构建 ====================
+
+/**
+ * 构建投票阶段系统提示词
+ *
+ * @param role AI 角色
+ * @param basePrompt 基础 prompt
+ * @param locale 用户 locale（控制 reasoning 语言）
+ */
+export function buildVotingSystemPrompt(
+  role: AIRole,
+  basePrompt: string,
+  locale?: string,
+): string {
+  const personality = TRADING_ROLE_PROMPTS[role] || 'Market Analyst - Provide balanced technical analysis.';
+  const emoji = PERSONALITY_EMOJIS[role] || '📈';
+  const votingFormat = buildVotingOutputFormat(locale);
+  const langInstruction = buildLanguageInstruction(locale);
+
+  return `## FINAL VOTE
+
+You are ${emoji} ${role}. The debate has concluded.
+
+Your personality: ${personality}
+
+Review all the arguments presented and cast your final vote for ALL coins discussed.
+
+Consider:
+- The strength of technical arguments
+- Data-driven evidence presented
+- Risk/reward analysis
+- Market timing considerations
+
+You may vote differently from your earlier position if convinced by others' arguments.
+
+${langInstruction}
+
+${votingFormat}
+
+---
+
+${basePrompt}`;
+}
+
+/**
+ * 构建投票阶段用户提示词（辩论摘要）
+ */
+export function buildVotingUserPrompt(
+  allEntries: Array<{
+    role: string;
+    round: number;
+    direction: string;
+    confidence: number;
+    arguments?: any;
+  }>,
+): string {
+  const lines: string[] = ['## Debate Summary\n'];
+
+  // 按角色分组
+  const byRole: Record<string, typeof allEntries> = {};
+  for (const entry of allEntries) {
+    if (!byRole[entry.role]) byRole[entry.role] = [];
+    byRole[entry.role].push(entry);
+  }
+
+  for (const [role, entries] of Object.entries(byRole)) {
+    if (entries.length === 0) continue;
+    const emoji = PERSONALITY_EMOJIS[role as AIRole] || '📈';
+    lines.push(`### ${emoji} ${role}:`);
+    for (const e of entries) {
+      lines.push(`- Round ${e.round}: ${e.direction} (Confidence: ${e.confidence}%)`);
+    }
+    lines.push('');
+  }
+
+  lines.push('Cast your final vote based on the debate above.');
   return lines.join('\n');
 }
 

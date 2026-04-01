@@ -1282,23 +1282,19 @@ export class GridTradingService {
     // Steps 5.3/5.4: 量能骤变/ATR Spike 方向信号 — 已移除
     // 后端不自动调整方向，由 AI 决策（pause_grid/continue）
 
-    // Step 6: 市场状态分类
+    // Step 6: 市场状态分类 — 对齐 nofx：classifyRegimeLevel 在 nofx 中定义但从未接入主循环
+    // nofx CurrentRegimeLevel 永远为空 → fallback standard → 杠杆/仓位上限由用户配置决定，不受 regime 影响
+    // HOOT 保留 classifyRegime 计算用于日志/调试，但不再影响杠杆和 AI 决策
+    state.currentRegime = 'standard';
     if (this.indicators) {
       try {
-        const { regime, atrHourly } = await this.classifyRegime(state.symbol);
-        state.currentRegime = regime;
+        const { atrHourly } = await this.classifyRegime(state.symbol);
         state.lastAtrHourly = atrHourly;
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 计算 regime 推荐杠杆（state.leverage 只在交易所同步成功后才更新）
-    const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
-    if (!state.userFixedLeverage) {
-      state.recommendedLeverage = regimeCap;
-      // 注意：state.leverage 不在这里改，等 Step 8 setLeverage 成功后才更新
-    } else {
-      state.recommendedLeverage = state.leverage;
-    }
+    // Step 6.5: 对齐 nofx — regime 不影响杠杆，recommendedLeverage = 用户配置杠杆
+    state.recommendedLeverage = state.leverage;
     state.effectiveLeverage = state.leverage;
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
@@ -2070,6 +2066,8 @@ export class GridTradingService {
       (enableDirectionAdjust && state.currentDirection !== 'neutral');
     if (!needsCheck) return;
 
+    this.logger.debug(`[网格] recovery检查: price=${price.toFixed(2)}, longBox=[${state.longBoxLower?.toFixed(2)},${state.longBoxUpper?.toFixed(2)}], isPaused=${state.isPaused}, pauseSource=${state.pauseSource}, breakoutLevel=${state.breakoutLevel}`);
+
     // 判断价格是否回到长期箱体内（或兜底：回到网格区间）
     const inLongBox =
       (state.longBoxUpper > 0 && state.longBoxLower > 0 &&
@@ -2086,10 +2084,10 @@ export class GridTradingService {
       state.breakoutConfirmCount = 0;
       if (isFirstRecovery) {
         state.positionReductionPct = 50;
-        this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内，以50%容量继续运行（等待短期箱确认后自动解除缩减）');
-        // 只恢复代码层触发的暂停（breakout），不恢复 AI/风控触发的暂停
-        // 对齐 nofx：AI 的 pause_grid 只能由 AI 的 resume_grid 解除
-        if (state.pauseSource === 'breakout') {
+        this.logger.log(`[网格] 虚假突破恢复: 价格回到长期箱体内 | pauseSource=${state.pauseSource} isPaused=${state.isPaused}`);
+        // 恢复 breakout 和 AI 暂停（price 回归说明暂停条件不再成立）
+        // 仅 risk_control 不自动恢复（需 PM 手动干预）
+        if (state.pauseSource !== 'risk_control') {
           state.isPaused = false;
           state.pauseReason = undefined;
           state.pauseSource = undefined;
@@ -2359,15 +2357,15 @@ export class GridTradingService {
     const high24h = last24Candles.length > 0 ? Math.max(...last24Candles.map(c => c.high)) : 0;
     const low24h  = last24Candles.length > 0 ? Math.min(...last24Candles.map(c => c.low))  : 0;
 
-    // 布林带宽度（基于 1h 数据，与后端 classifyRegime 一致，AI 判断结果与系统对齐）
-    const bbUpper = indSlow.bollingerBands?.upper ?? 0;
-    const bbMiddle = indSlow.bollingerBands?.middle ?? currentPrice;
-    const bbLower = indSlow.bollingerBands?.lower ?? 0;
+    // 布林带（对齐 nofx: 基于 5m 数据，system prompt 阈值 4% 对应 5m 级别）
+    const bbUpper = indFast.bollingerBands?.upper ?? 0;
+    const bbMiddle = indFast.bollingerBands?.middle ?? currentPrice;
+    const bbLower = indFast.bollingerBands?.lower ?? 0;
     const bbWidth = bbMiddle > 0 ? ((bbUpper - bbLower) / bbMiddle) * 100 : 0;
 
-    // EMA 距离（基于 1h 数据，中期趋势判断）
-    const ema20 = indSlow.ema?.ema20 ?? 0;
-    const ema50 = indSlow.ema?.ema50 ?? 0;
+    // EMA（对齐 nofx: EMA20 来自 5m primary，EMA50 来自 4h LongerTermContext）
+    const ema20 = indFast.ema?.ema20 ?? 0;
+    const ema50 = ind4h.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
     // 统一数据源：AI 看到的层状态 = state.gridLines（由 syncMemoryFromExchange 从交易所数据重建）
@@ -2675,8 +2673,6 @@ export class GridTradingService {
       case 'pause_grid':
         // AI 的 pause_grid 实际执行：取消挂单 + 设 isPaused=true
         // pauseSource='ai' 允许 checkFalseBreakoutRecovery 在价格回归后自动恢复
-        // （区别于 pauseSource='risk_control'，后者需手动干预）
-        // 传入 adapter 避免 softPauseGrid 内部创建同一缓存实例后 dispose，导致主循环后续报"未初始化"
         await this.softPauseGrid(
           state, userId, apiKeyId,
           decision.reasoning?.slice(0, 120) ?? 'AI pause_grid',
@@ -2684,7 +2680,6 @@ export class GridTradingService {
           adapter,
         );
         return { executed: true };
-
 
       case 'resume_grid':
         state.isPaused = false;
@@ -2746,26 +2741,69 @@ export class GridTradingService {
         break;
       }
 
-      case 'close_long': {
-        // 对齐 nofx：直接调用 CloseLong，不做层级查找/side 自动转换
-        if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        const clQty = decision.quantity ?? 0;
-        if (clQty <= 0) return { executed: false, skipReason: '无持仓可平' };
-        if (!decision.price) decision.price = currentPrice ?? state.lastPrice;
-        const clResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, clQty);
-        this.logger.log(`[网格] close_long: qty=${clQty}, price=${clResult?.avgPrice ?? currentPrice}`);
-        return { executed: true };
-      }
-
+      case 'close_long':
       case 'close_short': {
-        // 对齐 nofx：直接调用 CloseShort，不做层级查找/side 自动转换
+        // 统一平仓入口：用交易所实时持仓（_exchangePositions）判断方向，不依赖内存 gridLines
+        // 原则：交易所数据是唯一事实
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        const csQty = decision.quantity ?? 0;
-        if (csQty <= 0) return { executed: false, skipReason: '无持仓可平' };
+        const cpQty = decision.quantity ?? 0;
+        if (cpQty <= 0) return { executed: false, skipReason: '无持仓可平' };
         if (!decision.price) decision.price = currentPrice ?? state.lastPrice;
-        const csResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, csQty);
-        this.logger.log(`[网格] close_short: qty=${csQty}, price=${csResult?.avgPrice ?? currentPrice}`);
-        return { executed: true };
+
+        // 从交易所实时持仓判断实际方向
+        const exchPos: any[] = (state as any)._exchangePositions ?? [];
+        const cpBaseSymbol = state.symbol.split('/')[0];
+        const matchedPos = exchPos.find((p: any) => p.symbol?.includes(cpBaseSymbol) && (p.quantity ?? 0) > 0.0001);
+        if (!matchedPos) {
+          this.logger.warn(`[网格] ${action}: 交易所无持仓，跳过`);
+          return { executed: false, skipReason: '交易所无持仓' };
+        }
+        const exchSide = matchedPos.side as string;
+        const isLong = exchSide === 'long' || exchSide === 'net' || !exchSide;
+        const actualAction = isLong ? 'close_long' : 'close_short';
+        if (actualAction !== action) {
+          this.logger.warn(`[网格] 方向纠正: AI=${action} → 实际=${actualAction}（交易所 side=${exchSide}）`);
+        }
+
+        let closeResult: any;
+        if (actualAction === 'close_long') {
+          closeResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, cpQty);
+        } else {
+          closeResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, cpQty);
+        }
+        this.logger.log(`[网格] ${actualAction}: qty=${cpQty}, price=${closeResult?.avgPrice ?? currentPrice}`);
+
+        // 更新 livePositionNotional（防止同轮 cap check 虚增）
+        const cpClosePrice = closeResult?.avgPrice || currentPrice || state.lastPrice;
+        const cpClosedValue = cpQty * cpClosePrice;
+        state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - cpClosedValue);
+
+        // 更新内存层级状态 + PnL
+        const cpTargetLevel = state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0);
+        if (cpTargetLevel && cpTargetLevel.positionSize > 0) {
+          const _cpD = new Decimal(cpClosePrice);
+          const _epD = new Decimal(cpTargetLevel.positionEntry);
+          const _szD = new Decimal(cpTargetLevel.positionSize);
+          const _frD = new Decimal(state.takerFeeRate);
+          const exchPnl = closeResult?.realizedPnl;
+          const netProfitD = exchPnl != null
+            ? new Decimal(exchPnl)
+            : actualAction === 'close_long'
+              ? _cpD.minus(_epD).times(_szD).minus(_cpD.times(_szD).times(_frD)).minus(_epD.times(_szD).times(_frD))
+              : _epD.minus(_cpD).times(_szD).minus(_cpD.times(_szD).times(_frD)).minus(_epD.times(_szD).times(_frD));
+          const netProfit = netProfitD.toNumber();
+          state.totalProfit += netProfit;
+          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+          state.totalTrades++;
+          if (netProfit > 0) state.winningTrades++;
+          cpTargetLevel.unrealizedPnl = netProfit;
+          cpTargetLevel.state = 'empty';
+          cpTargetLevel.positionSize = 0;
+          cpTargetLevel.positionEntry = 0;
+          delete state.orderBook[cpTargetLevel.orderId ?? ''];
+          cpTargetLevel.orderId = undefined;
+          this.logger.log(`[网格] ${actualAction} 平仓: level=${cpTargetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT${exchPnl != null ? ' (exchange)' : ' (calc)'}`);
+        }
         return { executed: true };
       }
 
@@ -4308,6 +4346,8 @@ export class GridTradingService {
         const configLines = this.buildGridLinesFromConfig(state);
         state.gridLines = configLines;
         state.orderBook = {};
+        // 对齐 nofx：CurrentRegimeLevel 在 nofx 中从未赋值，永远 standard
+        state.currentRegime = 'standard' as RegimeLevel;
         this.logger.log(`[网格] 从数据库恢复: ${strategyId}（配置+统计，${configLines.length} 层全空，待交易所恢复）`);
         this.gridStates.set(strategyId, state);
         return state;

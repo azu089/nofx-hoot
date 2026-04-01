@@ -463,16 +463,8 @@ export class QuickAnalysisService {
       }
     }
 
-    // === 极速策略增强: 格式化 4 个新数据源 ===
-
-    // Task 1: CryptoPanic 新闻 — 暂停注入（API 404，备用数据质量低，避免误导 AI 决策）
-    const newsPrompt = '';
-
-    // Task 2: Fear & Greed Index — 暂停注入（nofx 无此数据源，guidance 文案存在方向偏差误导风险）
-    const fearGreedPrompt = '';
-
-    // Task 4: LunarCrush 社媒情绪 — 暂停注入（数据源不稳定，降级后质量低）
-    const socialSentimentPrompt = '';
+    // === 极速策略增强 ===
+    // News/Sentiment/FearGreed 数据源已暂停并移除，恢复时重新添加。
 
     // Task 3: BM25 记忆检索 — 当前市场场景匹配历史教训
     let memoryPrompt = '';
@@ -587,11 +579,8 @@ export class QuickAnalysisService {
         }
         return Object.keys(map).length > 0 ? map : undefined;
       })(),
-      // 极速策略增强 Task 1-4: 新闻/情绪/记忆/社媒
-      newsPrompt: newsPrompt || undefined,
-      fearGreedPrompt: fearGreedPrompt || undefined,
+      // 极速策略增强: BM25 记忆
       memoryPrompt: memoryPrompt || undefined,
-      socialSentimentPrompt: socialSentimentPrompt || undefined,
       liquidityData: config.liquidityData,
       debateContext: config.debateContext,
       locale: config.promptConfig?.locale,
@@ -880,10 +869,6 @@ export class QuickAnalysisService {
           } catch { return null; }
         })(),
       ]);
-      const mcNewsPrompt = '';
-      const mcFearGreedPrompt = '';
-      const mcSocialPrompt = '';
-
       // 3. 使用第一个 config 的共享参数构建 prompt
       const refConfig = configs[0];
       const systemPrompt = this.promptBuilder.buildSystemPrompt(refConfig.promptConfig);
@@ -928,10 +913,6 @@ export class QuickAnalysisService {
           holdMinutes: (p as any).holdMinutes, liqPrice: (p as any).liqPrice,
         })) : [],
         marketDataPrompt: combinedMarketData,
-        // 极速策略增强 Task 1-4（多币种模式）
-        newsPrompt: mcNewsPrompt || undefined,
-        fearGreedPrompt: mcFearGreedPrompt || undefined,
-        socialSentimentPrompt: mcSocialPrompt || undefined,
         // 多币种模式跳过 BM25 记忆（无单币指标上下文，无法匹配场景）
         liquidityData: configs.flatMap(c => c.liquidityData || []),
         locale: refConfig.promptConfig?.locale,

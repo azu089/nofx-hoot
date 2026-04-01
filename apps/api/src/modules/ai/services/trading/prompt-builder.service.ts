@@ -149,14 +149,9 @@ export interface UserPromptContext {
   }>;
   /** 增强市场数据（Phase 11: 多空比/清算/期权/稳定币/ETF/宏观/COT） */
   enhancedDataPrompt?: string;
-  /** Task 1: CryptoPanic 新闻事件（极速策略增强） */
-  newsPrompt?: string;
-  /** Task 2: Fear & Greed 指数（极速策略增强） */
-  fearGreedPrompt?: string;
   /** Task 3: BM25 历史教训（极速策略增强） */
   memoryPrompt?: string;
-  /** Task 4: LunarCrush 社媒情绪（极速策略增强） */
-  socialSentimentPrompt?: string;
+  // News/Sentiment/FearGreed 数据源已暂停，字段已移除。恢复时重新添加。
   /** 辩论上下文 */
   debateContext?: string;
   /** AI 输出语言 locale */
@@ -226,6 +221,9 @@ export class PromptBuilderService {
         sections.push(`## Mode: Scalping\n- Focus on short-term momentum, smaller profit targets but require quick action\n- If price doesn't move as expected within two bars, immediately reduce position or stop-loss`);
       }
     }
+
+    // Section 1.8: Trading Mind — 交易心法（思维框架，解决"怎么思考"而非"看什么数据"）
+    sections.push(this.buildTradingMind());
 
     // Section 2: Hard Constraints (CODE ENFORCED) — 含仓位计算指南（对齐 nofx）
     const isCN = locale.startsWith('zh');
@@ -385,13 +383,13 @@ export class PromptBuilderService {
       // 对齐 nofx engine.go L1329-1337: Performance hints（完整措辞，不缩写）
       if (s.profitFactor !== undefined && s.sharpeRatio !== undefined) {
         if (s.profitFactor >= 1.5 && s.sharpeRatio >= 1) {
-          lines.push('Performance: GOOD - maintain current strategy');
+          lines.push('Performance: GOOD recently — but markets change. Verify current regime still matches your edge.');
         } else if (s.profitFactor < 1) {
-          lines.push('Performance: NEEDS IMPROVEMENT - improve win/loss ratio, optimize TP/SL');
+          lines.push('Performance: POOR recently — reduce size, raise confidence threshold, wait for A+ setups only.');
         } else if (s.maxDrawdownPct !== undefined && s.maxDrawdownPct > 30) {
-          lines.push('Performance: HIGH RISK - reduce position size, control drawdown');
+          lines.push('Performance: HIGH RISK — reduce position size, tighten stops, skip marginal setups.');
         } else {
-          lines.push('Performance: NORMAL - room for optimization');
+          lines.push('Performance: NORMAL — room for optimization, stay disciplined.');
         }
       }
     }
@@ -434,6 +432,7 @@ export class PromptBuilderService {
           lines.push(ctx.positionMarketDataMap[p.symbol]);
         }
       }
+      lines.push('  NOTE: For each position, ask — is the ORIGINAL THESIS still valid? If the reason you entered no longer holds, exit regardless of current PnL.');
     } else {
       lines.push('');
       lines.push('=== Current Positions ===');
@@ -492,23 +491,7 @@ export class PromptBuilderService {
       lines.push(ctx.enhancedDataPrompt);
     }
 
-    // [7.6] News Events (Task 1: CryptoPanic)
-    if (ctx.newsPrompt) {
-      lines.push('');
-      lines.push(ctx.newsPrompt);
-    }
-
-    // [7.7] Social Sentiment (Task 4: LunarCrush)
-    if (ctx.socialSentimentPrompt) {
-      lines.push('');
-      lines.push(ctx.socialSentimentPrompt);
-    }
-
-    // [7.8] Fear & Greed Index (Task 2)
-    if (ctx.fearGreedPrompt) {
-      lines.push('');
-      lines.push(ctx.fearGreedPrompt);
-    }
+    // [7.6-7.8] News/Sentiment/FearGreed 数据源已暂停，注入代码已移除。恢复时重新添加。
 
     // [7.9] Past Trading Experiences (Task 3: BM25 Memory)
     if (ctx.memoryPrompt) {
@@ -572,6 +555,33 @@ export class PromptBuilderService {
     return `## Role
 You are a professional cryptocurrency trading AI.
 Your task is to make trading decisions based on provided market data.`;
+  }
+
+  /**
+   * 交易心法 — 思维框架层
+   * 解决"怎么思考"而非"看什么数据"
+   * 15 行以内，不增加 token 负担
+   */
+  private buildTradingMind(): string {
+    return `# Trading Mind (Core Philosophy)
+
+1. **DEFAULT IS WAIT** — You need a compelling reason TO trade, not a reason NOT to.
+   70% of periods should result in "wait" or "hold". Acting every period = standards too low.
+
+2. **THINK TRANSITIONS, NOT SNAPSHOTS** — A single indicator reading means nothing alone.
+   Ask: Is this value IMPROVING or DETERIORATING? Is the regime SHIFTING?
+   RSI(35→42) in a forming uptrend ≠ RSI(42→35) in a breakdown.
+
+3. **WHO IS TRAPPED?** — Before every entry:
+   - Where are stop-losses clustered? (liquidity targets)
+   - Is smart money accumulating or distributing? (OI rising + price flat = accumulation)
+   - Is this move a genuine breakout or a liquidity grab?
+
+4. **SIGNAL CONFLICT HIERARCHY** — When indicators disagree:
+   Higher timeframe > Lower timeframe | Price action > Oscillators | Volume/OI confirmation > Crossovers alone
+
+5. **EXPECTED VALUE OVER CONVICTION** — Every trade is a probability bet:
+   EV = (win_rate × avg_win) - (loss_rate × avg_loss). A 40% win-rate trade with 3:1 R:R beats a 60% trade with 1:1 R:R.`;
   }
 
   /**
@@ -650,11 +660,24 @@ ${indicatorLines.join('\n')}
 
 Feel free to use any effective analysis method, but **confidence ≥ ${minConf ?? 60}** required to open positions; avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.
 
-# 📋 Decision Process
+# 📋 Decision Process (Three-Gate Filter)
 
-1. Check positions → Should we take profit/stop-loss
-2. Scan candidate coins + multi-timeframe → Are there strong signals
-3. Write chain of thought first, then output structured JSON`;
+**Step 1: FILTER** — Should I even be looking?
+- Is the regime clear? (If transitioning or unclear → wait)
+- Am I already overexposed? (check position count + correlation with existing positions)
+- Did I just close a position on this coin? (avoid revenge trading)
+→ If ANY gate fails → output "wait", stop here.
+
+**Step 2: CONFIRM** — Do multiple independent signals agree?
+- Trend direction (EMA alignment on higher timeframe)
+- Momentum confirmation (RSI/MACD on primary timeframe)
+- Volume/OI validation (is money flowing in this direction?)
+→ Need ≥ 2 of 3 categories confirming. One indicator alone = never enough.
+
+**Step 3: ACT** — Only now calculate entry, SL, TP
+- Define where the thesis breaks FIRST (= stop loss), then calculate entry
+- Size by expected value, not conviction
+- Verify R:R meets minimum before proceeding`;
   }
 
   /**
