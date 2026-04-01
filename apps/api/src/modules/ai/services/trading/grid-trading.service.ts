@@ -3053,24 +3053,6 @@ export class GridTradingService {
     const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
     let quantity = decision.quantity ?? 0;
 
-    // 对齐 nofx：AI 的 qty 太小时自动使用每层建议量
-    // nofx 的 AI (GPT-4) 不会给太小 qty，DeepSeek 会漏乘杠杆
-    // 计算每层建议量 = allocatedUSD × leverage / price（和 nofx maxQuantityPerLevel 相同）
-    const levelPrice = (decision.price && decision.price > 0) ? decision.price : (state.gridLines[levelIndex >= 0 ? levelIndex : 0]?.price ?? 0);
-    if (levelPrice > 0 && state.totalInvestment > 0) {
-      const leverage = state.leverage ?? 1;
-      const perLevelUSD = (levelIndex >= 0 && state.gridLines[levelIndex]?.allocatedUSD > 0)
-        ? state.gridLines[levelIndex].allocatedUSD
-        : state.totalInvestment / state.gridLines.length;
-      const suggestedQty = (perLevelUSD * leverage) / levelPrice;
-      if (quantity > 0 && quantity < suggestedQty * 0.5) {
-        this.logger.debug(`[网格] qty 修正: AI给 ${quantity.toFixed(4)} < 建议量50% (${(suggestedQty * 0.5).toFixed(4)})，使用建议量 ${suggestedQty.toFixed(4)}`);
-        quantity = suggestedQty;
-      } else if (quantity <= 0) {
-        quantity = suggestedQty;
-      }
-    }
-
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
     // ★ 安全拦截：禁止在 filled（持仓）层下新单
