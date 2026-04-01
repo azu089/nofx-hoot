@@ -1220,6 +1220,21 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             />
           )}
 
+          {/* AI 决策置信度摘要 */}
+          {gridDecisions.some((op: any) => op.confidence != null) && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {gridDecisions.filter((op: any) => op.action !== 'hold').map((op: any, idx: number) => {
+                const opCfg = GRID_ACTION_I18N[op.action];
+                const label = opCfg ? t(opCfg.key) : op.action;
+                return op.confidence != null ? (
+                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]" style={{ backgroundColor: `${opCfg?.color || '#9090A0'}10`, color: opCfg?.color || '#9090A0' }}>
+                    {label} {op.confidence}%
+                  </span>
+                ) : null;
+              })}
+            </div>
+          )}
+
           {/* AI 推理链（DeepSeek-Reasoner 扩展思考）— 在分析下方可展开 */}
           {d.aiThinking && gridAnalysisText && (
             <GridThinkingChain text={d.aiThinking as string} t={t} />
