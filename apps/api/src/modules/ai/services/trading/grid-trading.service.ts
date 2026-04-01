@@ -1283,13 +1283,12 @@ export class GridTradingService {
     // Steps 5.3/5.4: 量能骤变/ATR Spike 方向信号 — 已移除
     // 后端不自动调整方向，由 AI 决策（pause_grid/continue）
 
-    // Step 6: 市场状态分类 — 对齐 nofx：classifyRegimeLevel 在 nofx 中定义但从未接入主循环
-    // nofx CurrentRegimeLevel 永远为空 → fallback standard → 杠杆/仓位上限由用户配置决定，不受 regime 影响
-    // HOOT 保留 classifyRegime 计算用于日志/调试，但不再影响杠杆和 AI 决策
-    state.currentRegime = 'standard';
+    // Step 6: 市场状态分类 — classifyRegime 基于 1h K线判断中期形态
+    // regime 影响：杠杆上限（Step 6.5）+ AI 决策参考
     if (this.indicators) {
       try {
-        const { atrHourly } = await this.classifyRegime(state.symbol);
+        const { regime, atrHourly } = await this.classifyRegime(state.symbol);
+        state.currentRegime = regime;
         state.lastAtrHourly = atrHourly;
       } catch { /* 保持上次值 */ }
     }
@@ -1424,12 +1423,8 @@ export class GridTradingService {
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
-        // 对齐 nofx：isPaused 时跳过 AI 决策，直接 return
-        // nofx RunGridCycle L810-816: if isPaused { return nil }
-        if (state.isPaused) {
-          this.logger.log(`[网格]${tag} 暂停中，跳过 AI 决策（对齐 nofx）`);
-          return { trades, errors };
-        }
+        // 暂停时 AI 仍运行（受限模式：允许平仓/恢复/取消/调整，禁止新挂单）
+        // 旧版设计：暂停时仍需 AI 管理持仓（主动止损/恢复），不能完全跳过
 
         // Pre-sync: 在构建 AI 上下文前先同步交易所状态到内存
         // 解决数据源不一致问题：context.levels / AI分析 / header stats / 层级显示 必须统一
@@ -1528,8 +1523,18 @@ export class GridTradingService {
           return false;
         });
 
-        // 对齐 nofx：isPaused 时已在上方 return，此处不需要受限模式过滤
-        const execDecisions = confFiltered;
+        // 暂停受限模式：禁止新挂单，允许平仓/恢复/取消/调整/观望
+        const PAUSE_ALLOWED_ACTIONS = new Set([
+          'adjust_grid', 'close_long', 'close_short', 'resume_grid',
+          'cancel_order', 'cancel_all_orders', 'hold',
+        ]);
+        const execDecisions = state.isPaused
+          ? confFiltered.filter(d => {
+              if (PAUSE_ALLOWED_ACTIONS.has(d.action)) return true;
+              this.logger.warn(`[网格] 暂停受限模式：跳过非允许动作 ${d.action}`);
+              return false;
+            })
+          : confFiltered;
 
         // 执行决策（收集每条执行结果，供日志记录）
         // 层级显示统一用 preSyncDisplay（buildDisplayFromExchange 构建，交易所实时数据）
@@ -1579,15 +1584,8 @@ export class GridTradingService {
           }
         }
 
-        // 市场形态标签跟随 AI 决策：AI 暂停 → 趋势，AI 恢复/继续 → 标准
-        // 仅影响前端显示，不影响杠杆/仓位等运行逻辑
-        const aiPaused = execDecisions.some(d => d.action === 'pause_grid');
-        const aiResumed = execDecisions.some(d => d.action === 'resume_grid');
-        if (aiPaused) {
-          state.currentRegime = 'trending' as RegimeLevel;
-        } else if (aiResumed || !state.isPaused) {
-          state.currentRegime = 'standard' as RegimeLevel;
-        }
+        // regime 由 classifyRegime(1h) 计算，不再被 AI 决策覆写
+        // 前端显示真实的市场形态分类，不是 AI 的暂停/恢复动作
 
         // 保存本轮决策摘要，供下轮 AI 参考（防止决策震荡）
         state.lastCycleActions = execResults
@@ -2185,12 +2183,13 @@ export class GridTradingService {
       : 3; // 默认 standard
     const atrPct = (atr && currentPrice > 0) ? (atr / currentPrice) * 100 : 2;
 
-    // 对齐 nofx classifyRegimeLevel（grid_regime.go:16-34）
+    // 5级细粒度分类（适配加密货币实际波动范围，nofx 阈值过紧不适用）
     let regime: RegimeLevel;
-    if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';             // nofx: Narrow BB<2% ATR<1%
-    else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';    // nofx: Standard BB≤3% ATR≤2%
-    else if (bbWidth <= 4.0 && atrPct <= 3.0) regime = 'wide';        // nofx: Wide BB≤4% ATR≤3%
-    else regime = 'volatile';                                          // nofx: Volatile BB>4% ATR>3%
+    if (bbWidth < 3.0 && atrPct < 0.8) regime = 'ultra_narrow';       // 极窄幅：最适合网格
+    else if (bbWidth < 5.0 && atrPct < 1.2) regime = 'narrow';        // 窄幅：适合网格
+    else if (bbWidth <= 8.0 && atrPct <= 2.0) regime = 'standard';    // 标准：正常运行
+    else if (bbWidth <= 15.0 && atrPct <= 3.5) regime = 'wide';       // 宽幅：谨慎
+    else regime = 'volatile';                                          // 高波动：最低杠杆
 
     this.logger.debug(`[网格] classifyRegime(1h): bbWidth=${bbWidth.toFixed(2)}%, atrPct=${atrPct.toFixed(2)}%, regime=${regime}`);
 
@@ -2375,15 +2374,16 @@ export class GridTradingService {
     const high24h = last24Candles.length > 0 ? Math.max(...last24Candles.map(c => c.high)) : 0;
     const low24h  = last24Candles.length > 0 ? Math.min(...last24Candles.map(c => c.low))  : 0;
 
-    // 布林带（对齐 nofx: 基于 5m 数据，system prompt 阈值 4% 对应 5m 级别）
-    const bbUpper = indFast.bollingerBands?.upper ?? 0;
-    const bbMiddle = indFast.bollingerBands?.middle ?? currentPrice;
-    const bbLower = indFast.bollingerBands?.lower ?? 0;
+    // 布林带基于 1h 数据（与 classifyRegime 一致，反映中期市场状态）
+    // 5m BB 天然极窄（SOL 5m bbWidth≈0.8%），不适合 4%/3% 的 regime 阈值
+    const bbUpper = indSlow.bollingerBands?.upper ?? 0;
+    const bbMiddle = indSlow.bollingerBands?.middle ?? currentPrice;
+    const bbLower = indSlow.bollingerBands?.lower ?? 0;
     const bbWidth = bbMiddle > 0 ? ((bbUpper - bbLower) / bbMiddle) * 100 : 0;
 
-    // EMA（对齐 nofx: EMA20 来自 5m primary，EMA50 来自 4h LongerTermContext）
-    const ema20 = indFast.ema?.ema20 ?? 0;
-    const ema50 = ind4h.ema?.ema50 ?? 0;
+    // EMA 基于 1h 数据（与 classifyRegime 一致）
+    const ema20 = indSlow.ema?.ema20 ?? 0;
+    const ema50 = indSlow.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
     // 统一数据源：AI 看到的层状态 = state.gridLines（由 syncMemoryFromExchange 从交易所数据重建）
