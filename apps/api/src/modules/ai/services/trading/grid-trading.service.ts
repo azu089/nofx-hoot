@@ -3051,9 +3051,17 @@ export class GridTradingService {
     // 对齐 nofx：全程 0-based，不做 -1 转换
     const rawLevel = decision.level_index ?? decision.level ?? -1;
     const levelIndex = rawLevel >= 0 && rawLevel < state.gridLines.length ? rawLevel : -1;
-    let quantity = decision.quantity ?? 0;
-
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
+
+    // 对齐 nofx：qty = allocatedUSD × leverage / price（代码计算，不依赖 AI）
+    // nofx 中 AI 给 qty 后代码 cap 到 maxQuantityPerLevel，GPT-4 总是给接近 max 的值
+    // DeepSeek 经常算错（漏乘杠杆），所以直接用代码计算的值
+    const leverage = state.leverage ?? 1;
+    const qtyPrice = (decision.price && decision.price > 0) ? decision.price : (level?.price ?? 0);
+    const perLevelUSD = (level && level.allocatedUSD > 0)
+      ? level.allocatedUSD
+      : (state.totalInvestment / state.gridLines.length);
+    let quantity = qtyPrice > 0 ? (perLevelUSD * leverage) / qtyPrice : 0;
 
     // ★ 安全拦截：禁止在 filled（持仓）层下新单
     // 持仓层应使用 close_long/close_short 平仓，不能用 buy/sell 下新单
@@ -3106,33 +3114,16 @@ export class GridTradingService {
     // 若 useMakerOnly=true，交易所 PostOnly 机制会自行拒绝 taker 单
     // 若 useMakerOnly=false，允许 taker 成交（平仓/锁利）
 
-    // Step 1: per-level 仓位上限检查
-    // 对齐 nofx：直接使用当前交易所杠杆（state.leverage），无 MAX_LEVERAGE_CAP
-    const leverage = state.leverage ?? 1;
+    // Step 1: per-level 仓位上限检查（对齐 nofx）
+    // qty 已由代码计算（allocatedUSD × leverage / price），此处做安全 cap
     let capTruncated = false;
     let capUsed = 0;
     let capTotal = 0;
     if (price > 0 && state.totalInvestment > 0) {
-      const maxMarginPerLevel = state.totalInvestment / state.gridLines.length;
-      let maxQuantityPerLevel = (maxMarginPerLevel * leverage) / price;
-
-      // 使用 level-specific 分配
-      if (finalLevel && finalLevel.allocatedUSD > 0) {
-        const levelMax = (finalLevel.allocatedUSD * leverage) / price;
-        maxQuantityPerLevel = Math.min(maxQuantityPerLevel, levelMax);
-      }
-
       // 仓位缩减（突破恢复后）
       if (state.positionReductionPct > 0) {
-        maxQuantityPerLevel *= (1 - state.positionReductionPct / 100);
+        quantity *= (1 - state.positionReductionPct / 100);
       }
-
-      if (quantity > maxQuantityPerLevel) {
-        this.logger.debug(
-          `[网格] ⚠️ 数量截断: ${quantity.toFixed(4)} → ${maxQuantityPerLevel.toFixed(4)} (level=${levelIndex}, max=$${(maxQuantityPerLevel * price).toFixed(2)})`,
-        );
-      }
-      quantity = Math.min(quantity, maxQuantityPerLevel);
 
       // 总仓位上限：按层数预算计算，不受 markPrice 波动影响
       // capTotal = totalInvestment × leverage（固定值）
