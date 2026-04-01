@@ -2190,60 +2190,7 @@ export class GridTradingService {
    *   - 每轮开始：syncMemoryFromExchange（从交易所全量重建 pending/filled）
    *   - 运行时：placeGridLimitOrder（→ pending）→ syncMemoryFromExchange（周期末再次重建）
    */
-  private buildExchangeLevels(
-    gridLines: GridLine[],
-    currentPrice: number,
-    leverage: number,
-  ): GridContext['levels'] {
-    return gridLines.map((l) => {
-      const normalQty = l.allocatedUSD > 0 && currentPrice > 0
-        ? (l.allocatedUSD * leverage) / currentPrice
-        : 0;
-
-      if (l.state === 'pending' && l.orderId) {
-        return {
-          price: l.price,
-          side: l.side as 'buy' | 'sell',
-          quantity: normalQty,
-          positionSize: 0,
-          state: 'pending' as const,
-          orderId: l.orderId,
-          fillPrice: undefined,
-          profit: undefined,
-        };
-      }
-
-      if (l.state === 'filled' && l.positionSize > 0.0001) {
-        const profit = l.side === 'buy'
-          ? (currentPrice - l.positionEntry) * l.positionSize
-          : (l.positionEntry - currentPrice) * l.positionSize;
-        // positionEntry = 交易所真实入场价（交易所是唯一真相）
-        const displayPrice = l.positionEntry > 0 ? l.positionEntry : l.price;
-        return {
-          price: displayPrice,
-          side: l.side as 'buy' | 'sell',
-          quantity: normalQty,
-          positionSize: l.positionSize,
-          state: 'filled' as const,
-          orderId: undefined,
-          fillPrice: l.positionEntry > 0 ? l.positionEntry : undefined,
-          profit,
-        };
-      }
-
-      return {
-        // 对齐 nofx：empty 层 quantity=0
-        price: l.price,
-        side: l.side as 'buy' | 'sell',
-        quantity: 0,
-        positionSize: 0,
-        state: 'cancelled' as const,
-        orderId: undefined,
-        fillPrice: undefined,
-        profit: undefined,
-      };
-    });
-  }
+  // buildExchangeLevels 已删除：统一使用 state.gridLines（由 syncMemoryFromExchange 维护）
 
   /** 构建网格 AI 上下文 */
   private async buildGridContext(
@@ -2422,59 +2369,34 @@ export class GridTradingService {
     const ema50 = indSlow.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
-    // 层级状态：优先从交易所数据构建（和 UI 显示完全一致）
-    // 有 pre-sync 交易所数据时用 buildDisplayFromExchange，否则 fallback 到内存
-    let exchangeLevels: GridContext['levels'];
-    if (preSyncExchangeOrders && preSyncExchangePositions) {
-      // 从交易所数据构建（和 UI buildDisplayFromExchange 完全相同的数据源）
-      const displayLines = this.buildDisplayFromExchange(state, preSyncExchangeOrders, preSyncExchangePositions);
-      exchangeLevels = displayLines.map((d: any, i: number) => {
-        const gl = state.gridLines[i];
-        const normalQty = gl?.allocatedUSD > 0 && currentPrice > 0
-          ? (gl.allocatedUSD * (state.leverage ?? 1)) / currentPrice
-          : 0;
-        if (d.st === 'pending') {
-          return {
-            price: d.p, side: d.s as 'buy' | 'sell', quantity: normalQty,
-            positionSize: 0, state: 'pending' as const, orderId: d.oid,
-            fillPrice: undefined, profit: undefined,
-          };
-        }
-        if (d.st === 'filled') {
-          const ep = d.ep ?? d.p;
-          const profit = d.s === 'buy'
-            ? (currentPrice - ep) * (d.qty ?? 0)
-            : (ep - currentPrice) * (d.qty ?? 0);
-          return {
-            // ★ price 用层价格（d.p），不用入场价（ep）！
-            // 入场价放 fillPrice。否则 AI 看到 6 层同价会拿入场价去挂单 → 死循环
-            price: d.p, side: d.s as 'buy' | 'sell', quantity: 0,
-            positionSize: d.qty ?? 0, state: 'filled' as const, orderId: undefined,
-            fillPrice: ep, profit,
-          };
-        }
+    // 统一数据源：AI 看到的层状态 = state.gridLines（由 syncMemoryFromExchange 从交易所数据重建）
+    // 不再使用 buildDisplayFromExchange（第二套映射），确保 AI 看到的 = 执行时读取的 = 同一个 gridLines
+    const exchangeLevels: GridContext['levels'] = state.gridLines.map((gl) => {
+      if (gl.state === 'filled' && gl.positionSize > 0.0001) {
+        const ep = gl.positionEntry > 0 ? gl.positionEntry : gl.price;
+        const profit = gl.side === 'buy'
+          ? (currentPrice - ep) * gl.positionSize
+          : (ep - currentPrice) * gl.positionSize;
         return {
-          // 对齐 nofx：empty 层 OrderQuantity=0（不填建议量，避免 AI 误以为"已有单"）
-          price: d.p, side: d.s as 'buy' | 'sell', quantity: 0,
-          positionSize: 0, state: 'empty' as const, orderId: undefined,
+          price: gl.price, side: gl.side as 'buy' | 'sell', quantity: 0,
+          positionSize: gl.positionSize, state: 'filled' as const, orderId: undefined,
+          fillPrice: ep, profit,
+        };
+      }
+      if (gl.state === 'pending' && gl.orderId) {
+        return {
+          price: gl.price, side: gl.side as 'buy' | 'sell', quantity: gl.orderQuantity,
+          positionSize: 0, state: 'pending' as const, orderId: gl.orderId,
           fillPrice: undefined, profit: undefined,
         };
-      });
-    } else {
-      // Fallback：交易所数据不可用时，返回全空层（不用内存脏数据喂 AI）
-      // AI 看到全空层会选择 hold，等下一轮交易所恢复
-      this.logger.warn(`[网格] buildGridContext: 交易所数据不可用，返回全空层（不使用内存）`);
-      exchangeLevels = state.gridLines.map((gl) => ({
-        price: gl.price,
-        side: gl.side as 'buy' | 'sell',
-        quantity: 0,
-        positionSize: 0,
-        state: 'cancelled' as const,
-        orderId: undefined,
-        fillPrice: undefined,
-        profit: undefined,
-      }));
-    }
+      }
+      // empty 层：对齐 nofx OrderQuantity=0
+      return {
+        price: gl.price, side: gl.side as 'buy' | 'sell', quantity: 0,
+        positionSize: 0, state: 'empty' as const, orderId: undefined,
+        fillPrice: undefined, profit: undefined,
+      };
+    });
 
     // 仓位 cap 使用率：按层数预算计算，不受 markPrice 波动影响
     const capLeverage = state.leverage ?? 1;
