@@ -1352,6 +1352,9 @@ export class GridTradingService {
               state.leverage = targetLeverage;
               state.effectiveLeverage = targetLeverage;
               state.lastSyncedLeverage = targetLeverage;
+              // 杠杆变更后自动重建挂单（旧挂单数量基于旧杠杆，需要以新杠杆重新计算）
+              state.needsReconcile = true;
+              this.logger.log(`[网格] 杠杆变更触发重建: 下轮将撤销所有挂单并以 ${targetLeverage}x 重新挂单`);
             } catch (e: any) {
               this.logger.warn(
                 `[网格] 杠杆同步失败(下轮重试): → ${targetLeverage}x, err=${e.message}`,
