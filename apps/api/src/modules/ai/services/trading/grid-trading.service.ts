@@ -1294,8 +1294,14 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 对齐 nofx — regime 不影响杠杆，recommendedLeverage = 用户配置杠杆
-    state.recommendedLeverage = state.leverage;
+    // Step 6.5: 计算 regime 推荐杠杆（state.leverage 只在交易所同步成功后才更新）
+    const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
+    if (!state.userFixedLeverage) {
+      state.recommendedLeverage = regimeCap;
+      // 注意：state.leverage 不在这里改，等 Step 8 setLeverage 成功后才更新
+    } else {
+      state.recommendedLeverage = state.leverage;
+    }
     state.effectiveLeverage = state.leverage;
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
