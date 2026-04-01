@@ -597,6 +597,8 @@ function gridSystemPromptZh(
 ## 可用操作
 - **place_buy_limit**: 在 empty 层挂买单（价格应低于当前市价，等待价格下跌成交）
 - **place_sell_limit**: 在 empty 层挂卖单（价格应高于当前市价，等待价格上涨成交）
+- **close_long**: 平多仓
+- **close_short**: 平空仓
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
@@ -667,6 +669,8 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 ## Available Actions
 - **place_buy_limit**: Place buy order on empty level (price should be below current market price, waiting for dip)
 - **place_sell_limit**: Place sell order on empty level (price should be above current market price, waiting for rise)
+- **close_long**: Close long position
+- **close_short**: Close short position
 - **cancel_order**: Cancel a specific order (field: orderId)
 - **cancel_all_orders**: Cancel all pending orders
 - **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
