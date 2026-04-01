@@ -1420,6 +1420,13 @@ export class GridTradingService {
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
+        // 对齐 nofx：isPaused 时跳过 AI 决策，直接 return
+        // nofx RunGridCycle L810-816: if isPaused { return nil }
+        if (state.isPaused) {
+          this.logger.log(`[网格]${tag} 暂停中，跳过 AI 决策（对齐 nofx）`);
+          return { trades, errors };
+        }
+
         // Pre-sync: 在构建 AI 上下文前先同步交易所状态到内存
         // 解决数据源不一致问题：context.levels / AI分析 / header stats / 层级显示 必须统一
         // 历史教训 2026-03-13：旧版 sync 只在周期末 → AI 看到的数据比交易所落后1周期
@@ -1517,15 +1524,8 @@ export class GridTradingService {
           return false;
         });
 
-        // 暂停受限模式（所有暂停来源统一）：允许持仓管理 + 恢复操作，禁止新开仓
-        const PAUSE_ALLOWED_ACTIONS = new Set(['adjust_grid', 'close_long', 'close_short', 'resume_grid', 'cancel_order', 'cancel_all_orders', 'hold']);
-        const execDecisions = state.isPaused
-          ? confFiltered.filter(d => {
-              if (PAUSE_ALLOWED_ACTIONS.has(d.action)) return true;
-              this.logger.warn(`[网格] 暂停受限模式：跳过非允许动作 ${d.action}`);
-              return false;
-            })
-          : confFiltered;
+        // 对齐 nofx：isPaused 时已在上方 return，此处不需要受限模式过滤
+        const execDecisions = confFiltered;
 
         // 执行决策（收集每条执行结果，供日志记录）
         // 层级显示统一用 preSyncDisplay（buildDisplayFromExchange 构建，交易所实时数据）
@@ -2751,141 +2751,25 @@ export class GridTradingService {
       }
 
       case 'close_long': {
-        // AI 主动平多仓
+        // 对齐 nofx：直接调用 CloseLong，不做层级查找/side 自动转换
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        const rawLevel = decision.level_index ?? decision.level ?? 0;
-        const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
-        const targetLevel = levelIndex >= 0
-          ? state.gridLines[levelIndex]
-          : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'buy');
-        const qty = decision.quantity ?? targetLevel?.positionSize ?? 0;
-        if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
-        // 回填平仓价到 decision，前端日志可展示（AI 可能只发 level+quantity）
-        const closeLongPrice = currentPrice ?? state.lastPrice;
-        if (!decision.price) decision.price = closeLongPrice;
-        // 防御：若 AI 对 filled sell 层发出 close_long，自动转 closeShort（sell层=空头持仓）
-        let closeLongResult: any;
-        if (targetLevel?.side === 'sell') {
-          this.logger.warn(`[网格] close_long 目标层${targetLevel.index}为sell层（空头），自动转 closeShort`);
-          closeLongResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
-        } else {
-          closeLongResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
-        }
-        if (targetLevel && targetLevel.positionSize > 0) {
-          // 优先使用 CCXT 实际成交价，其次用 currentPrice
-          const actualClosePrice = closeLongResult?.avgPrice || currentPrice || state.lastPrice;
-          const _cp = new Decimal(actualClosePrice);
-          const _ep = new Decimal(targetLevel.positionEntry);
-          const _sz = new Decimal(targetLevel.positionSize);
-          const _fr = new Decimal(state.takerFeeRate);
-          // 优先使用交易所返回的 realizedPnl（最准确），否则本地计算
-          const exchangePnl = closeLongResult?.realizedPnl;
-          const netProfitD = exchangePnl != null
-            ? new Decimal(exchangePnl)
-            : _cp.minus(_ep).times(_sz)
-              .minus(_cp.times(_sz).times(_fr))
-              .minus(_ep.times(_sz).times(_fr));
-          const netProfit = netProfitD.toNumber();
-          state.totalProfit += netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-          state.totalTrades++;
-          if (netProfit > 0) state.winningTrades++;
-          targetLevel.unrealizedPnl = netProfit;
-          targetLevel.state = 'empty';
-          targetLevel.positionSize = 0;
-          targetLevel.positionEntry = 0;
-          delete state.orderBook[targetLevel.orderId ?? ''];
-          targetLevel.orderId = undefined;
-          // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
-          const closedValue = qty * _cp.toNumber();
-          state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
-          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, ccxtPrice=${_cp.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT${exchangePnl != null ? ' (exchange)' : ' (calc)'}`);
-          // 历史持仓记录由 ClosedPnlSyncService 从交易所聚合记录统一写入，不再逐笔写入
-          // 取消上方相邻 pending 卖单（孤儿防护：平多后卖单若触价会意外开空）
-          const orphanSell = state.gridLines.find(
-            (l) => l.state === 'pending' && l.side === 'sell' && l.orderId && l.index === targetLevel.index + 1,
-          );
-          if (orphanSell?.orderId) {
-            try {
-              await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, orphanSell.orderId);
-              delete state.orderBook[orphanSell.orderId];
-              orphanSell.state = 'empty';
-              orphanSell.orderId = undefined;
-              this.logger.log(`[网格] close_long 后取消孤儿卖单: level=${orphanSell.index}`);
-            } catch (e: any) {
-              this.logger.warn(`[网格] 取消孤儿卖单失败: level=${orphanSell.index}, ${e.message}`);
-            }
-          }
-          // 平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
-          try {
-            await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
-          } catch (e: any) {
-            this.logger.warn(`[网格] close_long 后清理条件单失败: ${e.message}`);
-          }
-        }
+        const clQty = decision.quantity ?? 0;
+        if (clQty <= 0) return { executed: false, skipReason: '无持仓可平' };
+        if (!decision.price) decision.price = currentPrice ?? state.lastPrice;
+        const clResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, clQty);
+        this.logger.log(`[网格] close_long: qty=${clQty}, price=${clResult?.avgPrice ?? currentPrice}`);
         return { executed: true };
       }
 
       case 'close_short': {
-        // AI 主动平空仓
+        // 对齐 nofx：直接调用 CloseShort，不做层级查找/side 自动转换
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        const rawLevel = decision.level_index ?? decision.level ?? 0;
-        const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
-        const targetLevel = levelIndex >= 0
-          ? state.gridLines[levelIndex]
-          : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'sell');
-        const qty = decision.quantity ?? targetLevel?.positionSize ?? 0;
-        if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
-        // 回填平仓价到 decision，前端日志可展示
-        const closeShortPrice = currentPrice ?? state.lastPrice;
-        if (!decision.price) decision.price = closeShortPrice;
-        // 防御：若 AI 对 filled buy 层发出 close_short，自动转 closeLong（buy层=多头持仓）
-        let closeShortResult: any;
-        if (targetLevel?.side === 'buy') {
-          this.logger.warn(`[网格] close_short 目标层${targetLevel.index}为buy层（多头），自动转 closeLong`);
-          closeShortResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
-        } else {
-          closeShortResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
-        }
-        // 无论是否有 targetLevel，都更新 livePositionNotional（孤儿空头平仓）
-        const actualClosePriceShort = closeShortResult?.avgPrice || currentPrice || state.lastPrice;
-        const closedValueShort = qty * actualClosePriceShort;
-        state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
-        if (targetLevel && targetLevel.positionSize > 0) {
-          // 优先使用 CCXT 实际成交价
-          const _cp2 = new Decimal(actualClosePriceShort);
-          const _ep2 = new Decimal(targetLevel.positionEntry);
-          const _sz2 = new Decimal(targetLevel.positionSize);
-          const _fr2 = new Decimal(state.takerFeeRate);
-          // 优先使用交易所返回的 realizedPnl
-          const exchangePnl2 = closeShortResult?.realizedPnl;
-          const netProfitD2 = exchangePnl2 != null
-            ? new Decimal(exchangePnl2)
-            : _ep2.minus(_cp2).times(_sz2)
-              .minus(_cp2.times(_sz2).times(_fr2))
-              .minus(_ep2.times(_sz2).times(_fr2));
-          const netProfit = netProfitD2.toNumber();
-          state.totalProfit += netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-          state.totalTrades++;
-          if (netProfit > 0) state.winningTrades++;
-          targetLevel.unrealizedPnl = netProfit;
-          targetLevel.state = 'empty';
-          targetLevel.positionSize = 0;
-          targetLevel.positionEntry = 0;
-          delete state.orderBook[targetLevel.orderId ?? ''];
-          targetLevel.orderId = undefined;
-          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, ccxtPrice=${_cp2.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT${exchangePnl2 != null ? ' (exchange)' : ' (calc)'}`);
-          // 历史持仓记录由 ClosedPnlSyncService 从交易所聚合记录统一写入，不再逐笔写入
-          // 平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
-          try {
-            await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
-          } catch (e: any) {
-            this.logger.warn(`[网格] close_short 后清理条件单失败: ${e.message}`);
-          }
-        } else {
-          this.logger.warn(`[网格] close_short 孤儿空头平仓: qty=${qty}, 无对应 grid level`);
-        }
+        const csQty = decision.quantity ?? 0;
+        if (csQty <= 0) return { executed: false, skipReason: '无持仓可平' };
+        if (!decision.price) decision.price = currentPrice ?? state.lastPrice;
+        const csResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, csQty);
+        this.logger.log(`[网格] close_short: qty=${csQty}, price=${csResult?.avgPrice ?? currentPrice}`);
+        return { executed: true };
         return { executed: true };
       }
 
