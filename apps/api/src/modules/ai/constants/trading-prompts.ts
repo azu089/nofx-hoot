@@ -861,6 +861,7 @@ function gridSystemPromptZh(
 - 杠杆: ${leverage}x
 - 价格分布: ${distribution}
 - 参考价: ${currentPrice.toFixed(4)}
+- 每层下单量: ${(totalInvestment * leverage / gridCount / currentPrice).toFixed(4)}
 
 ## 决策规则
 
@@ -924,6 +925,7 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - Leverage: ${leverage}x
 - Distribution: ${distribution}
 - Reference Price: ${currentPrice.toFixed(4)}
+- Qty per level: ${(totalInvestment * leverage / gridCount / currentPrice).toFixed(4)}
 
 ## Decision Rules
 
