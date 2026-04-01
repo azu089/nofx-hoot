@@ -881,7 +881,7 @@ function gridSystemPromptZh(
 - adjust_grid: 以当前价重建网格
 - hold: 保持当前状态
 
-有持仓时，入场价是分界线：买单挂在入场价以下，卖单挂在入场价以上。
+有持仓时，避免挂单价格错误导致网格亏损。入场价是分界线：买单挂在入场价以上是错误，卖单挂在入场价以下是错误，触发成交就会导致亏损。挂单需要考虑全局计算利润。
 
 ### 暂停模式（isPaused=true）
 暂停期间只能: close_long/close_short、cancel_order、resume_grid、adjust_grid、hold。
@@ -945,7 +945,7 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 - adjust_grid: rebuild grid at current price
 - hold: maintain current state
 
-When holding positions, entry price is the dividing line: buy orders below entry, sell orders above entry.
+When holding positions, avoid incorrect order prices that cause grid losses. Entry price is the dividing line: placing buy orders above entry price is wrong, placing sell orders below entry price is wrong — if filled, these cause losses. Consider overall profit when placing orders.
 
 ### Pause Mode (isPaused=true)
 While paused, only: close_long/close_short, cancel_order, resume_grid, adjust_grid, hold.
