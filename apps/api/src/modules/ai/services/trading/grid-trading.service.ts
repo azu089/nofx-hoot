@@ -2832,8 +2832,8 @@ export class GridTradingService {
       case 'close_long': {
         // AI 主动平多仓
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        const rawLevel = decision.level_index ?? decision.level ?? 0;
-        const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
+        const rawLevel = decision.level_index ?? decision.level ?? -1;
+        const levelIndex = rawLevel >= 0 && rawLevel < state.gridLines.length ? rawLevel : -1;
         const targetLevel = levelIndex >= 0
           ? state.gridLines[levelIndex]
           : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'buy');
@@ -2908,8 +2908,8 @@ export class GridTradingService {
       case 'close_short': {
         // AI 主动平空仓
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        const rawLevel = decision.level_index ?? decision.level ?? 0;
-        const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
+        const rawLevel = decision.level_index ?? decision.level ?? -1;
+        const levelIndex = rawLevel >= 0 && rawLevel < state.gridLines.length ? rawLevel : -1;
         const targetLevel = levelIndex >= 0
           ? state.gridLines[levelIndex]
           : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'sell');
@@ -3048,9 +3048,9 @@ export class GridTradingService {
     adapter: GridExchangeAdapter,
     useMakerOnly = true,
   ): Promise<{ executed: boolean; skipReason?: string }> {
-    // Prompt 中 level 从 1 开始（用户友好），转为 0-based 数组下标
-    const rawLevel = decision.level_index ?? decision.level ?? 0;
-    const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
+    // 对齐 nofx：全程 0-based，不做 -1 转换
+    const rawLevel = decision.level_index ?? decision.level ?? -1;
+    const levelIndex = rawLevel >= 0 && rawLevel < state.gridLines.length ? rawLevel : -1;
     let quantity = decision.quantity ?? 0;
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
