@@ -2734,13 +2734,7 @@ export class GridTradingService {
           await this.syncMemoryFromExchange(state, adapter as GridExchangeAdapter, userId);
           this.logger.log(`[网格] adjust_grid: 从交易所同步完成，持仓=${state.gridLines.filter(l => l.state === 'filled').length}层`);
         }
-        // 重建后自动解除暂停（所有来源均可通过重建恢复）
-        if (state.isPaused) {
-          state.isPaused = false;
-          state.pauseSource = undefined;
-          state.pauseReason = undefined;
-          this.logger.log(`[网格] adjust_grid 重建完成，自动解除暂停`);
-        }
+        // 对齐 nofx：adjustGrid 不解除暂停（nofx L1180-1197 不碰 isPaused）
         // 重建后清除仓位缩减：AI 判断市场恢复后主动重建，缩减模式应随之解除
         if (state.positionReductionPct > 0) {
           this.logger.log(`[网格] adjust_grid: 仓位缩减模式解除 (${state.positionReductionPct}% → 0%)`);
