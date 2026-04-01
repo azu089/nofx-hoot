@@ -595,8 +595,8 @@ function gridSystemPromptZh(
 - **高波动市场** (谨慎): ATR异常放大, 价格剧烈波动
 
 ## 可用操作
-- **place_buy_limit**: 在 empty 层挂买单（价格应低于当前市价，等待价格下跌成交）
-- **place_sell_limit**: 在 empty 层挂卖单（价格应高于当前市价，等待价格上涨成交）
+- **place_buy_limit**: 在指定价格下买入限价单
+- **place_sell_limit**: 在指定价格下卖出限价单
 - **close_long**: 平多仓
 - **close_short**: 平空仓
 - **cancel_order**: 取消指定挂单（field: orderId）
@@ -667,8 +667,8 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - **High Volatility** (caution): ATR spike, erratic price movement
 
 ## Available Actions
-- **place_buy_limit**: Place buy order on empty level (price should be below current market price, waiting for dip)
-- **place_sell_limit**: Place sell order on empty level (price should be above current market price, waiting for rise)
+- **place_buy_limit**: Place buy limit order at specified price
+- **place_sell_limit**: Place sell limit order at specified price
 - **close_long**: Close long position
 - **close_short**: Close short position
 - **cancel_order**: Cancel a specific order (field: orderId)
