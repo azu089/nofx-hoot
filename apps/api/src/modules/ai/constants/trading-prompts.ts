@@ -590,7 +590,7 @@ function gridSystemPromptZh(
 
 ### 市场状态判断
 - **震荡市场** (适合网格): 布林带宽度 < 3%, EMA20/50 距离 < 1%, 价格在布林带中轨附近
-- **趋势市场** (暂停网格): 必须同时满足以下全部条件才可判定为趋势：布林带宽度 > 4% 且 EMA20/50 距离 > 2% 且价格持续突破布林带上轨或下轨。仅满足其中一项不构成趋势
+- **趋势市场** (暂停网格): 必须同时满足以下全部条件才可判定为趋势：布林带宽度 > 4% 且 EMA20/50 距离 > 2% 且价格持续突破布林带上轨或下轨。不满足全部条件时禁止 pause_grid，应视为震荡/整理并正常运行网格
 - **高波动市场** (谨慎): ATR异常放大, 价格剧烈波动
 
 ### 可执行的操作
@@ -652,7 +652,7 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 
 ### Market Regime Assessment
 - **Ranging Market** (ideal for grid): Bollinger width < 3%, EMA20/50 distance < 1%, price near middle band
-- **Trending Market** (pause grid): ALL of the following must be true simultaneously: Bollinger width > 4% AND EMA20/50 distance > 2% AND price persistently breaking upper or lower Bollinger band. Meeting only one condition does NOT qualify as trending
+- **Trending Market** (pause grid): ALL of the following must be true simultaneously: Bollinger width > 4% AND EMA20/50 distance > 2% AND price persistently breaking upper or lower Bollinger band. If not all conditions are met, do NOT pause_grid — treat as ranging/consolidation and keep the grid running normally
 - **High Volatility** (caution): ATR spike, erratic price movement
 
 ### Available Actions
