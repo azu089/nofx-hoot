@@ -2167,13 +2167,12 @@ export class GridTradingService {
       : 3; // 默认 standard
     const atrPct = (atr && currentPrice > 0) ? (atr / currentPrice) * 100 : 2;
 
-    // 阈值基于 1h K线加密货币实际波动范围（SOL 正常震荡 BB=5-10%, ATR=0.8-1.5%）
+    // 对齐 nofx classifyRegimeLevel（grid_regime.go:16-34）
     let regime: RegimeLevel;
-    if (bbWidth < 3.0 && atrPct < 0.8) regime = 'ultra_narrow';       // 极度平静：BB<3% + ATR<0.8%
-    else if (bbWidth < 5.0 && atrPct < 1.2) regime = 'narrow';        // 窄幅震荡：BB<5% + ATR<1.2%
-    else if (bbWidth <= 8.0 && atrPct <= 2.0) regime = 'standard';    // 正常活跃：BB≤8% + ATR≤2%
-    else if (bbWidth <= 15.0 && atrPct <= 3.5) regime = 'wide';       // 宽幅波动：BB≤15% + ATR≤3.5%
-    else regime = 'volatile'; // BB>15% 或 ATR>3.5%（极端高波动）
+    if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';             // nofx: Narrow BB<2% ATR<1%
+    else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';    // nofx: Standard BB≤3% ATR≤2%
+    else if (bbWidth <= 4.0 && atrPct <= 3.0) regime = 'wide';        // nofx: Wide BB≤4% ATR≤3%
+    else regime = 'volatile';                                          // nofx: Volatile BB>4% ATR>3%
 
     this.logger.debug(`[网格] classifyRegime(1h): bbWidth=${bbWidth.toFixed(2)}%, atrPct=${atrPct.toFixed(2)}%, regime=${regime}`);
 
