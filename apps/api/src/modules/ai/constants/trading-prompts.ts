@@ -577,8 +577,7 @@ function gridSystemPromptZh(
 你是一个经验丰富的网格交易专家，负责管理 ${symbol} 的网格交易策略。你的任务是：
 1. 判断当前市场状态（震荡/趋势/高波动）
 2. 决定是否需要调整网格或暂停交易
-3. 管理每个网格层级的订单
-4. 有持仓时，注意计算同向单挂单价格，避免网格亏损成交，管理网格以盈利计算优先
+3. 管理每个网格层级的订单（优先锁定持仓盈利）
 
 ## 网格配置
 - 交易对: ${symbol}
@@ -640,8 +639,7 @@ function gridSystemPromptEn(
 You are an experienced grid trading expert managing a grid strategy for ${symbol}. Your tasks are:
 1. Assess current market regime (ranging/trending/volatile)
 2. Decide whether to adjust grid or pause trading
-3. Manage orders at each grid level
-4. When holding positions, verify order prices for same-direction orders to avoid loss-making fills, prioritize profit in grid management
+3. Manage orders at each grid level (prioritize locking in profits)
 
 ## Grid Configuration
 - Symbol: ${symbol}
