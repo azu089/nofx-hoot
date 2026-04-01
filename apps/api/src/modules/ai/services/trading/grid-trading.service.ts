@@ -2087,7 +2087,9 @@ export class GridTradingService {
       if (isFirstRecovery) {
         state.positionReductionPct = 50;
         this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内，以50%容量继续运行（等待短期箱确认后自动解除缩减）');
-        if (state.pauseSource !== 'risk_control') {
+        // 只恢复代码层触发的暂停（breakout），不恢复 AI/风控触发的暂停
+        // 对齐 nofx：AI 的 pause_grid 只能由 AI 的 resume_grid 解除
+        if (state.pauseSource === 'breakout') {
           state.isPaused = false;
           state.pauseReason = undefined;
           state.pauseSource = undefined;
