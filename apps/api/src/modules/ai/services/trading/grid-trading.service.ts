@@ -2599,7 +2599,10 @@ export class GridTradingService {
     const { action } = decision;
 
     const aiLevel = decision.level_index ?? decision.level;
-    this.logger.debug(`[网格] 执行决策: action=${this.actionLabel(action, locale)}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
+    // qty 日志在 placeGridLimitOrder 内部打印（显示代码计算的最终值，非 AI 建议值）
+    if (!action.startsWith('place_')) {
+      this.logger.debug(`[网格] 执行决策: action=${this.actionLabel(action, locale)}, AI层号=${aiLevel}, price=${decision.price}`);
+    }
 
     switch (action) {
       // AI 驱动补单
@@ -2922,6 +2925,11 @@ export class GridTradingService {
       ? level.allocatedUSD
       : (state.totalInvestment / state.gridLines.length);
     let quantity = qtyPrice > 0 ? (perLevelUSD * leverage) / qtyPrice : 0;
+
+    this.logger.debug(
+      `[网格] 执行决策: action=${side === 'buy' ? '挂买单' : '挂卖单'}, L${rawLevel} @${qtyPrice.toFixed(2)}, ` +
+      `qty=${quantity.toFixed(4)} (${perLevelUSD.toFixed(2)}USD × ${leverage}x / ${qtyPrice.toFixed(2)})`,
+    );
 
     // ★ 安全拦截：禁止在 filled（持仓）层下新单
     // 持仓层应使用 close_long/close_short 平仓，不能用 buy/sell 下新单
