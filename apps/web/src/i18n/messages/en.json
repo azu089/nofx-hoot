@@ -2157,6 +2157,7 @@
       "regimeStandard": "Standard",
       "regimeWide": "Wide",
       "regimeVolatile": "Volatile",
+      "regimeTrending": "Trending",
       "breakoutNone": "None",
       "breakoutShort": "Short-term",
       "breakoutMid": "Mid-term",

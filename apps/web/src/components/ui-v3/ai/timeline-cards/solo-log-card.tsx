@@ -226,6 +226,7 @@ const GRID_REGIME_I18N: Record<string, string> = {
   ultra_narrow: 'timeline.regimeUltraNarrow',
   narrow: 'timeline.regimeNarrow', standard: 'timeline.regimeStandard',
   wide: 'timeline.regimeWide', volatile: 'timeline.regimeVolatile',
+  trending: 'timeline.regimeTrending',
 };
 
 function formatTimeAgo(dateStr: string, t: TFunc): string {
