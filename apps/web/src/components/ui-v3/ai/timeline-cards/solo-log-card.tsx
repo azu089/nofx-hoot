@@ -1381,11 +1381,21 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                           </>
                         );
                       })()}
+                      {/* 置信度 */}
+                      {op.confidence != null && (
+                        <span className="px-1 py-0.5 rounded text-[9px] font-mono" style={{ color: '#9090A0', backgroundColor: '#9090A010' }}>
+                          {op.confidence}%
+                        </span>
+                      )}
                       {/* 执行状态标记 */}
                       {isFailed && <span className="text-[#EF4444] font-medium">✗</span>}
                       {isSkipped && <span className="text-[#F59E0B] font-medium">⊘</span>}
                       {isSuccess && <span className="text-[#10B981] font-medium">✓</span>}
                     </div>
+                    {/* 决策理由（每个 action 独立） */}
+                    {op.reasoning && (
+                      <div className="text-[9px] text-[#606070] mt-0.5 ml-0 leading-relaxed line-clamp-3">{op.reasoning}</div>
+                    )}
                   </div>
                 );
               })}
