@@ -1451,11 +1451,37 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             )}
           </div>
         ) : log.executed ? (
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs">
-            <Check className="w-3.5 h-3.5 text-[#10B981]" />
-            <span className="text-[#10B981] font-medium">{t('timeline.executed')}</span>
-            {er?.positionId && (
-              <span className="text-[#606070] font-mono">#{er.positionId.slice(-8)}</span>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs">
+              <Check className="w-3.5 h-3.5 text-[#10B981]" />
+              <span className="text-[#10B981] font-medium">{t('timeline.executed')}</span>
+              {er?.positionId && (
+                <span className="text-[#606070] font-mono">#{er.positionId.slice(-8)}</span>
+              )}
+            </div>
+            {/* 网格：每个操作的置信度 + 简短描述 */}
+            {isGridLog && gridDecisions.length > 0 && (
+              <div className="space-y-1 px-2">
+                {gridDecisions.map((op: any, idx: number) => {
+                  const opCfg = GRID_ACTION_I18N[op.action];
+                  const label = opCfg ? t(opCfg.key) : op.action;
+                  const color = opCfg?.color || '#9090A0';
+                  const shortReason = op.reasoning ? op.reasoning.slice(0, 60) + (op.reasoning.length > 60 ? '...' : '') : '';
+                  return (
+                    <div key={idx} className="flex items-start gap-1.5 text-[10px]">
+                      <span className="px-1.5 py-0.5 rounded font-medium flex-shrink-0" style={{ color, backgroundColor: `${color}15` }}>
+                        {label}
+                      </span>
+                      {op.confidence != null && (
+                        <span className="text-[#9090A0] flex-shrink-0">{op.confidence}%</span>
+                      )}
+                      {shortReason && (
+                        <span className="text-[#606070] line-clamp-1">{shortReason}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         ) : er?.error ? (
