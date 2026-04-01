@@ -1451,23 +1451,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             )}
           </div>
         ) : log.executed ? (
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs flex-wrap">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs">
             <Check className="w-3.5 h-3.5 text-[#10B981]" />
             <span className="text-[#10B981] font-medium">{t('timeline.executed')}</span>
             {er?.positionId && (
               <span className="text-[#606070] font-mono">#{er.positionId.slice(-8)}</span>
             )}
-            {/* 网格：操作置信度标签 */}
-            {isGridLog && gridDecisions.filter((op: any) => op.confidence != null).map((op: any, idx: number) => {
-              const opCfg = GRID_ACTION_I18N[op.action];
-              const label = opCfg ? t(opCfg.key) : op.action;
-              const color = opCfg?.color || '#9090A0';
-              return (
-                <span key={idx} className="px-1.5 py-0.5 rounded text-[10px]" style={{ color, backgroundColor: `${color}15` }}>
-                  {label} {op.confidence}%
-                </span>
-              );
-            })}
           </div>
         ) : er?.error ? (
           <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#F43F5E]/5 text-xs">
