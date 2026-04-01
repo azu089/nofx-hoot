@@ -597,9 +597,6 @@ function gridSystemPromptZh(
 ## 可用操作
 - **place_buy_limit**: 在 empty 层挂买单（价格应低于当前市价，等待价格下跌成交）
 - **place_sell_limit**: 在 empty 层挂卖单（价格应高于当前市价，等待价格上涨成交）
-- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）
-- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）
-  ⚠️ 网格正常运行中持仓浮亏是正常状态，应优先等对手方向挂单成交自然平仓；仅在暂停管理持仓或极端风险时主动使用
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
@@ -609,7 +606,6 @@ function gridSystemPromptZh(
 
 技术约束（交易所规则，不可违反）：
 - place_buy/sell_limit 只能在 empty 层操作
-- close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ## 暂停模式（isPaused=true）
 网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
@@ -671,9 +667,6 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 ## Available Actions
 - **place_buy_limit**: Place buy order on empty level (price should be below current market price, waiting for dip)
 - **place_sell_limit**: Place sell order on empty level (price should be above current market price, waiting for rise)
-- **close_long** (fields: level, quantity): Close long position (filled level with side=buy)
-- **close_short** (fields: level, quantity): Close short position (filled level with side=sell)
-  ⚠️ In normal grid operation, unrealized losses on positions are expected — positions close naturally when counter-direction orders fill. Only use close actively during pause mode or extreme risk
 - **cancel_order**: Cancel a specific order (field: orderId)
 - **cancel_all_orders**: Cancel all pending orders
 - **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
@@ -683,7 +676,6 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 
 ## Technical Constraints (exchange rules, must not violate)
 - place_buy/sell_limit can ONLY be used on empty levels
-- close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ## Pause Mode (isPaused=true)
 All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
