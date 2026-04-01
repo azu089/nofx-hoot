@@ -591,8 +591,8 @@ function gridSystemPromptZh(
 
 ### 市场状态判断
 - **震荡市场** (适合网格): 布林带宽度 < 3%, EMA20/50 距离 < 1%, 价格在布林带中轨附近
-- **趋势市场** (暂停网格): 布林带宽度 > 4%, EMA20/50 距离 > 2%, 价格持续突破布林带
-- **高波动市场** (谨慎): ATR异常放大, 价格剧烈波动
+- **宽幅/高波动** (谨慎操作，减小仓位): 布林带宽度 > 4%, ATR偏大
+- **强趋势市场** (考虑暂停): EMA20/50 距离 > 2%, 价格持续单方向突破
 
 ### 可执行的操作
 - place_buy_limit: 在指定价格下买入限价单
@@ -654,8 +654,8 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 
 ### Market Regime Assessment
 - **Ranging Market** (ideal for grid): Bollinger width < 3%, EMA20/50 distance < 1%, price near middle band
-- **Trending Market** (pause grid): Bollinger width > 4%, EMA20/50 distance > 2%, price breaking bands
-- **High Volatility** (caution): ATR spike, erratic price movement
+- **Wide/High Volatility** (trade cautiously, reduce position size): Bollinger width > 4%, ATR elevated
+- **Strong Trend** (consider pausing): EMA20/50 distance > 2%, price breaking in one direction persistently
 
 ### Available Actions
 - place_buy_limit: Place buy limit order at specified price
