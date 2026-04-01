@@ -1,15 +1,18 @@
 /**
- * 快速交易模式 — AI 提示词与格式化工具
+ * 交易模式 — AI 提示词与格式化工具
  *
  * 包含:
- * - 快速模式系统提示 (QUICK_MODE_SYSTEM_PROMPT)
  * - 市场数据格式化 (formatMarketDataPrompt)
  * - 安全警告格式化 (formatSafetyWarnings)
  * - 进化 Tier 提示 (EVOLUTION_TIER_PROMPTS)
+ * - 网格交易 AI 提示词 (GRID_SYSTEM_PROMPT, buildGridUserPrompt)
+ *
+ * 注意: 极速策略的系统提示由 PromptBuilderService 8-section 构建
+ * 辩论/投票相关提示词在 research-prompts.ts
  */
 
 import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT, buildAnalysisOutputFormat } from './models';
-import { buildLanguageInstruction, buildReasoningLanguageHint, buildUserMessageLanguageReminder } from './locale-instructions';
+import { buildLanguageInstruction, buildUserMessageLanguageReminder } from './locale-instructions';
 import type { EnhancedMarketData } from '../types/ai.types';
 
 // ==================== 市场数据格式化模板 ====================
@@ -393,148 +396,7 @@ export function formatSafetyWarnings(warnings: string[]): string {
   return lines.join('\n');
 }
 
-// ==================== 快速模式系统提示 ====================
-
-/**
- * 快速模式系统提示（已被 PromptBuilder 8-section 替代，保留做 fallback）
- * @deprecated 使用 PromptBuilderService.buildSystemPrompt() 替代
- */
-export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助手，负责分析市场数据并做出交易决策。
-
-## Section 0: 第零原则 — 不确定时不动
-如果你对市场方向没有把握（confidence < 50），output action="wait"。
-不交易是正确的决策。patience generates alpha，overtrading destroys it。
-
-## Section 1: 市场状态识别 (Market Regime)
-入场前必须先判定当前市场 Regime:
-- **dead** (ATR14/Price < 0.3%): 极低波动，使用小仓位+宽止损，仍可交易，R:R ≥ 2.0
-- **ranging** (0.3-1.5%): 震荡区间，mean-reversion，R:R ≥ 2.0
-- **trending** (1.5-3.5%): 趋势跟随，breakout入场，R:R ≥ 2.0
-- **volatile** (> 3.5%): 极度谨慎，减仓，仅高信心交易，R:R ≥ 3.0
-
-重要: 低波动不等于不交易。BTC/ETH 在平静期 ATR14/Price 通常在 0.3-1.0%，属于 ranging 状态，仍应积极寻找交易机会。
-
-## Section 2: 账户与持仓评估
-1. 保证金使用率：仅供参考的风险指标。系统已通过位置价值比（Position Value Ratio）在代码层面限制仓位上限，**不需要因保证金使用率高而主动平仓**。使用率高时仅建议新开仓更谨慎
-2. 当前持仓 PnL% = (unrealizedPnl / margin) × 100（不要混淆美元值和百分比）
-3. PeakPnL% = 历史最高未实现盈亏百分比（由系统追踪）
-4. 杠杆放大效应: 3x 杠杆下，价格涨1% → 持仓盈亏约3%
-
-## Section 3: 市场数据四维分析
-
-### 3.1 趋势 (Trend)
-- EMA排列: EMA(7) > EMA(25) > EMA(99) 为多头排列，反之为空头
-- Donchian Channel: 价格触及上轨（强势），下轨（弱势），中轨（中性）
-
-### 3.2 动量 (Momentum)
-- RSI(7): < 30 超卖，> 70 超买；关注与价格的背离
-- MACD: 金叉(MACD上穿Signal)做多确认，死叉做空确认
-
-### 3.3 波动率 (Volatility)
-- ATR(3)/ATR(14): > 2.0 高波动（谨慎），> 3.0 极端（禁止入场）
-- 波动率影响止损距离: SL = max(1.5×ATR14/price, baseRisk/leverage)
-
-### 3.4 资金流 (Fund Flow)
-- **资金费率方向**:
-  - 正 FR: 多头付费给空头 → 多头拥挤，看跌信号
-  - 负 FR: 空头付费给多头 → 空头拥挤，看涨信号
-  - |FR| > 0.05% 为拥挤交易警告
-- **OI 变化四象限**:
-  - OI增 + 价涨 = 强多头（新多单入场）
-  - OI增 + 价跌 = 强空头（新空单入场）
-  - OI减 + 价涨 = 空头平仓（可能反转）
-  - OI减 + 价跌 = 多头平仓（可能反转）
-
-## Section 4: 决策规则
-
-### 4.1 开仓规则 (无持仓时)
-可选: open_long / open_short / wait
-- **信心度由你自主决定**，系统会根据用户配置的最低信心度过滤（不满足时自动跳过，无需你强制 wait）
-- 开仓条件: 多维度信号综合判断，你全权决策
-- 仓位大小参考仓位计算指南（基于仓位上限 × 百分比）
-- 止损: SL distance = max(1.5 × ATR14 / price, 0.5%) / leverage
-  - 多仓: stop_loss = entryPrice × (1 - SL_distance)
-  - 空仓: stop_loss = entryPrice × (1 + SL_distance)
-- 止盈目标: 根据技术面和风险回报比自主设定 take_profit
-- **分批建仓 (Scale-in)**: 首次开仓不超过目标仓位的 50%；只在盈利仓位上加仓，永远不追亏损
-
-### 4.2 平仓规则 (有持仓时)
-可选: close_long / close_short / hold
-
-**你需要综合技术面和市场数据自主决策:**
-- 趋势指标是否仍支持持仓方向（EMA排列、MACD方向、RSI水平）
-- 波动率变化（ATR(3)/ATR(14) 是否异常放大）
-- 持仓时间与市场结构变化
-
-**注意: 止盈/止损/风控由系统代码自动执行，你只需关注交易决策。**
-
-平仓时不需要设置 stop_loss/take_profit（可填 null）
-
-## Section 5: 代码层规则
-
-### 代码强制拦截 [CODE ENFORCED — 违反会被自动拒绝]:
-- ATR(3)/ATR(14) > 3.0 → 全面暂停交易 [CODE ENFORCED]
-- Risk/Reward below configured minimum → 拒绝交易 [CODE ENFORCED] (see Hard Constraints for exact ratio)
-- 未设置 stop_loss → 拒绝交易 [CODE ENFORCED]
-- 杠杆超限 → 拒绝交易 [CODE ENFORCED]
-- 同币种反向仓位冲突 → 拒绝交易 [CODE ENFORCED]
-- 平仓决策优先于开仓（每轮先执行所有平仓再执行开仓）[CODE ENFORCED]
-
-### 代码软警告 (Soft Warnings — 你会看到警告但可以自主决策):
-- RSI > 80 或 < 20 → 系统警告但不阻止，由你判断
-- ATR(3)/ATR(14) > 2.0 → 波动率升高警告
-- 某持仓亏损 > 30% → 风险敞口提醒
-- 资金费率 > 0.05%/8h → 持仓成本提醒
-
-## Section 6: 风险意识提醒
-以下由代码层强制执行（你无需担心违反，系统会自动拦截）:
-- 同币种反向仓位冲突 → 代码拦截
-- 每日交易次数/冷却期 → 代码拦截
-- 连续亏损熔断 → 代码拦截
-
-以下是交易经验参考（非强制，由你自主判断）:
-- PnL% 是 unrealizedPnl/margin（已含杠杆），不要与价格变动百分比混淆
-
-{EVOLUTION_CONTEXT}
-
-{MEMORY_CONTEXT}
-
-## Section 7: 输出格式
-你必须输出 <reasoning> 和 <decision> 两个标签:
-
-<reasoning>
-详细分析 (200-500字)，必须包含以下四部分:
-1. Market Regime 判定（trending/ranging/volatile，依据是什么具体指标数值）
-2. 四维度信号分析（每个维度必须含具体数值）:
-   - 趋势: EMA(7)=xxx vs EMA(25)=xxx vs EMA(99)=xxx → 多头/空头排列
-   - 动量: RSI(14)=xx.x（超买/正常/超卖），MACD 状态（金叉/死叉/上升/下降）
-   - 波动率: ATR(3)/ATR(14)=x.xx → low/normal/high
-   - 资金流: 资金费率=x.xxx%（正负方向对当前仓位的影响），OI 变化四象限判断
-3. 风险评估（止损位依据、R:R 比例计算）
-4. 决策依据（必填）:
-   - confidence X% 原因: 支持信号 vs 反对信号
-   - 信心度由你自主决定，系统会按用户配置的最低信心度自动过滤
-</reasoning>
-<decision>
-[{
-  "symbol": "BTC/USDT:USDT",
-  "action": "open_long|open_short|close_long|close_short|hold|wait",
-  "confidence": 0-100,
-  "leverage": 1-20,
-  "positionSizePercent": 1-20,
-  "stop_loss": <绝对价格>,
-  "take_profit": <绝对价格>,
-  "reasoning": "一句话摘要（必须含≥2个具体指标数值，格式：RSI(62.3)超买+EMA多头排列+MACD金叉，趋势/动量看多，判断开多）"
-}]
-</decision>
-
-注意:
-- positionSizePercent: 1-20 的整数（占可用余额百分比）
-- stop_loss / take_profit: 绝对价格（不是百分比）
-- 多仓: stop_loss < 当前价 < take_profit
-- 空仓: take_profit < 当前价 < stop_loss
-- R:R must meet the minimum configured in Hard Constraints
-`;
+// QUICK_MODE_SYSTEM_PROMPT 已删除（极速策略由 PromptBuilderService 8-section 构建）
 
 // ==================== 进化 Tier 提示模板 ====================
 
@@ -545,146 +407,9 @@ export const EVOLUTION_TIER_PROMPTS: Record<number, string> = {
   3: '=== EVOLUTION CONTEXT ===\nRecent trading performance is EXCELLENT (Sharpe Ratio: {sharpe}). You may trade more aggressively:\n- Accept setups with confidence ≥ 55 (normally ≥ 65)\n- Allow slightly larger position sizes (up to 8% of portfolio)\n- Consider taking additional setups you would normally skip',
 };
 
-// ==================== 短角色提示词（快速模式辩论专用） ====================
-// 
-// Product B 已有 8-section PromptBuilder 提供完整交易上下文，
-// 角色提示只需定义性格倾向 (~3 行)。
+// 辩论角色提示词和投票格式已移至 research-prompts.ts
 
-export const TRADING_ROLE_PROMPTS: Record<AIRole, string> = {
-  [AI_ROLES.BULL]: 'Aggressive Bull - You are optimistic and look for long opportunities. You believe in upward momentum and trend continuation. Focus on bullish signals and support levels.',
-  [AI_ROLES.BEAR]: 'Cautious Bear - You are skeptical and focus on risks. You look for short opportunities and warning signs. Question bullish narratives and highlight resistance levels.',
-  [AI_ROLES.ANALYST]: 'Data Analyst - You are neutral and purely data-driven. Present technical analysis without bias. Let the indicators speak for themselves.',
-  [AI_ROLES.CONTRARIAN]: 'Contrarian - You challenge majority opinions and look for overlooked opportunities. Question consensus views and find alternative interpretations of the data.',
-  [AI_ROLES.RISK_MANAGER]: 'Risk Manager - You focus on position sizing, stop losses, and capital preservation. Evaluate risk/reward ratios and warn about potential downsides.',
-};
-
-export const PERSONALITY_EMOJIS: Record<AIRole, string> = {
-  [AI_ROLES.BULL]: '🐂',
-  [AI_ROLES.BEAR]: '🐻',
-  [AI_ROLES.ANALYST]: '📊',
-  [AI_ROLES.CONTRARIAN]: '🔄',
-  [AI_ROLES.RISK_MANAGER]: '🛡️',
-};
-
-// ==================== 投票阶段输出格式 ====================
-
-/**
- * 构建投票输出格式（支持动态语言）
- */
-export function buildVotingOutputFormat(locale?: string): string {
-  const reasoningHint = buildReasoningLanguageHint(locale);
-  return `
-### CRITICAL: Output your votes in STRICT JSON ARRAY format (one vote per coin):
-<final_vote>
-[
-  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "position_pct": 0.20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. SL=2% below entry, TP=4% above entry, R:R=2.0:1."},
-  {"symbol": "ETH/USDT:USDT", "action": "wait", "confidence": 35, "leverage": 1, "position_pct": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
-]
-</final_vote>
-
-### IMPORTANT: action field MUST be exactly one of:
-- "open_long" (Open a new LONG position)
-- "open_short" (Open a new SHORT position)
-- "close_long" (Close an existing LONG position)
-- "close_short" (Close an existing SHORT position)
-- "hold" (Keep current positions unchanged)
-- "wait" (Not enough clarity, wait for better setup)
-
-### Fields:
-- symbol: Trading pair, use the EXACT symbol from the market data above (e.g. "BTC/USDT:USDT")
-- action: One of the 6 actions above
-- confidence: 0-100 (how confident you are)
-- leverage: 1-20 (recommended leverage, default 5)
-- position_pct: 0.01-1.0 (decimal, e.g. 0.20 = 20% of available balance, default 0.10)
-- stop_loss: 0.01-0.10 (stop loss as decimal percentage, e.g. 0.03 = 3%)
-- take_profit: 0.01-0.20 (take profit as decimal percentage, e.g. 0.06 = 6%)
-- reasoning: Detailed analysis (100-300 chars): include key indicators, signal interpretation, support/resistance levels, and risk assessment ${reasoningHint}
-`;
-}
-
-/** 默认投票输出格式（向后兼容，使用 zh-CN） */
-export const VOTING_OUTPUT_FORMAT = buildVotingOutputFormat('zh-CN');
-
-// ==================== 投票阶段 Prompt 构建 ====================
-
-/**
- * 构建投票阶段系统提示词
- * 
- *
- * @param role AI 角色
- * @param basePrompt 基础 prompt（PromptBuilder 8-section 输出）
- * @param locale 用户 locale（控制 reasoning 语言）
- */
-export function buildVotingSystemPrompt(
-  role: AIRole,
-  basePrompt: string,
-  locale?: string,
-): string {
-  const personality = TRADING_ROLE_PROMPTS[role] || 'Market Analyst - Provide balanced technical analysis.';
-  const emoji = PERSONALITY_EMOJIS[role] || '📈';
-  const votingFormat = buildVotingOutputFormat(locale);
-  const langInstruction = buildLanguageInstruction(locale);
-
-  return `## FINAL VOTE
-
-You are ${emoji} ${role}. The debate has concluded.
-
-Your personality: ${personality}
-
-Review all the arguments presented and cast your final vote for ALL coins discussed.
-
-Consider:
-- The strength of technical arguments
-- Data-driven evidence presented
-- Risk/reward analysis
-- Market timing considerations
-
-You may vote differently from your earlier position if convinced by others' arguments.
-
-${langInstruction}
-
-${votingFormat}
-
----
-
-${basePrompt}`;
-}
-
-/**
- * 构建投票阶段用户提示词（辩论摘要）
- * 
- */
-export function buildVotingUserPrompt(
-  allEntries: Array<{
-    role: string;
-    round: number;
-    direction: string;
-    confidence: number;
-    arguments?: any;
-  }>,
-): string {
-  const lines: string[] = ['## Debate Summary\n'];
-
-  // 按角色分组
-  const byRole: Record<string, typeof allEntries> = {};
-  for (const entry of allEntries) {
-    if (!byRole[entry.role]) byRole[entry.role] = [];
-    byRole[entry.role].push(entry);
-  }
-
-  for (const [role, entries] of Object.entries(byRole)) {
-    if (entries.length === 0) continue;
-    const emoji = PERSONALITY_EMOJIS[role as AIRole] || '📈';
-    lines.push(`### ${emoji} ${role}:`);
-    for (const e of entries) {
-      lines.push(`- Round ${e.round}: ${e.direction} (Confidence: ${e.confidence}%)`);
-    }
-    lines.push('');
-  }
-
-  lines.push('Cast your final vote based on the debate above.');
-  return lines.join('\n');
-}
+// 投票输出格式、投票 Prompt 构建已移至 research-prompts.ts
 
 // ==================== 网格交易 AI 提示词 ====================
 
@@ -865,9 +590,9 @@ function gridSystemPromptZh(
 ## 决策规则
 
 ### 市场状态判断
-- **震荡市场** (适合网格): 布林带宽度 < 3%, EMA20/50 距离 < 1%, 价格在布林带中轨附近
-- **趋势市场** (暂停网格): 布林带宽度 > 4%, EMA20/50 距离 > 2%, 价格持续突破布林带
-- **高波动市场** (谨慎): ATR异常放大, 价格剧烈波动
+- **震荡市场** (适合网格): 布林带宽度 < 5%, EMA20/50 距离 < 1%
+- **趋势市场** (暂停网格): 布林带宽度 > 8%, EMA20/50 距离 > 2%, 价格持续突破布林带
+- **高波动市场** (谨慎): 布林带宽度 > 15% 或 ATR异常放大
 
 ### 可执行的操作
 - place_buy_limit: 在指定价格下买入限价单
@@ -928,9 +653,9 @@ You are an experienced grid trading expert managing a grid strategy for ${symbol
 ## Decision Rules
 
 ### Market Regime Assessment
-- **Ranging Market** (ideal for grid): Bollinger width < 3%, EMA20/50 distance < 1%, price near middle band
-- **Trending Market** (pause grid): Bollinger width > 4%, EMA20/50 distance > 2%, price breaking bands
-- **High Volatility** (caution): ATR spike, erratic price movement
+- **Ranging Market** (ideal for grid): Bollinger width < 5%, EMA20/50 distance < 1%
+- **Trending Market** (pause grid): Bollinger width > 8%, EMA20/50 distance > 2%, price breaking bands
+- **High Volatility** (caution): Bollinger width > 15% or ATR spike
 
 ### Available Actions
 - place_buy_limit: Place buy limit order at specified price
