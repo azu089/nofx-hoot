@@ -608,6 +608,7 @@ function gridSystemPromptZh(
 
 技术约束（交易所规则，不可违反）：
 - place_buy/sell_limit 只能在 empty 层操作
+- 网格方向：价格以下的 empty 层挂买单，价格以上的 empty 层挂卖单
 
 ## 暂停模式（isPaused=true）
 网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
@@ -680,6 +681,7 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 
 ## Technical Constraints (exchange rules, must not violate)
 - place_buy/sell_limit can ONLY be used on empty levels
+- Grid direction: empty levels below current price → buy orders, empty levels above current price → sell orders
 
 ## Pause Mode (isPaused=true)
 All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
