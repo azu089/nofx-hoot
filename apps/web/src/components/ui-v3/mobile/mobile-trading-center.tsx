@@ -355,7 +355,7 @@ export function MobileTradingCenter({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
       {/* Header - 标题 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F] pt-[env(safe-area-inset-top)] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         <div className="flex items-center justify-center px-4 h-14">
           <h1 className="text-base font-semibold text-white">{t('title')}</h1>
         </div>
