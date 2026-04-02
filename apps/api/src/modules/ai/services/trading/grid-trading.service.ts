@@ -2719,12 +2719,6 @@ export class GridTradingService {
           this.logger.warn(`[网格] adjust_grid 被拒绝：风控暂停中（${state.pauseReason ?? ''}），需 PM 手动恢复`);
           return { executed: false, skipReason: '风控暂停中，禁止自动重建' };
         }
-        // 价格在网格范围内时拒绝无意义重建（防止 AI 反复 adjust_grid 追跌）
-        const cp = currentPrice ?? state.lastPrice;
-        if (cp >= state.lowerPrice && cp <= state.upperPrice) {
-          this.logger.warn(`[网格] adjust_grid 被拒绝：价格 ${cp.toFixed(2)} 在网格范围 ${state.lowerPrice.toFixed(2)}~${state.upperPrice.toFixed(2)} 内，无需重建`);
-          return { executed: false, skipReason: '价格在网格范围内，无需重建' };
-        }
         const pendingBeforeCancel = state.gridLines.filter(l => l.state === 'pending').length;
         await adapter.cancelAllOrders(state.symbol);
         this.logger.log(`[网格] adjust_grid 撤单: ${pendingBeforeCancel} 个pending挂单已全部撤销`);
