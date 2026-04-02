@@ -1562,7 +1562,7 @@ export class GridTradingService {
             continue;
           }
           try {
-            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? true, currentPrice, gridConfig?.locale);
+            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice, gridConfig?.locale);
             // 对齐 nofx：adjust_grid 完成后继续执行剩余决策（同一轮内可挂单）
             if (result.executed && d.action.includes('place_')) trades++;
             if (!result.executed && (d.action.startsWith('place_') || d.action === 'cancel_order')) {
@@ -2592,7 +2592,7 @@ export class GridTradingService {
     adapter: ExchangeAdapter,
     userId: string,
     apiKeyId: string,
-    useMakerOnly = true,
+    useMakerOnly = false,  // 默认允许 Taker 成交，用户可在配置中开启 PostOnly
     currentPrice?: number,
     locale?: string,
   ): Promise<{ executed: boolean; skipReason?: string }> {
@@ -2909,7 +2909,7 @@ export class GridTradingService {
     decision: GridDecision,
     side: 'buy' | 'sell',
     adapter: GridExchangeAdapter,
-    useMakerOnly = true,
+    useMakerOnly = false,
   ): Promise<{ executed: boolean; skipReason?: string }> {
     // Prompt 层表用 1-based（和前端一致），转为 0-based 数组下标
     const rawLevel = decision.level_index ?? decision.level ?? 0;
