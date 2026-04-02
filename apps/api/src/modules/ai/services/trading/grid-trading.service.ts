@@ -2923,8 +2923,20 @@ export class GridTradingService {
       return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
     }
 
-    // 对齐 nofx：不纠正 AI 的 buy/sell 方向，AI 全权决策
-    // PostOnly 机制自动拦截会立即成交的单（买>市价 / 卖<市价）
+    // 方向纠正：价格以下的层应挂买单，价格以上的层应挂卖单
+    // 距市价 < 1 个格间距的层不纠正（边界层方向不确定，让 AI 自己判断）
+    const currentPrice = state.lastPrice ?? 0;
+    const deadZone = state.gridSpacing ?? 0;
+    if (level && currentPrice > 0 && deadZone > 0) {
+      const priceDiff = level.price - currentPrice;
+      if (Math.abs(priceDiff) >= deadZone) {
+        const correctSide = priceDiff < 0 ? 'buy' : 'sell';
+        if (side !== correctSide) {
+          this.logger.warn(`[网格] 方向纠正: L${levelIndex + 1} @${level.price.toFixed(2)} ${priceDiff < 0 ? '<' : '>'} 市价${currentPrice.toFixed(2)}，${side}→${correctSide}`);
+          side = correctSide as 'buy' | 'sell';
+        }
+      }
+    }
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
