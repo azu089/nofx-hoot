@@ -126,7 +126,9 @@ export default function DashboardLayout({
         <div className="hidden md:block md:ml-60 flex-1">
           {children}
         </div>
-        {/* 移动端：顶部 safe-area + 底部留出导航栏空间（56px nav + safe-area-inset-bottom） */}
+        {/* 移动端：状态栏背景色块（防止滚动内容穿透状态栏） */}
+        <div className="md:hidden fixed top-0 left-0 right-0 z-[60] bg-[#0A0A0F] h-[env(safe-area-inset-top,0px)] [transform:translateZ(0)]" />
+        {/* 移动端：底部留出导航栏空间（56px nav + safe-area-inset-bottom） */}
         <div className="md:hidden w-full h-[calc(100vh-56px)] overflow-y-auto pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
           {children}
         </div>
