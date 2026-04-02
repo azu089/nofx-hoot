@@ -3651,10 +3651,18 @@ export class GridTradingService {
           unmappedIds.push(oid);
         }
       }
-      // 存储未映射订单 ID，供 AI prompt 展示并撤单
+      // 自动撤销多余挂单（交易所有单但网格层找不到对应 → 残留单，占保证金且可能意外成交）
       state.unmappedOrderIds = unmappedIds;
       if (unmappedIds.length > 0) {
-        this.logger.warn(`[网格] syncMemory: ${unmappedIds.length} 个多余挂单: ${unmappedIds.join(', ')}`);
+        this.logger.warn(`[网格] syncMemory: ${unmappedIds.length} 个多余挂单，自动撤销: ${unmappedIds.join(', ')}`);
+        for (const oid of unmappedIds) {
+          try {
+            await adapter.cancelOrder(state.symbol, oid);
+            this.logger.log(`[网格] 多余挂单已撤销: ${oid}`);
+          } catch (e: any) {
+            this.logger.warn(`[网格] 多余挂单撤销失败(可能已成交): ${oid} - ${e.message}`);
+          }
+        }
       }
 
       // 日志汇总
