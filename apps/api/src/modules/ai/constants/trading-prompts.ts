@@ -613,7 +613,7 @@ function gridSystemPromptZh(
 网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
 - close_long / close_short：平仓
 - cancel_order / cancel_all_orders：撤单
-- resume_grid：解除暂停，下轮周期干净重建（推荐优先使用）
+- resume_grid：解除暂停，下轮周期干净重建
 - adjust_grid：以当前价重建网格并立即解除暂停（**risk_control 暂停除外，代码层拦截，调用无效**）
 - hold：继续观察
 
@@ -631,8 +631,8 @@ function gridSystemPromptZh(
 {
   "analysis": "分析市场状态、持仓风险、决策理由",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.28,"confidence":85,"reasoning":"empty层，价格低于市价，挂买单等待成交"},
-    {"action":"hold","confidence":90,"reasoning":"市场震荡，网格结构完整，等待价格波动"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.01,"confidence":85,"reasoning":"第5层价格接近，下买单"},
+    {"action":"hold","confidence":90,"reasoning":"市场震荡，保持当前网格"}
   ]
 }
 \`\`\`
@@ -685,7 +685,7 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
 - close_long / close_short: close positions
 - cancel_order / cancel_all_orders: cancel orders
-- resume_grid: lift pause, next cycle rebuilds cleanly from exchange (recommended)
+- resume_grid: lift pause, next cycle rebuilds cleanly from exchange
 - adjust_grid: rebuild grid at current price and lift pause (**except risk_control pause — blocked by code, call will be rejected**)
 - hold: observe
 
@@ -703,8 +703,8 @@ pauseSource and action restrictions:
 {
   "analysis": "Brief market analysis and decision reasoning",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.28,"confidence":85,"reasoning":"empty level, price below market, place buy order"},
-    {"action":"hold","confidence":90,"reasoning":"market ranging, grid structure intact, wait for price movement"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.01,"confidence":85,"reasoning":"Level 5 price approaching, place buy order"},
+    {"action":"hold","confidence":90,"reasoning":"Market ranging, maintain current grid"}
   ]
 }
 
