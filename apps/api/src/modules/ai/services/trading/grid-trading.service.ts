@@ -1562,7 +1562,7 @@ export class GridTradingService {
             continue;
           }
           try {
-            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice, gridConfig?.locale);
+            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? true, currentPrice, gridConfig?.locale);
             // 对齐 nofx：adjust_grid 完成后继续执行剩余决策（同一轮内可挂单）
             if (result.executed && d.action.includes('place_')) trades++;
             if (!result.executed && (d.action.startsWith('place_') || d.action === 'cancel_order')) {
@@ -2592,7 +2592,7 @@ export class GridTradingService {
     adapter: ExchangeAdapter,
     userId: string,
     apiKeyId: string,
-    useMakerOnly = false,  // 默认允许 Taker 成交，用户可在配置中开启 PostOnly
+    useMakerOnly = true,
     currentPrice?: number,
     locale?: string,
   ): Promise<{ executed: boolean; skipReason?: string }> {
@@ -2909,7 +2909,7 @@ export class GridTradingService {
     decision: GridDecision,
     side: 'buy' | 'sell',
     adapter: GridExchangeAdapter,
-    useMakerOnly = false,
+    useMakerOnly = true,
   ): Promise<{ executed: boolean; skipReason?: string }> {
     // Prompt 层表用 1-based（和前端一致），转为 0-based 数组下标
     const rawLevel = decision.level_index ?? decision.level ?? 0;
@@ -3116,16 +3116,33 @@ export class GridTradingService {
     // 结论：网格限价单始终不发 positionSide，让 OKX 按账户默认单向模式处理
     const positionSide: 'long' | 'short' | undefined = undefined;
 
-    const result = await adapter.placeLimitOrder({
-      symbol: state.symbol,
-      side,
-      price,
-      quantity: finalQty,
-      leverage,
-      postOnly: useMakerOnly,
-      clientId,
-      positionSide,
-    });
+    // Maker 优先策略：先尝试 PostOnly（低手续费），被拒后降级 Taker 重试
+    let result: any;
+    if (useMakerOnly) {
+      try {
+        result = await adapter.placeLimitOrder({
+          symbol: state.symbol, side, price, quantity: finalQty,
+          leverage, postOnly: true, clientId, positionSide,
+        });
+      } catch (e: any) {
+        const errCategory = classifyExchangeError(e);
+        if (errCategory === 'PostOnly拒绝') {
+          // PostOnly 被拒（价格穿越市价），降级 Taker 重试
+          this.logger.log(`[网格] PostOnly 拒绝，降级 Taker 重试: ${side} ${finalQty} @ ${price}`);
+          result = await adapter.placeLimitOrder({
+            symbol: state.symbol, side, price, quantity: finalQty,
+            leverage, postOnly: false, clientId: clientId + 't', positionSide,
+          });
+        } else {
+          throw e; // 非 PostOnly 错误，继续向上抛
+        }
+      }
+    } else {
+      result = await adapter.placeLimitOrder({
+        symbol: state.symbol, side, price, quantity: finalQty,
+        leverage, postOnly: false, clientId, positionSide,
+      });
+    }
 
     // Step 4: 更新本地状态
     if (finalLevel) {
