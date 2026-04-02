@@ -852,30 +852,13 @@ export class GridTradingService {
     // 每轮 syncMemoryFromExchange 从交易所全量重建内存，无需一次性重启恢复
     // 容器重启 = 普通周期，交易所数据自动覆盖内存
 
-    // Step 1.2: 配置重启恢复（修改配置后重新启动策略）
-    // 风控参数全部保留！用户应通过修改配置阈值（如 maxDrawdownPct 调高）来避免重新触发
-    // 区别于 manualResumeFromRiskControl（手动恢复）：后者清零所有风控计数器
-    if (state && state.isPaused && state.pauseSource === 'risk_control') {
-      state.isPaused = false;
-      state.pauseSource = undefined;
-      state.pauseReason = undefined;
-      state.startEquity = state.lastEquity;  // 回撤/均值基准归位
-      state.peakEquity = state.lastEquity;  // 峰值重置为当前权益，防止立即重新触发
-      state.maxDrawdown = 0;
-      state.chargedProfit = 0;
-      // dailyPnl / dailyTotalProfit 不重置（配置重启不改变当日盈亏事实）
-      // totalProfit 不重置（累计盈亏是历史事实）
-      this.logger.log(
-        `[网格] ✅ 配置重启: 风控参数保留 | peakEquity=${state.peakEquity?.toFixed(2)} | ` +
-        `dailyPnl=${state.dailyPnl?.toFixed(2)} | ` +
-        `累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT`,
-      );
-      await this.persistGridState(strategyId, state);
-      this.gridStates.set(strategyId, state);
-      // nofx 对齐：风控重启 = 全空层 + 取消所有挂单，持仓由 AI 自行决策
-      this.resetGridLayers(state);
-      await this.cancelAllGridOrders(state, userId, apiKeyId);
-    }
+    // Step 1.2: risk_control 暂停时保持暂停状态
+    // 旧逻辑每轮自动解除 risk_control → 撤单 → 又触发亏损暂停 → 无限循环（严重 bug）
+    // 正确行为：risk_control 暂停后只能通过以下方式解除：
+    //   1. 用户手动调用 manualResumeFromRiskControl
+    //   2. 日内亏损在 UTC 0 点自动重置后，下轮不再触发
+    //   3. 用户在前端修改配置（由 Step 1.5 detectGridConfigChange 处理）
+    // 此处不再自动解除，让 AI 在受限模式下继续管理持仓
 
     // Step 1.3: 暂停恢复后干净重启（resume_grid / breakout 自动恢复触发）
     // nofx 对齐：全空层 + 取消所有挂单，让 AI 在下轮从干净状态重建
