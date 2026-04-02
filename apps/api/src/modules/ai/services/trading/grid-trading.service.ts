@@ -1024,25 +1024,44 @@ export class GridTradingService {
 
     this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'} | recLev=${state.recommendedLeverage ?? '-'}x`);
 
-    // 每轮 neutral side 修正（empty 层 side 按当前价格重新赋值）
-    // nofx: initializeGridLevels 一次性赋值后 side 不变，但 nofx 层不会从 pending 变回 empty
-    // HOOT 层会从 pending→empty（挂单被撤/成交后），此时 side 可能残留旧值
-    // 因此每轮对 empty 层修正，确保 price<=currentPrice→buy, price>currentPrice→sell
+    // 每轮 neutral side 修正（持仓感知：有持仓用入场价分界，无持仓用市价分界）
+    // 原因：empty 层从 pending→empty 后 side 残留旧值，需要每轮重算
+    // 持仓感知逻辑：
+    //   有多头 → 入场价上方卖（平多获利），入场价下方买（加仓）
+    //   有空头 → 入场价下方买（平空获利），入场价上方卖（加仓）
+    //   无持仓 → 市价上方卖，市价下方买
     {
       if ((state.currentDirection ?? 'neutral') === 'neutral') {
+        // 从 filled 层获取持仓信息
+        const filledLayers = state.gridLines.filter(l => l.state === 'filled');
+        const avgEntry = filledLayers.length > 0 ? filledLayers[0].positionEntry : 0;
+        const posSide = filledLayers.length > 0 ? filledLayers[0].side : null;
+        // 分界价：有持仓用入场价，无持仓用市价
+        const dividePrice = (avgEntry > 0 && posSide) ? avgEntry : currentPrice;
+
         let corrected = 0;
         for (const line of state.gridLines) {
-          if (line.state === 'empty') {
-            const correctSide = line.price <= currentPrice ? 'buy' : 'sell';
-            if (line.side !== correctSide) {
-              line.side = correctSide;
-              corrected++;
+          if (line.state !== 'empty') continue;
+          let correctSide: string;
+          if (avgEntry > 0 && posSide) {
+            // 有持仓：以入场价为分界
+            if (posSide === 'buy') {
+              correctSide = line.price >= avgEntry ? 'sell' : 'buy'; // 入场价上方卖出盈利，下方买入加仓
+            } else {
+              correctSide = line.price <= avgEntry ? 'buy' : 'sell'; // 入场价下方买入平空，上方卖出加仓
             }
+          } else {
+            // 无持仓：以市价为分界
+            correctSide = line.price <= currentPrice ? 'buy' : 'sell';
+          }
+          if (line.side !== correctSide) {
+            line.side = correctSide as 'buy' | 'sell';
+            corrected++;
           }
         }
         if (corrected > 0) {
           this.logger.log(
-            `[网格] 一次性 neutral side 修正: ${corrected} 层（基于实时价 ${currentPrice}）`,
+            `[网格] side 修正: ${corrected} 层（${posSide ? `${posSide}持仓@${avgEntry.toFixed(2)}分界` : `市价${currentPrice.toFixed(2)}分界`}）`,
           );
         }
       }
@@ -2923,17 +2942,34 @@ export class GridTradingService {
       return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
     }
 
-    // 方向纠正：价格以下的层应挂买单，价格以上的层应挂卖单
-    // 距市价 < 1 个格间距的层不纠正（边界层方向不确定，让 AI 自己判断）
-    const currentPrice = state.lastPrice ?? 0;
-    const deadZone = state.gridSpacing ?? 0;
-    if (level && currentPrice > 0 && deadZone > 0) {
-      const priceDiff = level.price - currentPrice;
-      if (Math.abs(priceDiff) >= deadZone) {
-        const correctSide = priceDiff < 0 ? 'buy' : 'sell';
-        if (side !== correctSide) {
-          this.logger.warn(`[网格] 方向纠正: L${levelIndex + 1} @${level.price.toFixed(2)} ${priceDiff < 0 ? '<' : '>'} 市价${currentPrice.toFixed(2)}，${side}→${correctSide}`);
-          side = correctSide as 'buy' | 'sell';
+    // 方向纠正（持仓感知）：与 neutral side 修正逻辑一致
+    // 有持仓：以入场价为分界（持仓下方买=平仓获利，持仓上方卖=对冲）
+    // 无持仓：以市价为分界
+    // 死区：距分界价 < 1 格间距的层不纠正
+    {
+      const filledLayers = state.gridLines.filter(l => l.state === 'filled');
+      const avgEntry = filledLayers.length > 0 ? filledLayers[0].positionEntry : 0;
+      const posSide = filledLayers.length > 0 ? filledLayers[0].side : null;
+      const dividePrice = (avgEntry > 0 && posSide) ? avgEntry : (state.lastPrice ?? 0);
+      const deadZone = state.gridSpacing ?? 0;
+
+      if (level && dividePrice > 0 && deadZone > 0) {
+        const priceDiff = level.price - dividePrice;
+        if (Math.abs(priceDiff) >= deadZone) {
+          let correctSide: string;
+          if (avgEntry > 0 && posSide) {
+            if (posSide === 'buy') {
+              correctSide = priceDiff >= 0 ? 'sell' : 'buy';
+            } else {
+              correctSide = priceDiff <= 0 ? 'buy' : 'sell';
+            }
+          } else {
+            correctSide = priceDiff < 0 ? 'buy' : 'sell';
+          }
+          if (side !== correctSide) {
+            this.logger.warn(`[网格] 方向纠正: L${levelIndex + 1} @${level.price.toFixed(2)} ${posSide ? `${posSide}持仓@${avgEntry.toFixed(2)}` : `市价${dividePrice.toFixed(2)}`}，${side}→${correctSide}`);
+            side = correctSide as 'buy' | 'sell';
+          }
         }
       }
     }
