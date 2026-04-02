@@ -874,8 +874,8 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   // Section 4: 网格状态
   lines.push('## 网格状态');
   const rangePctNote = (ctx.upperBoundPct && ctx.lowerBoundPct)
-    ? `（用户固定 ±${ctx.upperBoundPct}%，adjust_grid 只重新居中，宽度不变）`
-    : '（ATR自动计算，adjust_grid 按当前波动率重算范围）';
+    ? `（±${ctx.upperBoundPct}%）`
+    : '';
   lines.push(`- 网格范围: $${ctx.lowerPrice.toFixed(2)} - $${ctx.upperPrice.toFixed(2)}${rangePctNote}`);
   lines.push(`- 网格间距: $${ctx.gridSpacing.toFixed(2)}`);
   lines.push(`- 活跃订单数: ${ctx.activeOrderCount}`);
@@ -968,8 +968,8 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   // Section 4: Grid Status
   lines.push('## Grid Status');
   const rangePctNoteEn = (ctx.upperBoundPct && ctx.lowerBoundPct)
-    ? ` (user fixed ±${ctx.upperBoundPct}%, adjust_grid only re-centers, width unchanged)`
-    : ' (ATR auto-calculated, adjust_grid recalculates based on current volatility)';
+    ? ` (±${ctx.upperBoundPct}%)`
+    : '';
   lines.push(`- Grid Range: $${ctx.lowerPrice.toFixed(2)} - $${ctx.upperPrice.toFixed(2)}${rangePctNoteEn}`);
   lines.push(`- Grid Spacing: $${ctx.gridSpacing.toFixed(2)}`);
   lines.push(`- Active Orders: ${ctx.activeOrderCount}`);
