@@ -402,7 +402,7 @@ export function CreateStrategyWizard() {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#0A0A0F] pt-[env(safe-area-inset-top)] border-b border-[#1E1E2E]">
+      <header className="sticky top-0 z-50 bg-[#0A0A0F] border-b border-[#1E1E2E]">
         <div className="flex items-center px-4 py-3 gap-3">
           <button
             type="button"

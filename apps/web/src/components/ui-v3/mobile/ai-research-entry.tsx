@@ -190,7 +190,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
     <div className={`${embedded ? '' : 'min-h-screen'} bg-[#0A0A0F] text-[#F8F8FC]`}>
       {/* 顶部导航栏 - 嵌入模式下隐藏 */}
       {!embedded && (
-        <header className="sticky top-0 z-30 bg-[#0A0A0F] pt-[env(safe-area-inset-top)] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+        <header className="sticky top-0 z-30 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
           <div className="flex items-center justify-between px-4 h-14">
             <button
               onClick={() => router.back()}
