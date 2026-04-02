@@ -899,6 +899,21 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   }
   lines.push('');
 
+  // 多余挂单警告（交易所有单但网格层无对应，需 cancel_order 撤销）
+  const unmappedCount = ctx.unmappedOrderIds?.length ?? 0;
+  if (unmappedCount > 0) {
+    lines.push(`⚠️ ${unmappedCount} 个挂单在当前映射中无对应层，需撤销：`);
+    for (const oid of ctx.unmappedOrderIds!) {
+      const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
+      if (matchOrder) {
+        lines.push(`  - orderId: ${oid} (${matchOrder.side} @${matchOrder.price.toFixed(2)} x${matchOrder.quantity})`);
+      } else {
+        lines.push(`  - orderId: ${oid}`);
+      }
+    }
+    lines.push('');
+  }
+
   // Section 6: 绩效统计
   lines.push('## 绩效统计');
   lines.push(`- 总利润: $${ctx.totalProfit.toFixed(2)}`);
@@ -992,6 +1007,21 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, true));
   }
   lines.push('');
+
+  // Unmapped orders warning
+  const unmappedCountEn = ctx.unmappedOrderIds?.length ?? 0;
+  if (unmappedCountEn > 0) {
+    lines.push(`⚠️ ${unmappedCountEn} orders not mapped to any grid level, should cancel:`);
+    for (const oid of ctx.unmappedOrderIds!) {
+      const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
+      if (matchOrder) {
+        lines.push(`  - orderId: ${oid} (${matchOrder.side} @${matchOrder.price.toFixed(2)} x${matchOrder.quantity})`);
+      } else {
+        lines.push(`  - orderId: ${oid}`);
+      }
+    }
+    lines.push('');
+  }
 
   // Section 6: Performance
   lines.push('## Performance');
