@@ -399,11 +399,7 @@ export function StrategyStudioPage() {
     section: K,
     value: StrategyConfig[K]
   ) => {
-    if (!editingConfig) return
-    setEditingConfig({
-      ...editingConfig,
-      [section]: value,
-    })
+    setEditingConfig(prev => prev ? { ...prev, [section]: value } : prev)
     setHasChanges(true)
   }
 
