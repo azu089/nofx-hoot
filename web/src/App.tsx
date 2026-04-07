@@ -5,10 +5,8 @@ import { api } from './lib/api'
 import { TraderDashboardPage } from './pages/TraderDashboardPage'
 
 import { AITradersPage } from './components/trader/AITradersPage'
-import { LoginPage } from './components/auth/LoginPage'
 import { SetupPage } from './components/modals/SetupPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { ResetPasswordPage } from './components/auth/ResetPasswordPage'
 import { CompetitionPage } from './components/trader/CompetitionPage'
 import { LandingPage } from './pages/LandingPage'
 import { FAQPage } from './pages/FAQPage'
@@ -374,23 +372,20 @@ function App() {
     return <SetupPage />
   }
 
-  // Handle specific routes regardless of authentication
-  if (route === '/login') {
-    return <LoginPage />
+  // 登录/注册/重置密码已弃用，统一重定向到 /traders
+  if (route === '/login' || route === '/register' || route === '/reset-password') {
+    window.history.replaceState({}, '', '/traders')
+    setRoute('/traders')
+    return null
   }
   if (route === '/setup') {
-    // If already initialized, redirect to login
     if (systemConfig?.initialized) {
-      window.location.href = '/login'
+      window.location.href = '/traders'
       return null
     }
     return <SetupPage />
   }
   if (route === '/welcome') {
-    if ((!user || !token) && !hasPersistedAuth) {
-      window.location.href = '/login'
-      return null
-    }
     if (getUserMode() !== 'beginner') {
       window.location.href = '/traders'
       return null
@@ -421,14 +416,7 @@ function App() {
       </div>
     )
   }
-  if (route === '/reset-password') {
-    return <ResetPasswordPage />
-  }
   if (route === '/settings') {
-    if ((!user || !token) && !hasPersistedAuth) {
-      window.location.href = '/login'
-      return null
-    }
     return (
       <div className="min-h-screen" style={{ background: '#0B0E11', color: '#EAECEF' }}>
         <HeaderBar
@@ -480,10 +468,7 @@ function App() {
     return <LandingPage />
   }
 
-  // Redirect unauthenticated users to landing page
-  if (!user || !token) {
-    return <LandingPage />
-  }
+  // 登录已弃用：所有访客直接进入主界面（user 来自 stub 自动登录）
 
   return (
     <div

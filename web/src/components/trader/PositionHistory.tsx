@@ -1,10 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../../lib/api'
 import { useLanguage } from '../../contexts/LanguageContext'
-import { t, type Language } from '../../i18n/translations'
+import { t } from '../../i18n/translations'
 import { MetricTooltip } from '../common/MetricTooltip'
-import { formatPrice, formatQuantity } from '../../utils/format'
-import { NofxSelect } from '../ui/select'
 import type {
   HistoricalPosition,
   TraderStats,
@@ -14,9 +12,10 @@ import type {
 
 interface PositionHistoryProps {
   traderId: string
+  enabled?: boolean
 }
 
-// Format number with proper decimals (for large numbers)
+// Format number with proper decimals
 function formatNumber(value: number, decimals: number = 2): string {
   if (Math.abs(value) >= 1000000) {
     return (value / 1000000).toFixed(2) + 'M'
@@ -25,6 +24,14 @@ function formatNumber(value: number, decimals: number = 2): string {
     return (value / 1000).toFixed(2) + 'K'
   }
   return value.toFixed(decimals)
+}
+
+// Format price with proper decimals
+function formatPrice(price: number): string {
+  if (!price || price === 0) return '-'
+  if (price >= 1000) return price.toFixed(2)
+  if (price >= 1) return price.toFixed(4)
+  return price.toFixed(6)
 }
 
 // Format duration from minutes
@@ -66,7 +73,7 @@ function StatCard({
   icon: string
   subtitle?: string
   metricKey?: string
-  language?: string
+  language?: any
 }) {
   return (
     <div
@@ -153,7 +160,7 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
 }
 
 // Direction Stats Card
-function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language: Language }) {
+function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language: any }) {
   const isLong = (stat.side || '').toLowerCase() === 'long'
   const iconColor = isLong ? '#0ECB81' : '#F6465D'
   const totalPnl = stat.total_pnl || 0
@@ -294,7 +301,7 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
 
       {/* Quantity */}
       <td className="py-3 px-4 text-right font-mono" style={{ color: '#848E9C' }}>
-        {formatQuantity(displayQty)}
+        {displayQty.toFixed(4)}
       </td>
 
       {/* Position Value (Entry Price * Quantity) */}
@@ -334,9 +341,9 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
   )
 }
 
-export function PositionHistory({ traderId }: PositionHistoryProps) {
+export function PositionHistory({ traderId, enabled = true }: PositionHistoryProps) {
   const { language } = useLanguage()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [positions, setPositions] = useState<HistoricalPosition[]>([])
   const [stats, setStats] = useState<TraderStats | null>(null)
@@ -359,11 +366,7 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
         setLoading(true)
         setError(null)
         // Fetch more data than needed to support filtering, but respect pageSize for initial load
-        const data = await api.getPositionHistory(
-          traderId,
-          Math.max(200, pageSize * 5),
-          true
-        )
+        const data = await api.getPositionHistory(traderId, Math.max(200, pageSize * 5))
         setPositions(data.positions || [])
         setStats(data.stats)
         setSymbolStats(data.symbol_stats || [])
@@ -375,10 +378,16 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
       }
     }
 
+    if (!traderId || !enabled) {
+      setLoading(false)
+      setError(null)
+      return
+    }
+
     if (traderId) {
       fetchData()
     }
-  }, [traderId, pageSize])
+  }, [traderId, pageSize, enabled])
 
   // Get unique symbols for filter
   const uniqueSymbols = useMemo(() => {
@@ -669,20 +678,23 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
             <span className="text-sm" style={{ color: '#848E9C' }}>
               {t('positionHistory.symbol', language)}:
             </span>
-            <NofxSelect
+            <select
               value={filterSymbol}
-              onChange={(val) => setFilterSymbol(val)}
-              options={[
-                { value: 'all', label: t('positionHistory.allSymbols', language) },
-                ...uniqueSymbols.map(s => ({ value: s, label: (s || '').replace('USDT', '') }))
-              ]}
+              onChange={(e) => setFilterSymbol(e.target.value)}
               className="rounded px-3 py-1.5 text-sm"
               style={{
                 background: '#0B0E11',
                 border: '1px solid #2B3139',
                 color: '#EAECEF',
               }}
-            />
+            >
+              <option value="all">{t('positionHistory.allSymbols', language)}</option>
+              {uniqueSymbols.map((symbol) => (
+                <option key={symbol} value={symbol}>
+                  {(symbol || '').replace('USDT', '')}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center gap-2">
@@ -710,26 +722,28 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
             <span className="text-sm" style={{ color: '#848E9C' }}>
               {t('positionHistory.sort', language)}:
             </span>
-            <NofxSelect
+            <select
               value={`${sortBy}-${sortOrder}`}
-              onChange={(val) => {
-                const [by, order] = val.split('-') as ['time' | 'pnl' | 'pnl_pct', 'asc' | 'desc']
+              onChange={(e) => {
+                const [by, order] = e.target.value.split('-') as [
+                  'time' | 'pnl' | 'pnl_pct',
+                  'asc' | 'desc',
+                ]
                 setSortBy(by)
                 setSortOrder(order)
               }}
-              options={[
-                { value: 'time-desc', label: t('positionHistory.latestFirst', language) },
-                { value: 'time-asc', label: t('positionHistory.oldestFirst', language) },
-                { value: 'pnl-desc', label: t('positionHistory.highestPnL', language) },
-                { value: 'pnl-asc', label: t('positionHistory.lowestPnL', language) },
-              ]}
               className="rounded px-3 py-1.5 text-sm"
               style={{
                 background: '#0B0E11',
                 border: '1px solid #2B3139',
                 color: '#EAECEF',
               }}
-            />
+            >
+              <option value="time-desc">{t('positionHistory.latestFirst', language)}</option>
+              <option value="time-asc">{t('positionHistory.oldestFirst', language)}</option>
+              <option value="pnl-desc">{t('positionHistory.highestPnL', language)}</option>
+              <option value="pnl-asc">{t('positionHistory.lowestPnL', language)}</option>
+            </select>
           </div>
         </div>
 
@@ -841,21 +855,20 @@ export function PositionHistory({ traderId }: PositionHistoryProps) {
               <span className="text-xs" style={{ color: '#848E9C' }}>
                 {language === 'zh' ? '每页' : 'Per page'}:
               </span>
-              <NofxSelect
+              <select
                 value={pageSize}
-                onChange={(val) => setPageSize(Number(val))}
-                options={[
-                  { value: 20, label: '20' },
-                  { value: 50, label: '50' },
-                  { value: 100, label: '100' },
-                ]}
+                onChange={(e) => setPageSize(Number(e.target.value))}
                 className="rounded px-2 py-1 text-sm"
                 style={{
                   background: '#0B0E11',
                   border: '1px solid #2B3139',
                   color: '#EAECEF',
                 }}
-              />
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
             </div>
 
             {/* Page navigation */}
