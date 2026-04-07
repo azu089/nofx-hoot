@@ -43,7 +43,7 @@ export function RiskControlEditor({
       minConfidence: { zh: '最小信心度', en: 'Min Confidence' },
       minConfidenceDesc: { zh: 'AI 开仓信心度阈值', en: 'AI confidence threshold for entry' },
       minHoldSeconds: { zh: '最小持仓时间', en: 'Min Hold Seconds' },
-      minHoldSecondsDesc: { zh: '平仓前最少持仓秒数，后端强制不低于 720 秒', en: 'Minimum hold seconds before close; backend enforces >= 720s' },
+      minHoldSecondsDesc: { zh: '平仓前最少持仓秒数，后端强制不低于 60 秒', en: 'Minimum hold seconds before close; backend enforces >= 60s' },
       strategyMode: { zh: '策略模式', en: 'Strategy Mode' },
       strategyModeDesc: { zh: '控制 AI 决策管道的行为模式', en: 'Controls AI decision pipeline behavior' },
       modeHighWinRate: { zh: '高胜率模式', en: 'High Win Rate' },
@@ -408,13 +408,13 @@ export function RiskControlEditor({
             <div className="flex items-center">
               <input
                 type="number"
-                value={config.min_hold_seconds ?? 720}
+                value={config.min_hold_seconds ?? 60}
                 onChange={(e) => {
-                  const v = parseInt(e.target.value || '720', 10)
-                  updateField('min_hold_seconds', Number.isFinite(v) ? Math.max(720, v) : 720)
+                  const v = parseInt(e.target.value || '60', 10)
+                  updateField('min_hold_seconds', Number.isFinite(v) ? Math.max(60, v) : 60)
                 }}
                 disabled={disabled}
-                min={720}
+                min={60}
                 step={60}
                 className="w-32 px-3 py-2 rounded"
                 style={{
