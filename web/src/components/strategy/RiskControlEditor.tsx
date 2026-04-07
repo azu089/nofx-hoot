@@ -42,6 +42,14 @@ export function RiskControlEditor({
       minPositionSizeDesc: { zh: 'USDT 最小名义价值', en: 'Minimum notional value in USDT' },
       minConfidence: { zh: '最小信心度', en: 'Min Confidence' },
       minConfidenceDesc: { zh: 'AI 开仓信心度阈值', en: 'AI confidence threshold for entry' },
+      minHoldSeconds: { zh: '最小持仓时间', en: 'Min Hold Seconds' },
+      minHoldSecondsDesc: { zh: '平仓前最少持仓秒数，后端强制不低于 720 秒', en: 'Minimum hold seconds before close; backend enforces >= 720s' },
+      strategyMode: { zh: '策略模式', en: 'Strategy Mode' },
+      strategyModeDesc: { zh: '控制 AI 决策管道的行为模式', en: 'Controls AI decision pipeline behavior' },
+      modeHighWinRate: { zh: '高胜率模式', en: 'High Win Rate' },
+      modeInstitutional: { zh: '机构策略模式', en: 'Institutional' },
+      modeAggressive: { zh: '激进模式', en: 'Aggressive' },
+      modeBalanced: { zh: '均衡模式', en: 'Balanced' },
     }
     return translations[key]?.[language] || key
   }
@@ -385,8 +393,69 @@ export function RiskControlEditor({
             </div>
           </div>
         </div>
+
+        <div className="grid grid-cols-1 gap-4 mt-4">
+          <div
+            className="p-4 rounded-lg"
+            style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+          >
+            <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
+              {t('minHoldSeconds')}
+            </label>
+            <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
+              {t('minHoldSecondsDesc')}
+            </p>
+            <div className="flex items-center">
+              <input
+                type="number"
+                value={config.min_hold_seconds ?? 720}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value || '720', 10)
+                  updateField('min_hold_seconds', Number.isFinite(v) ? Math.max(720, v) : 720)
+                }}
+                disabled={disabled}
+                min={720}
+                step={60}
+                className="w-32 px-3 py-2 rounded"
+                style={{
+                  background: '#1E2329',
+                  border: '1px solid #2B3139',
+                  color: '#EAECEF',
+                }}
+              />
+              <span className="ml-2" style={{ color: '#848E9C' }}>
+                seconds
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Strategy Mode */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <AlertTriangle className="w-5 h-5" style={{ color: '#F0B90B' }} />
+          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
+            {t('strategyMode')}
+          </h3>
+        </div>
+        <div className="p-4 rounded-lg" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
+          <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>{t('strategyMode')}</label>
+          <p className="text-xs mb-2" style={{ color: '#848E9C' }}>{t('strategyModeDesc')}</p>
+          <select
+            value={config.mode || 'institutional'}
+            onChange={(e) => updateField('mode', e.target.value as RiskControlConfig['mode'])}
+            disabled={disabled}
+            className="w-full px-3 py-2 rounded"
+            style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+          >
+            <option value="high_win_rate">{t('modeHighWinRate')}</option>
+            <option value="institutional">{t('modeInstitutional')}</option>
+            <option value="aggressive">{t('modeAggressive')}</option>
+            <option value="balanced">{t('modeBalanced')}</option>
+          </select>
+        </div>
       </div>
     </div>
   )
 }
-

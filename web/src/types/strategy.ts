@@ -182,6 +182,12 @@ export interface RiskControlConfig {
   min_position_size: number;       // Min position size in USDT (CODE ENFORCED)
   min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
   min_confidence: number;          // Min AI confidence to open position (AI guided)
+
+  // 最小持仓时间（秒）— 后端强制 >= 720
+  min_hold_seconds?: number;
+
+  // 策略模式：normal / aggressive / conservative 等
+  mode?: string;
 }
 
 // ── Arena 决策记录类型 ──
