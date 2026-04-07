@@ -1158,6 +1158,26 @@ export const translations = {
 
   },
   zh: {
+    // ── strategyMarket namespace ──
+    strategyMarket: {
+      title: '策略市场',
+      subtitle: '社区策略库',
+      description: '浏览、复制、分享 AI 交易策略配置',
+      search: '搜索策略名称、描述、作者...',
+      all: '全部',
+      popular: '热门',
+      recent: '最新',
+      noStrategies: '暂无策略',
+      noStrategiesDesc: '还没有公开的策略，分享你的吧',
+      author: '作者',
+      createdAt: '创建时间',
+      copyConfig: '复制配置',
+      copied: '已复制',
+      hideConfig: '配置已隐藏',
+      configHiddenDesc: '作者未公开此策略的详细配置',
+      shareYours: '分享你的策略',
+      loading: '加载中...',
+    },
     // ── modelConfig namespace（兼容 ModelConfigModal）──
     modelConfig: {
       selectModel: '选择模型',
