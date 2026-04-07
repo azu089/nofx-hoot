@@ -537,7 +537,7 @@ export function StrategyStudioPage() {
         <ArenaConfigEditor
           config={(editingConfig as any).arena_config}
           onChange={(arenaConfig) => updateConfig('arena_config' as any, arenaConfig as any)}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -553,7 +553,7 @@ export function StrategyStudioPage() {
         <GridConfigEditor
           config={editingConfig.grid_config}
           onChange={(gridConfig) => updateConfig('grid_config', gridConfig)}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -569,7 +569,7 @@ export function StrategyStudioPage() {
         <CoinSourceEditor
           config={editingConfig.coin_source}
           onChange={(coinSource) => updateConfig('coin_source', coinSource)}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -584,7 +584,7 @@ export function StrategyStudioPage() {
         <IndicatorEditor
           config={editingConfig.indicators}
           onChange={(indicators) => updateConfig('indicators', indicators)}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -599,7 +599,7 @@ export function StrategyStudioPage() {
         <RiskControlEditor
           config={editingConfig.risk_control}
           onChange={(riskControl) => updateConfig('risk_control', riskControl)}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -614,7 +614,7 @@ export function StrategyStudioPage() {
         <PromptSectionsEditor
           config={editingConfig.prompt_sections}
           onChange={(promptSections) => updateConfig('prompt_sections', promptSections)}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -633,7 +633,7 @@ export function StrategyStudioPage() {
           <textarea
             value={editingConfig.custom_prompt || ''}
             onChange={(e) => updateConfig('custom_prompt', e.target.value)}
-            disabled={selectedStrategy?.is_default}
+            disabled={false}
             placeholder={language === 'zh' ? '输入自定义提示词...' : 'Enter custom prompt...'}
             className="w-full h-32 px-3 py-2 rounded-lg resize-none font-mono text-xs"
             style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
@@ -659,7 +659,7 @@ export function StrategyStudioPage() {
             setSelectedStrategy({ ...selectedStrategy, config_visible: value })
             setHasChanges(true)
           }}
-          disabled={selectedStrategy?.is_default}
+          disabled={false}
           language={language}
         />
       ),
@@ -860,13 +860,11 @@ export function StrategyStudioPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <button
                       onClick={() => {
-                        if (!selectedStrategy?.is_default) {
-                          updateConfig('strategy_type', 'ai_trading')
-                          // Clear grid config when switching to AI trading
-                          updateConfig('grid_config', undefined)
-                        }
+                                                updateConfig('strategy_type', 'ai_trading')
+                        // Clear grid config when switching to AI trading
+                        updateConfig('grid_config', undefined)
                       }}
-                      disabled={selectedStrategy?.is_default}
+                      disabled={false}
                       className={`p-3 rounded-lg border transition-all ${
                         (!editingConfig.strategy_type || editingConfig.strategy_type === 'ai_trading')
                           ? 'border-nofx-gold bg-nofx-gold/10'
@@ -881,15 +879,13 @@ export function StrategyStudioPage() {
                     </button>
                     <button
                       onClick={() => {
-                        if (!selectedStrategy?.is_default) {
-                          updateConfig('strategy_type', 'grid_trading')
-                          // Initialize grid config if not exists
-                          if (!editingConfig.grid_config) {
-                            updateConfig('grid_config', defaultGridConfig)
-                          }
+                                                updateConfig('strategy_type', 'grid_trading')
+                        // Initialize grid config if not exists
+                        if (!editingConfig.grid_config) {
+                          updateConfig('grid_config', defaultGridConfig)
                         }
                       }}
-                      disabled={selectedStrategy?.is_default}
+                      disabled={false}
                       className={`p-3 rounded-lg border transition-all ${
                         editingConfig.strategy_type === 'grid_trading'
                           ? 'border-nofx-gold bg-nofx-gold/10'
@@ -904,14 +900,12 @@ export function StrategyStudioPage() {
                     </button>
                     <button
                       onClick={() => {
-                        if (!selectedStrategy?.is_default) {
-                          updateConfig('strategy_type', 'arena' as any)
-                          if (!(editingConfig as any).arena_config) {
-                            updateConfig('arena_config' as any, defaultArenaConfig as any)
-                          }
+                                                updateConfig('strategy_type', 'arena' as any)
+                        if (!(editingConfig as any).arena_config) {
+                          updateConfig('arena_config' as any, defaultArenaConfig as any)
                         }
                       }}
-                      disabled={selectedStrategy?.is_default}
+                      disabled={false}
                       className={`p-3 rounded-lg border transition-all ${
                         (editingConfig as any).strategy_type === 'arena'
                           ? 'border-nofx-gold bg-nofx-gold/10'
