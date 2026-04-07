@@ -1,15 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, ChevronDown, Settings } from 'lucide-react'
+import { Menu, X, ChevronDown } from 'lucide-react'
 import { t, type Language } from '../../i18n/translations'
 import { OFFICIAL_LINKS } from '../../constants/branding'
-import {
-  getPostAuthPath,
-  getUserMode,
-  setUserMode,
-  type UserMode,
-} from '../../lib/onboarding'
 
 type Page =
   | 'competition'
@@ -45,22 +39,7 @@ export default function HeaderBar({
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false)
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
-  const [userMode, setUserModeState] = useState<UserMode>(() => getUserMode() ?? 'advanced')
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const userDropdownRef = useRef<HTMLDivElement>(null)
-
-  const navigateInApp = (path: string) => {
-    navigate(path)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  }
-
-  const handleSwitchMode = (nextMode: UserMode) => {
-    setUserMode(nextMode)
-    setUserModeState(nextMode)
-    setUserDropdownOpen(false)
-    navigateInApp(getPostAuthPath(nextMode))
-  }
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -69,12 +48,6 @@ export default function HeaderBar({
         !dropdownRef.current.contains(event.target as Node)
       ) {
         setLanguageDropdownOpen(false)
-      }
-      if (
-        userDropdownRef.current &&
-        !userDropdownRef.current.contains(event.target as Node)
-      ) {
-        setUserDropdownOpen(false)
       }
     }
 
@@ -187,73 +160,6 @@ export default function HeaderBar({
                 </svg>
               </a>
             </div>
-
-            {/* Divider */}
-            <div className="h-5 w-px" style={{ background: '#2B3139' }} />
-
-            {/* User Info and Actions */}
-            {isLoggedIn && user ? (
-              <div className="flex items-center gap-3">
-                {/* User Info with Dropdown */}
-                <div className="relative" ref={userDropdownRef}>
-                  <button
-                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                    className="flex items-center gap-2 px-3 py-2 rounded transition-colors bg-nofx-bg-lighter border border-nofx-gold/20 hover:bg-white/5"
-                  >
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-nofx-gold text-black">
-                      {user.email[0].toUpperCase()}
-                    </div>
-                    <span className="text-sm text-nofx-text-muted">
-                      {user.email}
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-nofx-text-muted" />
-                  </button>
-
-                  {userDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-48 rounded-lg shadow-lg overflow-hidden z-50 bg-nofx-bg-lighter border border-nofx-gold/20">
-                      <div className="px-3 py-2 border-b border-nofx-gold/20">
-                        <div className="text-xs text-nofx-text-muted">
-                          {t('loggedInAs', language)}
-                        </div>
-                        <div className="text-sm font-medium text-nofx-text-muted">
-                          {user.email}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          window.location.href = '/settings'
-                          setUserDropdownOpen(false)
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-white/5 text-nofx-text-muted hover:text-white"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        Settings
-                      </button>
-                      <button
-                        onClick={() => handleSwitchMode(userMode === 'beginner' ? 'advanced' : 'beginner')}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-white/5 text-nofx-text-muted hover:text-white"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        {userMode === 'beginner'
-                          ? language === 'zh' ? '切到老手模式' : 'Switch to Advanced'
-                          : language === 'zh' ? '切到新手模式' : 'Switch to Beginner'}
-                      </button>
-                      {onLogout && (
-                        <button
-                          onClick={() => {
-                            onLogout()
-                            setUserDropdownOpen(false)
-                          }}
-                          className="w-full px-3 py-2 text-sm font-semibold transition-colors hover:opacity-80 text-center bg-nofx-danger/20 text-nofx-danger"
-                        >
-                          {t('exitLogin', language)}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
 
             {/* Language Toggle - Always at the rightmost */}
             <div className="relative" ref={dropdownRef}>
