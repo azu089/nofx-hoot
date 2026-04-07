@@ -5,23 +5,15 @@ import { api } from './lib/api'
 import { TraderDashboardPage } from './pages/TraderDashboardPage'
 
 import { AITradersPage } from './components/trader/AITradersPage'
-import { SetupPage } from './components/modals/SetupPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { CompetitionPage } from './components/trader/CompetitionPage'
-import { LandingPage } from './pages/LandingPage'
-import { FAQPage } from './pages/FAQPage'
 import { StrategyStudioPage } from './pages/StrategyStudioPage'
 import { StrategyMarketPage } from './pages/StrategyMarketPage'
-import { DataPage } from './pages/DataPage'
-import { BeginnerOnboardingPage } from './pages/BeginnerOnboardingPage'
-import { LoginRequiredOverlay } from './components/auth/LoginRequiredOverlay'
 import HeaderBar from './components/common/HeaderBar'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ConfirmDialogProvider } from './components/common/ConfirmDialog'
 import { t } from './i18n/translations'
-import { useSystemConfig } from './hooks/useSystemConfig'
-import { getUserMode, hasCompletedBeginnerOnboarding } from './lib/onboarding'
 
 import { OFFICIAL_LINKS } from './constants/branding'
 import type {
@@ -41,17 +33,12 @@ type Page =
   | 'trader'
   | 'strategy'
   | 'strategy-market'
-  | 'data'
-  | 'faq'
-  | 'login'
-  | 'register'
 
 
 
 function App() {
   const { language, setLanguage } = useLanguage()
-  const { user, token, logout, isLoading } = useAuth()
-  const { config: systemConfig, loading: configLoading } = useSystemConfig()
+  const { user, logout } = useAuth()
   const [route, setRoute] = useState(window.location.pathname)
 
   // 从URL路径读取初始页面状态（支持刷新保持页面）
@@ -59,23 +46,16 @@ function App() {
     const path = window.location.pathname
     const hash = window.location.hash.slice(1) // 去掉 #
 
-    if (path === '/welcome') return 'traders'
     if (path === '/traders' || hash === 'traders') return 'traders'
     if (path === '/strategy' || hash === 'strategy') return 'strategy'
     if (path === '/strategy-market' || hash === 'strategy-market') return 'strategy-market'
-    if (path === '/data' || hash === 'data') return 'data'
     if (path === '/dashboard' || hash === 'trader' || hash === 'details')
       return 'trader'
     return 'competition' // 默认为竞赛页面
   }
 
-  // Login required overlay state
-  const [loginOverlayOpen, setLoginOverlayOpen] = useState(false)
-  const [loginOverlayFeature, setLoginOverlayFeature] = useState('')
-
-  const handleLoginRequired = (featureName: string) => {
-    setLoginOverlayFeature(featureName)
-    setLoginOverlayOpen(true)
+  const handleLoginRequired = (_featureName: string) => {
+    // 登录已弃用，no-op
   }
 
   // Unified page navigation handler
@@ -83,13 +63,9 @@ function App() {
     const pathMap: Record<Page, string> = {
       'competition': '/competition',
       'strategy-market': '/strategy-market',
-      'data': '/data',
       'traders': '/traders',
       'trader': '/dashboard',
       'strategy': '/strategy',
-      'faq': '/faq',
-      'login': '/login',
-      'register': '/register',
     }
     const path = pathMap[page]
     if (path) {
@@ -129,9 +105,6 @@ function App() {
   }
   const [lastUpdate, setLastUpdate] = useState<string>('--:--:--')
   const [decisionsLimit, setDecisionsLimit] = useState<number>(5)
-  const hasPersistedAuth =
-    !!localStorage.getItem('auth_token') && !!localStorage.getItem('auth_user')
-
   // Poll-off states: stop polling after 3 consecutive failures
   const [accountPollOff, setAccountPollOff] = useState(false)
   const [positionsPollOff, setPositionsPollOff] = useState(false)
@@ -160,8 +133,6 @@ function App() {
         setCurrentPage('strategy')
       } else if (path === '/strategy-market' || hash === 'strategy-market') {
         setCurrentPage('strategy-market')
-      } else if (path === '/data' || hash === 'data') {
-        setCurrentPage('data')
       } else if (
         path === '/dashboard' ||
         hash === 'trader' ||
@@ -196,7 +167,7 @@ function App() {
 
   // 获取trader列表（仅在用户登录时）
   const { data: traders, error: tradersError } = useSWR<TraderInfo[]>(
-    user && token ? 'traders' : null,
+    'traders',
     () => api.getTraders(currentPage === 'trader'),
     {
       refreshInterval: 10000,
@@ -206,7 +177,7 @@ function App() {
 
   // 获取exchanges列表（用于显示交易所名称）
   const { data: exchanges } = useSWR<Exchange[]>(
-    user && token ? 'exchanges' : null,
+    'exchanges',
     api.getExchangeConfigs,
     {
       refreshInterval: 60000, // 1分钟刷新一次
@@ -359,76 +330,15 @@ function App() {
     }
   }, [route])
 
-  const showBeginnerOnboarding =
-    route === '/welcome' && (!!user || hasPersistedAuth) && getUserMode() === 'beginner' && !hasCompletedBeginnerOnboarding()
-
-  // Show loading spinner while checking auth or config
-  if (isLoading || configLoading) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: '#0B0E11' }}
-      >
-        <div className="text-center">
-          <img
-            src="/icons/nofx.svg"
-            alt="NoFx Logo"
-            className="w-16 h-16 mx-auto mb-4 animate-pulse"
-          />
-          <p style={{ color: '#EAECEF' }}>{t('loading', language)}</p>
-        </div>
-      </div>
-    )
-  }
-
-  // First-time setup: redirect to /setup if system not initialized
-  if (systemConfig && !systemConfig.initialized && !user) {
-    return <SetupPage />
-  }
-
-  // 登录/注册/重置密码已弃用，统一重定向到 /traders
-  if (route === '/login' || route === '/register' || route === '/reset-password') {
+  // 登录/注册/重置密码/首次部署/欢迎/数据/FAQ 已弃用，统一重定向 /traders
+  if (
+    route === '/login' || route === '/register' || route === '/reset-password' ||
+    route === '/setup' || route === '/welcome' || route === '/data' || route === '/faq' ||
+    route === '/' || route === ''
+  ) {
     window.history.replaceState({}, '', '/traders')
     setRoute('/traders')
     return null
-  }
-  if (route === '/setup') {
-    if (systemConfig?.initialized) {
-      window.location.href = '/traders'
-      return null
-    }
-    return <SetupPage />
-  }
-  if (route === '/welcome') {
-    if (getUserMode() !== 'beginner') {
-      window.location.href = '/traders'
-      return null
-    }
-  }
-  if (route === '/faq') {
-    return (
-      <div
-        className="min-h-screen"
-        style={{ background: '#0B0E11', color: '#EAECEF' }}
-      >
-        <HeaderBar
-          isLoggedIn={!!user}
-          currentPage="faq"
-          language={language}
-          onLanguageChange={setLanguage}
-          user={user}
-          onLogout={logout}
-          onLoginRequired={handleLoginRequired}
-          onPageChange={navigateToPage}
-        />
-        <FAQPage />
-        <LoginRequiredOverlay
-          isOpen={loginOverlayOpen}
-          onClose={() => setLoginOverlayOpen(false)}
-          featureName={loginOverlayFeature}
-        />
-      </div>
-    )
   }
   if (route === '/settings') {
     return (
@@ -446,43 +356,6 @@ function App() {
       </div>
     )
   }
-  // Data page - publicly accessible with embedded dashboard
-  if (route === '/data') {
-    const dataPageNavigate = (page: Page) => {
-      navigateToPage(page)
-    }
-    return (
-      <div
-        className="min-h-screen"
-        style={{ background: '#0B0E11', color: '#EAECEF' }}
-      >
-        <HeaderBar
-          isLoggedIn={!!user}
-          currentPage="data"
-          language={language}
-          onLanguageChange={setLanguage}
-          user={user}
-          onLogout={logout}
-          onLoginRequired={handleLoginRequired}
-          onPageChange={dataPageNavigate}
-        />
-        <main className="pt-16">
-          <DataPage />
-        </main>
-        <LoginRequiredOverlay
-          isOpen={loginOverlayOpen}
-          onClose={() => setLoginOverlayOpen(false)}
-          featureName={loginOverlayFeature}
-        />
-      </div>
-    )
-  }
-  // Show landing page for root route
-  if (route === '/' || route === '') {
-    return <LandingPage />
-  }
-
-  // 登录已弃用：所有访客直接进入主界面（user 来自 stub 自动登录）
 
   return (
     <div
@@ -512,8 +385,6 @@ function App() {
           >
             {currentPage === 'competition' ? (
               <CompetitionPage />
-            ) : currentPage === 'data' ? (
-              <DataPage />
             ) : currentPage === 'strategy-market' ? (
               <StrategyMarketPage />
             ) : currentPage === 'traders' ? (
@@ -693,14 +564,6 @@ function App() {
           </div>
         </footer>
 
-      {/* Login Required Overlay */}
-      <LoginRequiredOverlay
-        isOpen={loginOverlayOpen}
-        onClose={() => setLoginOverlayOpen(false)}
-        featureName={loginOverlayFeature}
-      />
-
-      {showBeginnerOnboarding && <BeginnerOnboardingPage />}
     </div>
   )
 }

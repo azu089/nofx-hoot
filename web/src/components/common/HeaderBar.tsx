@@ -17,10 +17,6 @@ type Page =
   | 'trader'
   | 'strategy'
   | 'strategy-market'
-  | 'data'
-  | 'faq'
-  | 'login'
-  | 'register'
 
 interface HeaderBarProps {
   onLoginClick?: () => void
@@ -112,13 +108,11 @@ export default function HeaderBar({
             {(() => {
               // Define all navigation tabs
               const navTabs: { page: Page; path: string; label: string; requiresAuth: boolean }[] = [
-                { page: 'data', path: '/data', label: language === 'zh' ? '数据' : language === 'id' ? 'Data' : 'Data', requiresAuth: false },
                 { page: 'strategy-market', path: '/strategy-market', label: language === 'zh' ? '策略市场' : language === 'id' ? 'Pasar' : 'Market', requiresAuth: true },
                 { page: 'traders', path: '/traders', label: t('configNav', language), requiresAuth: true },
                 { page: 'trader', path: '/dashboard', label: t('dashboardNav', language), requiresAuth: true },
                 { page: 'strategy', path: '/strategy', label: t('strategyNav', language), requiresAuth: true },
                 { page: 'competition', path: '/competition', label: t('realtimeNav', language), requiresAuth: true },
-                { page: 'faq', path: '/faq', label: t('faqNav', language), requiresAuth: false },
               ]
 
               const handleNavClick = (tab: typeof navTabs[0]) => {
@@ -259,20 +253,7 @@ export default function HeaderBar({
                   )}
                 </div>
               </div>
-            ) : (
-              /* Show login/register buttons when not logged in and not on login/register pages */
-              currentPage !== 'login' &&
-              currentPage !== 'register' && (
-                <div className="flex items-center gap-3">
-                  <a
-                    href="/login"
-                    className="px-3 py-2 text-sm font-medium transition-colors rounded text-nofx-text-muted hover:text-white"
-                  >
-                    {t('signIn', language)}
-                  </a>
-                </div>
-              )
-            )}
+            ) : null}
 
             {/* Language Toggle - Always at the rightmost */}
             <div className="relative" ref={dropdownRef}>
@@ -362,13 +343,11 @@ export default function HeaderBar({
               <div className="flex flex-col gap-6 mb-12">
                 {(() => {
                   const navTabs: { page: Page; path: string; label: string; requiresAuth: boolean }[] = [
-                    { page: 'data', path: '/data', label: language === 'zh' ? '数据' : language === 'id' ? 'Data' : 'Data', requiresAuth: false },
                     { page: 'strategy-market', path: '/strategy-market', label: language === 'zh' ? '策略市场' : language === 'id' ? 'Pasar' : 'Market', requiresAuth: true },
                     { page: 'traders', path: '/traders', label: t('configNav', language), requiresAuth: true },
                     { page: 'trader', path: '/dashboard', label: t('dashboardNav', language), requiresAuth: true },
                     { page: 'strategy', path: '/strategy', label: t('strategyNav', language), requiresAuth: true },
                     { page: 'competition', path: '/competition', label: t('realtimeNav', language), requiresAuth: true },
-                    { page: 'faq', path: '/faq', label: t('faqNav', language), requiresAuth: false },
                   ]
 
                   const handleMobileNavClick = (tab: typeof navTabs[0]) => {
@@ -488,16 +467,7 @@ export default function HeaderBar({
                     >
                       {t('exitLogin', language)}
                     </button>
-                  ) : (
-                    currentPage !== 'login' && currentPage !== 'register' && (
-                      <a
-                        href="/login"
-                        className="flex items-center justify-center bg-nofx-gold text-black rounded-lg font-bold text-sm hover:bg-yellow-400 transition-colors"
-                      >
-                        {t('signIn', language)}
-                      </a>
-                    )
-                  )}
+                  ) : null}
                 </div>
               </div>
             </motion.div>

@@ -104,10 +104,8 @@ export function StrategyStudioPage() {
 
   // Fetch AI Models
   const fetchAiModels = useCallback(async () => {
-    if (!token) return
     try {
       const response = await fetch(`${API_BASE}/api/models`, {
-        headers: { Authorization: `Bearer ${token}` },
       })
       if (response.ok) {
         const data = await response.json()
@@ -126,10 +124,8 @@ export function StrategyStudioPage() {
 
   // Fetch strategies
   const fetchStrategies = useCallback(async () => {
-    if (!token) return
     try {
       const response = await fetch(`${API_BASE}/api/strategies`, {
-        headers: { Authorization: `Bearer ${token}` },
       })
       if (!response.ok) throw new Error('Failed to fetch strategies')
       const data = await response.json()
@@ -165,14 +161,10 @@ export function StrategyStudioPage() {
       // Only update if language actually changed (not on initial mount)
       if (prevLanguageRef.current === language) return
       prevLanguageRef.current = language
-
-      if (!token) return
-
       try {
         // Fetch default config for the new language
         const response = await fetch(
-          `${API_BASE}/api/strategies/default-config?lang=${language}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          `${API_BASE}/api/strategies/default-config?lang=${language}`
         )
         if (!response.ok) return
         const defaultConfig = await response.json()
@@ -197,11 +189,9 @@ export function StrategyStudioPage() {
 
   // Create new strategy
   const handleCreateStrategy = async () => {
-    if (!token) return
     try {
       const configResponse = await fetch(
-        `${API_BASE}/api/strategies/default-config?lang=${language}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${API_BASE}/api/strategies/default-config?lang=${language}`
       )
       const defaultConfig = await configResponse.json()
 
@@ -209,7 +199,6 @@ export function StrategyStudioPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: language === 'zh' ? '新策略' : 'New Strategy',
@@ -246,8 +235,6 @@ export function StrategyStudioPage() {
 
   // Delete strategy
   const handleDeleteStrategy = async (id: string) => {
-    if (!token) return
-
     const confirmed = await confirmToast(
       language === 'zh' ? '确定删除此策略？' : 'Delete this strategy?',
       {
@@ -261,7 +248,6 @@ export function StrategyStudioPage() {
     try {
       const response = await fetch(`${API_BASE}/api/strategies/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       })
       if (!response.ok) throw new Error('Failed to delete strategy')
       notify.success(language === 'zh' ? '策略已删除' : 'Strategy deleted')
@@ -281,13 +267,11 @@ export function StrategyStudioPage() {
 
   // Duplicate strategy
   const handleDuplicateStrategy = async (id: string) => {
-    if (!token) return
     try {
       const response = await fetch(`${API_BASE}/api/strategies/${id}/duplicate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: language === 'zh' ? '策略副本' : 'Strategy Copy',
@@ -302,11 +286,9 @@ export function StrategyStudioPage() {
 
   // Activate strategy
   const handleActivateStrategy = async (id: string) => {
-    if (!token) return
     try {
       const response = await fetch(`${API_BASE}/api/strategies/${id}/activate`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       })
       if (!response.ok) throw new Error('Failed to activate strategy')
       await fetchStrategies()
@@ -355,7 +337,6 @@ export function StrategyStudioPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: `${importData.name} (${language === 'zh' ? '导入' : 'Imported'})`,
@@ -392,7 +373,6 @@ export function StrategyStudioPage() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             name: selectedStrategy.name,
@@ -436,7 +416,6 @@ export function StrategyStudioPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           config: editingConfig,
@@ -464,7 +443,6 @@ export function StrategyStudioPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           config: editingConfig,
