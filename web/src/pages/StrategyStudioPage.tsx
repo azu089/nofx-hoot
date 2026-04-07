@@ -900,6 +900,21 @@ export function StrategyStudioPage() {
                         if (!(editingConfig as any).arena_config) {
                           updateConfig('arena_config' as any, defaultArenaConfig as any)
                         }
+                        // arena 也需要风控（含 min_hold_seconds）
+                        if (!editingConfig.risk_control) {
+                          updateConfig('risk_control', {
+                            max_positions: 5,
+                            btc_eth_max_leverage: 5,
+                            altcoin_max_leverage: 5,
+                            btc_eth_max_position_value_ratio: 5,
+                            altcoin_max_position_value_ratio: 1,
+                            max_margin_usage: 0.9,
+                            min_position_size: 10,
+                            min_risk_reward_ratio: 1.5,
+                            min_confidence: 0.6,
+                            min_hold_seconds: 720,
+                          })
+                        }
                       }}
                       disabled={false}
                       className={`p-3 rounded-lg border transition-all ${
