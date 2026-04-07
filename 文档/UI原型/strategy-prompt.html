@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=390, initial-scale=1.0">
+  <title>HOOT - Prompt 预览</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .nav-back {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+    }
+    .nav-back .back-btn {
+      background: none; border: none; color: var(--text-main);
+      font-size: 18px; cursor: pointer; padding: 4px;
+    }
+    .nav-back .nav-title {
+      font-size: 16px; font-weight: 600; color: var(--text-main); flex: 1;
+    }
+    .seg-tabs {
+      display: flex; padding: 12px 20px 0; gap: 6px;
+    }
+    .seg-tab {
+      flex: 1;
+      padding: 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+    }
+    .seg-tab.active {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+    .prompt-meta {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 20px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .prompt-meta .tabular { color: var(--text-main); }
+    .prompt-body {
+      margin: 0 20px 80px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.7;
+      color: var(--text-body);
+      white-space: pre-wrap;
+      max-height: calc(100vh - 280px);
+      overflow-y: auto;
+    }
+    .prompt-body .kw { color: var(--primary); font-weight: 600; }
+    .prompt-body .num { color: var(--success); }
+    .prompt-body .str { color: #C084FC; }
+    .footer-actions {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 390px; padding: 12px 20px;
+      background: rgba(10,10,26,0.95); backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      display: flex; gap: 10px; z-index: 100;
+    }
+    .footer-actions .btn { flex: 1; padding: 12px; }
+  </style>
+</head>
+<body>
+  <div class="mobile-container" style="padding-bottom: 90px;">
+    <div class="nav-back">
+      <button class="back-btn" onclick="history.back()">←</button>
+      <div class="nav-title">Prompt 预览</div>
+      <button class="back-btn" title="复制">📋</button>
+    </div>
+
+    <!-- 段落 Tab -->
+    <div class="seg-tabs">
+      <button class="seg-tab active" onclick="showPart(event,'sys')">System</button>
+      <button class="seg-tab" onclick="showPart(event,'usr')">User</button>
+    </div>
+
+    <!-- System Prompt -->
+    <div id="part-sys">
+      <div class="prompt-meta">
+        <span>角色 + 规则定义</span>
+        <span><span class="tabular">4,328</span> 字符 · <span class="tabular">~1,082</span> tokens</span>
+      </div>
+      <div class="prompt-body"><span class="kw">你是</span>一个专业的加密货币量化交易 AI，负责为以下品种生成交易决策：
+
+<span class="kw">交易标的</span>: <span class="str">BTCUSDT, ETHUSDT, SOLUSDT</span>
+<span class="kw">最大杠杆</span>: <span class="num">5x</span>
+<span class="kw">最大持仓</span>: <span class="num">3</span> 个
+<span class="kw">扫描间隔</span>: <span class="num">15</span> 分钟
+<span class="kw">风险偏好</span>: <span class="str">balanced</span>
+
+【决策规则】
+1. 仅在 1h EMA20 与 EMA50 排列一致时开仓
+2. 必须通过 9 条 Gatekeeper 检查（资金费率/多空比/OI/ATR/...）
+3. 最小 R:R 比 = <span class="num">1.5</span>，低于此值返回 wait
+4. 止损必须严格小于入场价（多）或大于入场价（空）
+5. 出场条件：EMA 反转 + OI 萎缩 + 最小持仓时间已到
+
+【输出格式】
+返回 JSON：
+{
+  "candidates": [
+    {
+      "action": "open_long",
+      "symbol": "BTCUSDT",
+      "leverage": 5,
+      "confidence": 82,
+      "stop_loss": 65800,
+      "take_profit": 70500,
+      "tags": ["trend_follow", "oi_expansion"],
+      "reasoning": "..."
+    }
+  ]
+}
+
+【附加规则】
+- 避开 FOMC 议息会议前后 2 小时
+- 仅在 1h EMA 趋势确认后开仓</div>
+    </div>
+
+    <!-- User Prompt -->
+    <div id="part-usr" style="display:none;">
+      <div class="prompt-meta">
+        <span>实时市场数据</span>
+        <span><span class="tabular">12,456</span> 字符 · <span class="tabular">~3,114</span> tokens</span>
+      </div>
+      <div class="prompt-body">[<span class="kw">市场快照</span>] 2026-04-07 22:36:07 UTC
+
+<span class="kw">BTCUSDT</span>
+  价格: <span class="num">67,250.50</span>
+  24h 变化: <span class="num">+2.3%</span>
+  OI 24h: <span class="num">+3.2%</span>
+  资金费率: <span class="num">+0.012%</span>
+  多空比: <span class="num">38%</span>
+  EMA20(1h): <span class="num">67,120</span>
+  EMA50(1h): <span class="num">66,890</span>
+  RSI14: <span class="num">58</span>
+  ATR: <span class="num">820</span>
+
+<span class="kw">ETHUSDT</span>
+  价格: <span class="num">3,456.20</span>
+  24h 变化: <span class="num">-0.8%</span>
+  ...
+
+<span class="kw">SOLUSDT</span>
+  价格: <span class="num">142.36</span>
+  ...
+
+[<span class="kw">当前持仓</span>]
+- BTCUSDT 多 0.0156 @ 67120 (uPnL <span class="num">+24.18</span>)
+
+[<span class="kw">最近事件</span>]
+- 无重大宏观事件
+
+[<span class="kw">历史记忆 (BM25 Top 3)</span>]
+1. 2026-04-05 BTC 类似形态 → 开多收益 +1.8%
+2. 2026-04-03 BTC OI 扩张 → 趋势延续 4h
+3. 2026-03-28 BTC 38% long_ratio → 反转上涨</div>
+    </div>
+
+    <div class="footer-actions">
+      <button class="btn btn-secondary" onclick="history.back()">关闭</button>
+      <button class="btn btn-primary">复制全部</button>
+    </div>
+  </div>
+
+  <script>
+    function showPart(ev, name) {
+      document.getElementById('part-sys').style.display = name === 'sys' ? 'block' : 'none';
+      document.getElementById('part-usr').style.display = name === 'usr' ? 'block' : 'none';
+      document.querySelectorAll('.seg-tab').forEach(t => t.classList.remove('active'));
+      ev.currentTarget.classList.add('active');
+    }
+  </script>
+</body>
+</html>

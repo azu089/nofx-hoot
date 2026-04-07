@@ -36,7 +36,10 @@
       "esbuild",
       "sharp",
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "node-fetch": "^3.3.2"
+    }
   },
   "dependencies": {
     "v0-sdk": "^0.16.1"

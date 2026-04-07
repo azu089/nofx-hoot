@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=390, initial-scale=1.0">
+  <title>HOOT - 策略编辑器</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .nav-back { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+    .nav-back .back-btn { background: none; border: none; color: var(--text-main); font-size: 18px; cursor: pointer; padding: 4px; }
+    .nav-back .nav-title { font-size: 16px; font-weight: 600; color: var(--text-main); flex: 1; }
+
+    /* 策略类型 Tab（对照 nofx 顶部 3 按钮） */
+    .type-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      padding: 16px 20px 12px;
+    }
+    .type-tab {
+      padding: 12px 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .type-tab.active {
+      background: var(--primary-dim);
+      border-color: var(--primary);
+    }
+    .type-tab .tt-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .type-tab .tt-icon { font-size: 14px; }
+    .type-tab .tt-name { font-size: 12px; font-weight: 600; color: var(--text-main); }
+    .type-tab .tt-desc { font-size: 9px; color: var(--text-muted); line-height: 1.4; }
+    .type-tab.active .tt-name { color: var(--primary); }
+
+    /* 折叠 section（对照 nofx ConfigSections） */
+    .config-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin: 0 20px 8px;
+      overflow: hidden;
+    }
+    .section-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px;
+      cursor: pointer;
+    }
+    .section-head .left { display: flex; align-items: center; gap: 8px; }
+    .section-head .icon { width: 16px; height: 16px; }
+    .section-head .title { font-size: 13px; font-weight: 600; color: var(--text-main); }
+    .section-head .arrow { font-size: 11px; color: var(--text-muted); transition: transform 0.2s; }
+    .section-head.open .arrow { transform: rotate(90deg); }
+    .section-body {
+      display: none;
+      padding: 0 14px 14px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    .section-body.open { display: block; }
+
+    /* 表单元素 */
+    .form-row { margin-bottom: 12px; }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-label { display: block; font-size: 11px; color: var(--text-body); margin-bottom: 5px; font-weight: 500; }
+    .form-input, .form-select, .form-textarea {
+      width: 100%; background: var(--bg-elevated);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 9px 11px; color: var(--text-main); font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .form-textarea { font-family: inherit; resize: vertical; }
+    .form-help { font-size: 9px; color: var(--text-muted); margin-top: 3px; }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    /* 币种 tag */
+    .symbol-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; background: var(--primary-dim); color: var(--primary);
+      border-radius: 999px; font-size: 10px; font-weight: 600;
+      margin-right: 4px; margin-bottom: 4px;
+    }
+    .symbol-tag .x { cursor: pointer; opacity: 0.6; }
+
+    /* Switch */
+    .switch { position: relative; display: inline-block; width: 32px; height: 18px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 18px; }
+    .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 2px; bottom: 2px; background: var(--text-muted); border-radius: 50%; transition: 0.2s; }
+    .switch input:checked + .slider { background: var(--primary-dim); border-color: var(--primary); }
+    .switch input:checked + .slider:before { transform: translateX(14px); background: var(--primary); }
+    .sw-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 12px; color: var(--text-main); }
+    .sw-row + .sw-row { border-top: 1px solid var(--border); }
+
+    /* Arena 流程 */
+    .flow-step {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 6px 0; position: relative;
+    }
+    .flow-step:not(:last-child)::after {
+      content: ''; position: absolute; left: 9px; top: 24px; bottom: -2px;
+      width: 2px; background: var(--border);
+    }
+    .flow-num {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--primary-dim); color: var(--primary);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; flex-shrink: 0; z-index: 1;
+    }
+    .flow-name { font-size: 12px; font-weight: 600; color: var(--text-main); }
+    .flow-desc { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+
+    /* Arena 分析师 */
+    .analyst-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 6px;
+      cursor: pointer;
+    }
+    .analyst-row.on { border-color: var(--primary); background: var(--primary-dim); }
+    .analyst-row .icn { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+    .analyst-row .info { flex: 1; }
+    .analyst-row .name { font-size: 12px; font-weight: 600; color: var(--text-main); }
+    .analyst-row .desc { font-size: 9px; color: var(--text-muted); }
+    .analyst-row .chk { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; }
+    .analyst-row.on .chk { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+    /* 风险偏好 3 选 1 */
+    .risk-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .risk-3 .opt {
+      padding: 10px 6px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .risk-3 .opt.on { border-color: var(--primary); background: var(--primary-dim); }
+    .risk-3 .opt .nm { font-size: 11px; font-weight: 700; }
+    .risk-3 .opt .ds { font-size: 8px; color: var(--text-muted); margin-top: 2px; }
+
+    /* 时间周期 chip */
+    .tf-chip {
+      padding: 5px 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tf-chip:hover { color: var(--text-main); }
+    .tf-chip.on {
+      border-color: var(--warning);
+      color: var(--warning);
+      background: rgba(245,158,11,0.08);
+    }
+    .tf-chip.primary-on {
+      border: 2px solid var(--warning);
+      background: rgba(245,158,11,0.15);
+      color: var(--warning);
+      padding: 4px 9px;
+    }
+
+    /* 指标卡片 */
+    .ind-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      transition: all 0.15s;
+    }
+    .ind-card.on { border-color: var(--warning); }
+    .ind-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .ind-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .ind-name { flex: 1; font-size: 11px; font-weight: 600; color: var(--text-main); }
+    .ind-chk {
+      width: 16px; height: 16px; border-radius: 4px;
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; color: var(--text-muted);
+    }
+    .ind-card.on .ind-chk { background: var(--warning); border-color: var(--warning); color: #000; font-weight: 700; }
+    .ind-desc { font-size: 9px; color: var(--text-muted); margin-bottom: 6px; }
+    .ind-input {
+      width: 100%; background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 5px 8px; color: var(--text-main); font-size: 10px;
+      font-family: 'SF Mono', Menlo, monospace; text-align: center;
+    }
+    .ind-input:disabled { opacity: 0.4; }
+
+    /* Pane */
+    .pane { display: none; padding-bottom: 90px; }
+    .pane.active { display: block; }
+
+    .footer-actions {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 390px; padding: 12px 20px;
+      background: rgba(10,10,26,0.95); backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      display: flex; gap: 8px; z-index: 100;
+    }
+    .footer-actions .btn { flex: 1; padding: 11px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="mobile-container">
+    <div class="nav-back">
+      <button class="back-btn" onclick="history.back()">←</button>
+      <div class="nav-title">创建策略</div>
+    </div>
+
+    <!-- ====== 顶部策略类型 Tab（对照 nofx StrategyTypeSelector） ====== -->
+    <div class="type-tabs">
+      <div class="type-tab active" onclick="switchType(event,'ai')">
+        <div class="tt-head">
+          <span class="tt-icon">🧠</span>
+          <span class="tt-name">AI 智能</span>
+        </div>
+        <div class="tt-desc">大模型分析多维数据自主决策</div>
+      </div>
+      <div class="type-tab" onclick="switchType(event,'grid')">
+        <div class="tt-head">
+          <span class="tt-icon" style="color: var(--success);">🎯</span>
+          <span class="tt-name">网格</span>
+        </div>
+        <div class="tt-desc">挂多档限价单赚取波动差价</div>
+      </div>
+      <div class="type-tab" onclick="switchType(event,'arena')">
+        <div class="tt-head">
+          <span class="tt-icon" style="color: #C084FC;">⚔️</span>
+          <span class="tt-name">Arena</span>
+        </div>
+        <div class="tt-desc">13 角色 6 阶段辩论决策</div>
+      </div>
+    </div>
+
+    <!-- 策略名称（所有类型通用，置顶） -->
+    <div class="config-section">
+      <div class="section-head open">
+        <div class="left">
+          <span style="color: var(--primary);">⚙</span>
+          <span class="title">策略名称</span>
+        </div>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="section-body open">
+        <div class="form-row">
+          <input type="text" class="form-input" placeholder="例如：BTC 趋势跟随">
+        </div>
+        <div class="form-row">
+          <label class="form-label">描述</label>
+          <input type="text" class="form-input" placeholder="一句话描述策略目标">
+        </div>
+        <div class="form-row">
+          <label class="form-label">语言</label>
+          <select class="form-select">
+            <option selected>中文</option>
+            <option>English</option>
+          </select>
+          <div class="form-help">数据格式与 prompt 生成语言</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== AI 智能 Pane ====== -->
+    <div class="pane active" id="pane-ai">
+      <!-- 币种来源 -->
+      <div class="config-section">
+        <div class="section-head open" onclick="toggleSec(this)">
+          <div class="left"><span style="color: #F59E0B;">🪙</span><span class="title">币种来源</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body open">
+          <div class="form-row">
+            <label class="form-label">来源类型</label>
+            <select class="form-select">
+              <option selected>固定币种 (static)</option>
+              <option>AI500 排行</option>
+              <option>OI Top（持仓量榜）</option>
+              <option>OI Low（持仓量低）</option>
+              <option>混合模式 (mixed)</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">交易币种</label>
+            <div style="margin-bottom: 6px;">
+              <span class="symbol-tag">BTCUSDT <span class="x">×</span></span>
+              <span class="symbol-tag">ETHUSDT <span class="x">×</span></span>
+              <span class="symbol-tag">SOLUSDT <span class="x">×</span></span>
+            </div>
+            <input type="text" class="form-input" placeholder="搜索币种添加...">
+          </div>
+          <div class="form-row">
+            <label class="form-label">排除币种</label>
+            <input type="text" class="form-input" placeholder="例如：DOGE,SHIB（逗号分隔）">
+          </div>
+        </div>
+      </div>
+
+      <!-- 市场数据（OHLCV + 时间周期） -->
+      <div class="config-section">
+        <div class="section-head open" onclick="toggleSec(this)">
+          <div class="left"><span style="color: #F59E0B;">📊</span><span class="title">市场数据</span><span style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">— AI 分析所需的核心价格数据</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body open">
+          <!-- OHLCV 必须项卡片 -->
+          <div style="background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 12px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(245,158,11,0.15); display: flex; align-items: center; justify-content: center; font-size: 16px;">📈</div>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-main);">
+                OHLCV 原始 K 线
+                <span style="font-size: 9px; padding: 1px 6px; background: rgba(245,158,11,0.2); color: var(--warning); border-radius: 4px;">🔒 必须</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">必须 · 开高低收量原始数据，AI 核心分析依据</div>
+            </div>
+            <div style="width: 18px; height: 18px; border-radius: 4px; background: var(--warning); color: #000; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;">✓</div>
+          </div>
+
+          <!-- 时间周期分组（多选） -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); font-weight: 600;">
+              <span>🕐</span>时间周期
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 10px; color: var(--text-muted);">K 线数量:</span>
+              <input type="number" value="30" style="width: 50px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; color: var(--text-main); font-size: 11px; text-align: center;">
+            </div>
+          </div>
+          <div style="font-size: 9px; color: var(--text-muted); margin-bottom: 8px;">选择 K 线分析周期，★ 为主周期（双击设置）</div>
+
+          <!-- 4 行分组 -->
+          <div style="display: grid; grid-template-columns: 32px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 10px; color: var(--danger); font-weight: 600;">超短</span>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <button class="tf-chip">1m</button>
+              <button class="tf-chip">3m</button>
+              <button class="tf-chip">5m</button>
+            </div>
+
+            <span style="font-size: 10px; color: var(--warning); font-weight: 600;">日内</span>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <button class="tf-chip primary-on">15m ★</button>
+              <button class="tf-chip">30m</button>
+              <button class="tf-chip on">1h</button>
+            </div>
+
+            <span style="font-size: 10px; color: var(--success); font-weight: 600;">波段</span>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <button class="tf-chip">2h</button>
+              <button class="tf-chip on" style="border-color: var(--success); color: var(--success);">4h</button>
+              <button class="tf-chip">6h</button>
+              <button class="tf-chip">8h</button>
+              <button class="tf-chip">12h</button>
+            </div>
+
+            <span style="font-size: 10px; color: var(--primary); font-weight: 600;">趋势</span>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              <button class="tf-chip">1D</button>
+              <button class="tf-chip">3D</button>
+              <button class="tf-chip">1W</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 技术指标 -->
+      <div class="config-section">
+        <div class="section-head open" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--success);">📈</span><span class="title">技术指标</span><span style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">— 可选的技术分析指标，AI 可自行计算</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body open">
+          <!-- 提示条 -->
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px; margin-bottom: 10px; font-size: 10px; color: var(--text-body); line-height: 1.5;">
+            <span style="color: var(--warning);">💡</span>
+            <span>提示：AI 可自行计算这些指标，开启可减少 AI 计算量</span>
+          </div>
+
+          <!-- 指标卡片网格 -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: var(--warning);"></span>
+                <span class="ind-name">EMA 均线</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">指数移动平均线</div>
+              <input type="text" class="ind-input" value="21,55">
+            </div>
+
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: #C084FC;"></span>
+                <span class="ind-name">MACD</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">异同移动平均线</div>
+              <input type="text" class="ind-input" placeholder="12,26,9">
+            </div>
+
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: var(--danger);"></span>
+                <span class="ind-name">RSI</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">相对强弱指标</div>
+              <input type="text" class="ind-input" value="7,14">
+            </div>
+
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: var(--primary);"></span>
+                <span class="ind-name">ATR</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">真实波幅均值</div>
+              <input type="text" class="ind-input" value="14">
+            </div>
+
+            <div class="ind-card">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: var(--success);"></span>
+                <span class="ind-name">BOLL 布林带</span>
+                <span class="ind-chk">○</span>
+              </div>
+              <div class="ind-desc">价格通道指标</div>
+              <input type="text" class="ind-input" placeholder="20,2">
+            </div>
+
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: #06B6D4;"></span>
+                <span class="ind-name">成交量</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">Volume 数据</div>
+              <input type="text" class="ind-input" disabled placeholder="—">
+            </div>
+
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: #F59E0B;"></span>
+                <span class="ind-name">持仓量 OI</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">Open Interest</div>
+              <input type="text" class="ind-input" disabled placeholder="—">
+            </div>
+
+            <div class="ind-card on">
+              <div class="ind-head">
+                <span class="ind-dot" style="background: #A78BFA;"></span>
+                <span class="ind-name">资金费率</span>
+                <span class="ind-chk">✓</span>
+              </div>
+              <div class="ind-desc">Funding Rate</div>
+              <input type="text" class="ind-input" disabled placeholder="—">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 风控（AI 通用） -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--danger);">🛡</span><span class="title">风控参数</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="form-row form-row-2">
+            <div><label class="form-label">最大持仓数</label><input type="number" class="form-input" value="3"></div>
+            <div><label class="form-label">保证金上限 (%)</label><input type="number" class="form-input" value="90"></div>
+          </div>
+          <div class="form-row form-row-2">
+            <div><label class="form-label">BTC/ETH 杠杆</label><input type="number" class="form-input" value="10"></div>
+            <div><label class="form-label">山寨币杠杆</label><input type="number" class="form-input" value="5"></div>
+          </div>
+          <div class="form-row form-row-2">
+            <div><label class="form-label">最小 R:R 比</label><input type="number" class="form-input" value="1.5" step="0.1"></div>
+            <div><label class="form-label">最小置信度 (%)</label><input type="number" class="form-input" value="60"></div>
+          </div>
+          <div class="form-row">
+            <label class="form-label">最小持仓时间（秒）</label>
+            <input type="number" class="form-input" value="720">
+            <div class="form-help">后端强制 ≥ 720 秒</div>
+          </div>
+          <div class="form-row">
+            <label class="form-label">策略模式</label>
+            <select class="form-select">
+              <option>aggressive · 激进</option>
+              <option selected>balanced · 平衡</option>
+              <option>high_win_rate · 高胜率</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prompt 自定义 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: #C084FC;">📝</span><span class="title">Prompt 自定义</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="form-row">
+            <label class="form-label">角色定义</label>
+            <textarea class="form-textarea" rows="2" placeholder="覆盖默认 AI 角色描述"></textarea>
+          </div>
+          <div class="form-row">
+            <label class="form-label">交易频率说明</label>
+            <textarea class="form-textarea" rows="2" placeholder="例如：偏好低频高质量信号"></textarea>
+          </div>
+          <div class="form-row">
+            <label class="form-label">入场标准</label>
+            <textarea class="form-textarea" rows="2" placeholder="例如：必须 EMA 趋势 + OI 扩张"></textarea>
+          </div>
+          <div class="form-row">
+            <label class="form-label">决策流程</label>
+            <textarea class="form-textarea" rows="2" placeholder="例如：先看高周期趋势，再看主周期入场"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 网格 Pane ====== -->
+    <div class="pane" id="pane-grid">
+      <!-- 网格基础 -->
+      <div class="config-section">
+        <div class="section-head open" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--success);">🎯</span><span class="title">网格基础</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body open">
+          <div class="form-row">
+            <label class="form-label">交易币种</label>
+            <select class="form-select">
+              <option>SOLUSDT</option>
+              <option>BTCUSDT</option>
+              <option>ETHUSDT</option>
+            </select>
+            <div class="form-help">网格策略仅支持单一币种</div>
+          </div>
+          <div class="form-row">
+            <label class="form-label">投资金额 (USDT)</label>
+            <input type="number" class="form-input" value="1000">
+          </div>
+          <div class="form-row form-row-2">
+            <div>
+              <label class="form-label">杠杆 (1-20)</label>
+              <select class="form-select">
+                <option>1x</option><option>2x</option>
+                <option selected>3x</option><option>5x</option><option>10x</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">网格数 (5-50)</label>
+              <input type="number" class="form-input" value="20">
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="form-label">资金分配</label>
+            <select class="form-select">
+              <option value="uniform" selected>均等 (uniform)</option>
+              <option value="gaussian">高斯 (gaussian)</option>
+              <option value="pyramid">金字塔 (pyramid)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 价格边界 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: #F59E0B;">📐</span><span class="title">价格边界</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="sw-row" style="margin-bottom: 8px;">
+            <span>使用 ATR 自动计算</span>
+            <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+          </div>
+          <div class="form-row">
+            <label class="form-label">ATR 倍数</label>
+            <input type="number" class="form-input" value="2.0" step="0.1">
+            <div class="form-help">边界距当前价格的 ATR 倍数</div>
+          </div>
+          <div class="form-row form-row-2">
+            <div>
+              <label class="form-label">上边界（手动）</label>
+              <input type="number" class="form-input" value="0">
+              <div class="form-help">0 = 自动</div>
+            </div>
+            <div>
+              <label class="form-label">下边界（手动）</label>
+              <input type="number" class="form-input" value="0">
+              <div class="form-help">0 = 自动</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 网格风控 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--danger);">🛡</span><span class="title">风控参数</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="form-row">
+            <label class="form-label">单仓位止损 (%)</label>
+            <input type="number" class="form-input" value="3.0" step="0.1">
+          </div>
+          <div class="form-row">
+            <label class="form-label">每日最大亏损 (%)</label>
+            <input type="number" class="form-input" value="5.0" step="0.5">
+          </div>
+          <div class="form-row">
+            <label class="form-label">最大回撤 (%)</label>
+            <input type="number" class="form-input" value="10.0" step="0.5">
+          </div>
+          <div class="sw-row">
+            <span>仅 Maker 单（降低手续费）</span>
+            <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 方向自适应（HOOT 增强） -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--primary);">🧭</span><span class="title">方向自适应</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="sw-row" style="margin-bottom: 8px;">
+            <div>
+              <div>启用方向偏向</div>
+              <div style="font-size: 9px; color: var(--text-muted);">短期突破偏向 / 中期突破全仓</div>
+            </div>
+            <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+          </div>
+          <div class="form-row">
+            <label class="form-label">偏向比例</label>
+            <input type="number" class="form-input" value="0.7" step="0.1">
+            <div class="form-help">0.7 = 突破方向 70% / 反向 30%</div>
+          </div>
+          <div style="padding: 8px; background: rgba(99,102,241,0.06); border-left: 2px solid var(--primary); border-radius: 4px; font-size: 10px; color: var(--text-body); line-height: 1.5;">
+            📐 短期箱体突破 → 偏向<br>
+            📈 中期箱体突破 → 全仓<br>
+            📉 价格回归 → 渐进恢复中性
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== Arena Pane ====== -->
+    <div class="pane" id="pane-arena">
+      <!-- 决策流程 -->
+      <div class="config-section">
+        <div class="section-head open" onclick="toggleSec(this)">
+          <div class="left"><span style="color: #C084FC;">⚔️</span><span class="title">决策流程</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body open">
+          <div class="flow-step"><div class="flow-num">1</div><div><div class="flow-name">分析师采集数据</div><div class="flow-desc">技术 / 新闻 / 情绪 / 基本面</div></div></div>
+          <div class="flow-step"><div class="flow-num">2</div><div><div class="flow-name">牛 / 熊研究员辩论</div><div class="flow-desc">Bull vs Bear 多轮交锋</div></div></div>
+          <div class="flow-step"><div class="flow-num">3</div><div><div class="flow-name">研究主管裁决</div><div class="flow-desc">综合双方观点</div></div></div>
+          <div class="flow-step"><div class="flow-num">4</div><div><div class="flow-name">交易员制定方案</div><div class="flow-desc">入场/止损/止盈/杠杆</div></div></div>
+          <div class="flow-step"><div class="flow-num">5</div><div><div class="flow-name">三方风控辩论</div><div class="flow-desc">激进 / 保守 / 中性</div></div></div>
+          <div class="flow-step"><div class="flow-num">6</div><div><div class="flow-name">组合经理 + 信号提取</div><div class="flow-desc">输出可执行交易信号</div></div></div>
+        </div>
+      </div>
+
+      <!-- 交易币种 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: #F59E0B;">🪙</span><span class="title">交易币种</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="form-row">
+            <div style="margin-bottom: 6px;">
+              <span class="symbol-tag">BTCUSDT <span class="x">×</span></span>
+            </div>
+            <input type="text" class="form-input" placeholder="例如 ETHUSDT，按 Enter 添加">
+            <div class="form-help">输入交易对后按 Enter 添加</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分析师团队 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--primary);">👥</span><span class="title">分析师团队（至少 1）</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="analyst-row on">
+            <div class="icn" style="background: rgba(99,102,241,0.15); color: var(--primary);">📊</div>
+            <div class="info"><div class="name">技术分析师</div><div class="desc">价格 + RSI/MACD/BB/ATR</div></div>
+            <div class="chk">✓</div>
+          </div>
+          <div class="analyst-row on">
+            <div class="icn" style="background: rgba(34,197,94,0.15); color: var(--success);">📰</div>
+            <div class="info"><div class="name">新闻分析师</div><div class="desc">宏观新闻 + 项目新闻</div></div>
+            <div class="chk">✓</div>
+          </div>
+          <div class="analyst-row on">
+            <div class="icn" style="background: rgba(245,158,11,0.15); color: var(--warning);">💬</div>
+            <div class="info"><div class="name">情绪分析师</div><div class="desc">社交媒体 + 公众讨论</div></div>
+            <div class="chk">✓</div>
+          </div>
+          <div class="analyst-row on">
+            <div class="icn" style="background: rgba(192,132,252,0.15); color: #C084FC;">🔬</div>
+            <div class="info"><div class="name">基本面分析师</div><div class="desc">OI / 资金费率 / 链上</div></div>
+            <div class="chk">✓</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 辩论设置 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--danger);">🎤</span><span class="title">辩论设置</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="form-row">
+            <label class="form-label">投研辩论轮数 (Bull vs Bear)</label>
+            <select class="form-select">
+              <option selected>1 轮</option>
+              <option>2 轮</option>
+              <option>3 轮</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">风控辩论轮数（激进/保守/中性）</label>
+            <select class="form-select">
+              <option selected>1 轮</option>
+              <option>2 轮</option>
+              <option>3 轮</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 风险偏好 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--warning);">⚖</span><span class="title">风险偏好</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="risk-3">
+            <div class="opt"><div class="nm" style="color: var(--danger);">激进</div><div class="ds">高收益高风险</div></div>
+            <div class="opt on"><div class="nm" style="color: #C084FC;">平衡</div><div class="ds">收益风险平衡</div></div>
+            <div class="opt"><div class="nm" style="color: var(--success);">保守</div><div class="ds">优先保护本金</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arena 风控 -->
+      <div class="config-section">
+        <div class="section-head" onclick="toggleSec(this)">
+          <div class="left"><span style="color: var(--danger);">🛡</span><span class="title">风控参数</span></div>
+          <span class="arrow">▶</span>
+        </div>
+        <div class="section-body">
+          <div class="form-row form-row-2">
+            <div><label class="form-label">最大持仓数</label><input type="number" class="form-input" value="5"></div>
+            <div><label class="form-label">保证金上限 (%)</label><input type="number" class="form-input" value="90"></div>
+          </div>
+          <div class="form-row form-row-2">
+            <div><label class="form-label">BTC/ETH 杠杆</label><input type="number" class="form-input" value="5"></div>
+            <div><label class="form-label">山寨币杠杆</label><input type="number" class="form-input" value="5"></div>
+          </div>
+          <div class="form-row">
+            <label class="form-label">最小持仓时间（秒）</label>
+            <input type="number" class="form-input" value="720">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-actions">
+      <button class="btn btn-secondary" onclick="history.back()">取消</button>
+      <a class="btn btn-secondary" href="strategy-prompt.html">📄 Prompt</a>
+      <a class="btn btn-secondary" href="strategy-test.html">🧪 测试</a>
+      <button class="btn btn-primary">保存</button>
+    </div>
+  </div>
+
+  <script>
+    function switchType(ev, name) {
+      document.querySelectorAll('.type-tab').forEach(t => t.classList.remove('active'));
+      ev.currentTarget.classList.add('active');
+      document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+      document.getElementById('pane-' + name).classList.add('active');
+    }
+    function toggleSec(el) {
+      const body = el.nextElementSibling;
+      el.classList.toggle('open');
+      body.classList.toggle('open');
+    }
+  </script>
+</body>
+</html>

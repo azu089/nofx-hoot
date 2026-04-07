@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOOT 原型 - 入口</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, 'SF Pro Display', 'PingFang SC', Inter, sans-serif;
+      background: #0A0A1A;
+      color: #F9FAFB;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #6366F1, #C084FC);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+    }
+    .subtitle {
+      text-align: center;
+      color: #94A3B8;
+      font-size: 14px;
+      margin-bottom: 48px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .preview-card {
+      background: #12122A;
+      border: 1px solid #1E1E2E;
+      border-radius: 20px;
+      padding: 24px;
+      transition: all 0.3s;
+    }
+    .preview-card:hover {
+      border-color: #6366F1;
+      transform: translateY(-2px);
+    }
+    .preview-card h2 {
+      font-size: 18px;
+      margin-bottom: 4px;
+      color: #F9FAFB;
+    }
+    .preview-card p {
+      font-size: 12px;
+      color: #94A3B8;
+      margin-bottom: 16px;
+    }
+    .preview-card iframe {
+      width: 390px;
+      height: 700px;
+      border: 1px solid #1E1E2E;
+      border-radius: 24px;
+      background: #0A0A1A;
+      display: block;
+      margin: 0 auto;
+    }
+    .preview-card a {
+      display: block;
+      text-align: center;
+      margin-top: 16px;
+      padding: 10px;
+      background: rgba(99, 102, 241, 0.15);
+      color: #6366F1;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .preview-card a:hover {
+      background: #6366F1;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>HOOT UI 原型</h1>
+  <div class="subtitle">3 主页面 + 4 子页面 · 完全对照 nofx 功能</div>
+
+  <div style="max-width: 1400px; margin: 0 auto 32px; padding: 16px 24px; background: #12122A; border: 1px solid #1E1E2E; border-radius: 16px;">
+    <div style="font-size: 13px; color: #94A3B8; margin-bottom: 12px;">📂 子页面快速跳转</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+      <a href="dashboard.html" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">看板·概览</a>
+      <a href="dashboard.html#tab-positions" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">看板·持仓</a>
+      <a href="dashboard.html#tab-decisions" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">看板·决策</a>
+      <a href="dashboard.html#tab-history" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">看板·历史</a>
+      <a href="strategy-edit.html" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">策略·编辑</a>
+      <a href="strategy-prompt.html" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">策略·Prompt 预览</a>
+      <a href="strategy-test.html" style="padding: 6px 12px; background: rgba(99,102,241,0.15); color: #6366F1; border-radius: 6px; text-decoration: none; font-size: 12px;">策略·AI 测试</a>
+      <a href="config-model.html" style="padding: 6px 12px; background: rgba(245,158,11,0.15); color: #F59E0B; border-radius: 6px; text-decoration: none; font-size: 12px;">配置·添加模型</a>
+      <a href="config-exchange.html" style="padding: 6px 12px; background: rgba(245,158,11,0.15); color: #F59E0B; border-radius: 6px; text-decoration: none; font-size: 12px;">配置·添加交易所</a>
+      <a href="config-trader.html" style="padding: 6px 12px; background: rgba(245,158,11,0.15); color: #F59E0B; border-radius: 6px; text-decoration: none; font-size: 12px;">配置·添加交易员</a>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="preview-card">
+      <h2>主 1：配置</h2>
+      <p>AI 模型 · 交易所 · 交易员 (3 区块同页)</p>
+      <iframe src="config.html"></iframe>
+      <a href="config.html" target="_blank">全屏查看</a>
+    </div>
+
+    <div class="preview-card">
+      <h2>主 2：看板</h2>
+      <p>顶部 Tab：概览 · 持仓 · 决策 · 历史</p>
+      <iframe src="dashboard.html"></iframe>
+      <a href="dashboard.html" target="_blank">全屏查看</a>
+    </div>
+
+    <div class="preview-card">
+      <h2>主 3：策略</h2>
+      <p>策略卡片列表 · 创建 · 编辑 · Prompt 预览</p>
+      <iframe src="strategy.html"></iframe>
+      <a href="strategy.html" target="_blank">全屏查看</a>
+    </div>
+  </div>
+</body>
+</html>

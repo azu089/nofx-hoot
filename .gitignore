@@ -65,3 +65,4 @@ training/user_data/backtest_results/
 # 本地引用和训练日志
 reference/
 training/user_data/logs/
+*.tsbuildinfo

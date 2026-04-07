@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=390, initial-scale=1.0">
+  <title>HOOT - 交易员配置</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .nav-back { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+    .nav-back .back-btn { background: none; border: none; color: var(--text-main); font-size: 18px; cursor: pointer; padding: 4px; }
+    .nav-back .nav-title { font-size: 16px; font-weight: 600; color: var(--text-main); flex: 1; }
+
+    .form-section {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px; margin: 12px 20px;
+    }
+    .form-section-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 14px; font-weight: 600; color: var(--text-main);
+      margin-bottom: 14px;
+    }
+    .form-section-title .num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--primary-dim); color: var(--primary);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+    }
+    .form-row { margin-bottom: 14px; }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-label { display: block; font-size: 12px; color: var(--text-body); margin-bottom: 6px; font-weight: 500; }
+    .form-input, .form-select { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text-main); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .form-help { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* 双按钮切换组（全仓/逐仓 · 显示/隐藏） */
+    .toggle-group { display: flex; gap: 8px; }
+    .toggle-group button {
+      flex: 1; padding: 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+    }
+    .toggle-group button.active {
+      background: var(--primary);
+      color: #fff; border-color: var(--primary);
+    }
+
+    /* 策略预览 */
+    .strategy-preview {
+      margin-top: 10px;
+      padding: 12px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .strategy-preview .head {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 8px;
+    }
+    .strategy-preview .head .lbl { font-size: 11px; color: var(--primary); font-weight: 600; }
+    .strategy-preview .desc { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
+    .strategy-preview .meta {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+      font-size: 10px; color: var(--text-muted);
+    }
+    .strategy-preview .meta .v { color: var(--text-main); }
+
+    /* 注册链接 */
+    .ext-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      margin-top: 6px;
+      font-size: 10px; color: var(--text-muted);
+      text-decoration: none;
+    }
+    .ext-link:hover { color: var(--primary); }
+
+    /* 提示条 */
+    .info-box {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 11px; color: var(--text-muted);
+      margin-top: 10px;
+    }
+    .info-box .icon { color: var(--primary); flex-shrink: 0; }
+
+    .footer-actions {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 390px; padding: 12px 20px; background: rgba(10,10,26,0.95);
+      backdrop-filter: blur(20px); border-top: 1px solid var(--border);
+      display: flex; gap: 10px; z-index: 100;
+    }
+    .footer-actions .btn { flex: 1; padding: 12px; }
+  </style>
+</head>
+<body>
+  <div class="mobile-container" style="padding-bottom: 90px;">
+    <div class="nav-back">
+      <button class="back-btn" onclick="history.back()">←</button>
+      <div class="nav-title">添加交易员</div>
+    </div>
+
+    <!-- ① 基础配置 -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="num">1</span> 基础配置
+      </div>
+      <div class="form-row">
+        <label class="form-label">交易员名称 <span style="color: var(--danger);">*</span></label>
+        <input type="text" class="form-input" placeholder="例如：BTC 主力">
+      </div>
+      <div class="form-row form-row-2">
+        <div>
+          <label class="form-label">AI 模型 <span style="color: var(--danger);">*</span></label>
+          <select class="form-select">
+            <option>DEEPSEEK</option>
+            <option>QWEN</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">交易所 <span style="color: var(--danger);">*</span></label>
+          <select class="form-select">
+            <option>BINANCE - 测试网</option>
+            <option>BINANCE - 实盘</option>
+          </select>
+          <a class="ext-link" href="#">👤 没有交易所账户？</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 选择交易策略 -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="num">2</span> 选择交易策略 ✨
+      </div>
+      <div class="form-row">
+        <label class="form-label">使用策略</label>
+        <select class="form-select">
+          <option value="">无策略（手动模式）</option>
+          <option selected>ai 智能交易（激活中）</option>
+          <option>网格 SOL</option>
+          <option>Arena 测试</option>
+        </select>
+      </div>
+
+      <!-- 策略预览 -->
+      <div class="strategy-preview">
+        <div class="head">
+          <span class="lbl">📋 策略详情</span>
+          <span class="badge badge-success" style="font-size: 9px;">激活中</span>
+        </div>
+        <div class="desc">基于多 AI 模型分析多维市场数据自主决策开/平仓</div>
+        <div class="meta">
+          <div>币种来源：<span class="v">固定币种</span></div>
+          <div>保证金上限：<span class="v">90%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 交易参数 -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="num">3</span> 交易参数
+      </div>
+      <div class="form-row form-row-2">
+        <div>
+          <label class="form-label">保证金模式</label>
+          <div class="toggle-group">
+            <button type="button" class="active">全仓</button>
+            <button type="button">逐仓</button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">AI 扫描间隔（分）</label>
+          <input type="number" class="form-input" value="3" min="3" max="60">
+          <div class="form-help">推荐 3-15 分钟</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">排行榜显示</label>
+        <div class="toggle-group">
+          <button type="button" class="active">显示</button>
+          <button type="button">隐藏</button>
+        </div>
+        <div class="form-help">隐藏后不会出现在公开排行榜</div>
+      </div>
+
+      <!-- 创建模式提示 -->
+      <div class="info-box">
+        <span class="icon">ⓘ</span>
+        <span>初始余额将在保存后自动从交易所获取</span>
+      </div>
+    </div>
+
+    <div class="footer-actions">
+      <button class="btn btn-secondary" onclick="history.back()">取消</button>
+      <button class="btn btn-primary">创建交易员</button>
+    </div>
+  </div>
+</body>
+</html>

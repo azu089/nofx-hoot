@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=390, initial-scale=1.0">
+  <title>HOOT - 看板</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    /* 看板专属 */
+    .trader-switcher {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin: 0 20px 16px;
+    }
+
+    .trader-status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .asset-hero {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .asset-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .tab-content {
+      padding: 0;
+    }
+
+    /* 微型图表线 */
+    .spark-line {
+      width: 100%;
+      height: 180px;
+    }
+
+    /* ====== 持仓 Tab ====== */
+    .pos-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .pos-card .row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .pos-card .symbol { font-size: 16px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+    .pos-card .side-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; letter-spacing: 0.3px; }
+    .pos-card .side-long { background: rgba(34,197,94,0.15); color: var(--success); }
+    .pos-card .side-short { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .pos-card .pnl-amt { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+    .pos-card .pnl-pct { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+    .pos-card .grid4 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .pos-card .kv { display: flex; justify-content: space-between; font-size: 11px; }
+    .pos-card .kv .k { color: var(--text-muted); }
+    .pos-card .kv .v { color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+    /* ====== 决策 Tab ====== */
+    .dec-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .dec-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .dec-cycle { font-size: 13px; font-weight: 700; color: var(--text-main); }
+    .dec-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .action-card {
+      background: var(--bg-elevated);
+      border-left: 3px solid var(--primary);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .action-card.long { border-left-color: var(--success); }
+    .action-card.short { border-left-color: var(--danger); }
+    .action-card.wait { border-left-color: var(--text-muted); }
+    .ac-row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .ac-tag { display: flex; align-items: center; gap: 6px; }
+    .ac-action { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ac-symbol { font-size: 14px; font-weight: 700; color: var(--text-main); }
+    .ac-conf { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+    .ac-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+    .ac-cell { background: rgba(0,0,0,0.25); border-radius: 6px; padding: 6px 8px; }
+    .ac-cell .lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+    .ac-cell .val { font-size: 12px; font-weight: 600; color: var(--text-main); font-variant-numeric: tabular-nums; }
+    .ac-cell .sub { font-size: 9px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .ac-rr { font-size: 10px; color: var(--text-muted); margin-bottom: 8px; padding: 4px 8px; background: rgba(0,0,0,0.2); border-radius: 4px; }
+    .ac-reason { font-size: 11px; color: var(--text-body); line-height: 1.5; padding: 8px; background: rgba(99,102,241,0.06); border-left: 2px solid var(--primary); border-radius: 4px; }
+
+    .collapse-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 10px; margin-top: 8px;
+      background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px;
+      font-size: 11px; color: var(--text-body); cursor: pointer;
+    }
+    .collapse-row .icn { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .collapse-row .arrow { font-size: 9px; color: var(--text-muted); }
+    .collapse-body {
+      display: none;
+      margin-top: 6px; padding: 10px;
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px;
+      font-family: 'SF Mono', Menlo, monospace; font-size: 10px; line-height: 1.6;
+      color: var(--text-body); white-space: pre-wrap; max-height: 200px; overflow-y: auto;
+    }
+    .collapse-body.open { display: block; }
+
+    .exec-log { margin-top: 8px; }
+    .exec-log .log-line {
+      display: flex; gap: 6px; padding: 4px 8px;
+      font-family: 'SF Mono', Menlo, monospace; font-size: 10px;
+      color: var(--text-body); background: rgba(0,0,0,0.3); border-radius: 4px; margin-bottom: 2px;
+    }
+    .exec-log .log-line.ok { color: var(--success); }
+    .exec-log .log-line.err { color: var(--danger); }
+
+    /* ====== 历史 Tab ====== */
+    .hist-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .hist-row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .hist-symbol { font-size: 14px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 6px; }
+    .hist-pnl { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .hist-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; font-size: 10px; }
+    .hist-grid .k { color: var(--text-muted); }
+    .hist-grid .v { color: var(--text-main); font-variant-numeric: tabular-nums; }
+    .hist-reason { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-muted); }
+
+    .dir-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .dir-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+    .dir-box .lbl { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .dir-box .num { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .dir-box .sub { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+    /* tab content 切换 */
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+</style>
+</head>
+<body>
+  <div class="mobile-container">
+    <!-- 顶部 Logo 栏 -->
+    <div class="top-bar">
+      <div class="logo">H</div>
+      <div class="brand">HOOT</div>
+    </div>
+
+    <!-- 交易员切换器 -->
+    <div class="trader-switcher" style="margin-top: 12px;">
+      <div class="trader-avatar">A</div>
+      <div class="trader-info">
+        <div class="trader-name">ai 交易 <span style="color: var(--text-muted); font-size: 12px; font-weight: 400;">▾</span></div>
+        <div class="trader-meta">
+          <span class="trader-status-indicator" style="display: inline-block; vertical-align: middle; margin-right: 4px;"></span>
+          运行中 · DeepSeek · Binance 测试
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm" style="padding: 8px 12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="4" width="4" height="16"/>
+          <rect x="14" y="4" width="4" height="16"/>
+        </svg>
+        停止
+      </button>
+    </div>
+
+    <!-- 资产大号显示 -->
+    <div class="asset-hero">
+      <div class="asset-label">总资产</div>
+      <div class="big-number" style="justify-content: center;">
+        <span class="currency">$</span>
+        <span class="integer">3,070</span>
+        <span class="decimal">.92</span>
+        <span class="unit">USDT</span>
+      </div>
+      <div style="margin-top: 8px;">
+        <span class="change-value up">
+          +$12.50 &nbsp; (+0.40%) ↑
+        </span>
+        <span style="color: var(--text-dim); font-size: 12px; margin-left: 8px;">· 今日</span>
+      </div>
+    </div>
+
+    <!-- 顶部 Tab -->
+    <div class="top-tabs">
+      <button class="top-tab active" onclick="showTab(event,'overview')">概览</button>
+      <button class="top-tab" onclick="showTab(event,'positions')">持仓 · 1</button>
+      <button class="top-tab" onclick="showTab(event,'decisions')">决策</button>
+      <button class="top-tab" onclick="showTab(event,'history')">历史</button>
+    </div>
+
+    <!-- Tab 内容：概览 -->
+    <div class="tab-content tab-pane active" id="tab-overview">
+      <!-- 账户数据网格 -->
+      <div style="padding: 0 20px 20px;">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">可用余额</div>
+            <div class="stat-value tabular">3,070.92</div>
+            <div class="stat-extra">USDT · 100% 空闲</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">总盈亏</div>
+            <div class="stat-value tabular" style="color: var(--success);">+12.50</div>
+            <div class="stat-extra" style="color: var(--success);">+0.40%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">持仓数</div>
+            <div class="stat-value">1 <span style="font-size: 12px; color: var(--text-muted); font-weight: 400;">ACTIVE</span></div>
+            <div class="stat-extra">保证金 34.1%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Cycles</div>
+            <div class="stat-value tabular">1,247</div>
+            <div class="stat-extra">运行 4h 23m</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 权益曲线 -->
+      <div style="padding: 0 20px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">权益曲线</div>
+          <div style="display: flex; gap: 4px;">
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 11px;">1D</button>
+            <button class="btn btn-primary btn-sm" style="padding: 4px 10px; font-size: 11px;">7D</button>
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 11px;">30D</button>
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 11px;">ALL</button>
+          </div>
+        </div>
+        <div class="chart-placeholder">
+          <svg class="spark-line" viewBox="0 0 350 180" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:#6366F1;stop-opacity:0.3"/>
+                <stop offset="100%" style="stop-color:#6366F1;stop-opacity:0"/>
+              </linearGradient>
+            </defs>
+            <path d="M 10,120 L 40,110 L 70,125 L 100,100 L 130,105 L 160,85 L 190,90 L 220,70 L 250,75 L 280,55 L 310,60 L 340,45 L 340,180 L 10,180 Z"
+                  fill="url(#grad1)"/>
+            <path d="M 10,120 L 40,110 L 70,125 L 100,100 L 130,105 L 160,85 L 190,90 L 220,70 L 250,75 L 280,55 L 310,60 L 340,45"
+                  fill="none" stroke="#6366F1" stroke-width="2"/>
+          </svg>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+          <span>起点 $3,000.00</span>
+          <span>当前 $3,070.92</span>
+          <span class="change-value up">+2.33%</span>
+        </div>
+      </div>
+
+      <!-- 运行状态 -->
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            运行状态
+          </div>
+        </div>
+        <div class="card">
+          <div class="data-row">
+            <span class="label">策略</span>
+            <span class="value">ai 智能交易</span>
+          </div>
+          <div class="data-row">
+            <span class="label">AI 模型</span>
+            <span class="value">DeepSeek</span>
+          </div>
+          <div class="data-row">
+            <span class="label">交易所</span>
+            <span class="value">Binance 测试</span>
+          </div>
+          <div class="data-row">
+            <span class="label">扫描间隔</span>
+            <span class="value">15 分钟</span>
+          </div>
+          <div class="data-row">
+            <span class="label">周期数</span>
+            <span class="value tabular">1,247</span>
+          </div>
+          <div class="data-row">
+            <span class="label">运行时间</span>
+            <span class="value">4h 23m</span>
+          </div>
+          <div class="data-row">
+            <span class="label">最后更新</span>
+            <span class="value">17:24:02</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== Tab 内容：持仓 ====== -->
+    <div class="tab-pane" id="tab-positions">
+      <!-- K 线图区（对照 nofx ChartTabs） -->
+      <div style="padding: 0 20px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <select style="background: var(--bg-elevated); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600;">
+            <option>BTCUSDT</option>
+            <option>ETHUSDT</option>
+            <option>SOLUSDT</option>
+          </select>
+          <div style="display: flex; gap: 4px;">
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 10px;">1m</button>
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 10px;">5m</button>
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 10px;">15m</button>
+            <button class="btn btn-primary btn-sm" style="padding: 4px 8px; font-size: 10px;">1h</button>
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 10px;">4h</button>
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 10px;">1d</button>
+          </div>
+        </div>
+        <!-- K线占位（蜡烛图 SVG） -->
+        <div class="chart-placeholder" style="height: 240px; padding: 12px;">
+          <svg viewBox="0 0 350 220" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+            <!-- 网格 -->
+            <line x1="0" y1="44" x2="350" y2="44" stroke="#1E1E2E" stroke-dasharray="2,4"/>
+            <line x1="0" y1="88" x2="350" y2="88" stroke="#1E1E2E" stroke-dasharray="2,4"/>
+            <line x1="0" y1="132" x2="350" y2="132" stroke="#1E1E2E" stroke-dasharray="2,4"/>
+            <line x1="0" y1="176" x2="350" y2="176" stroke="#1E1E2E" stroke-dasharray="2,4"/>
+            <!-- 蜡烛 (示意) -->
+            <g stroke-width="1">
+              <line x1="15" y1="80" x2="15" y2="140" stroke="#22C55E"/><rect x="11" y="95" width="8" height="35" fill="#22C55E"/>
+              <line x1="30" y1="70" x2="30" y2="130" stroke="#22C55E"/><rect x="26" y="80" width="8" height="40" fill="#22C55E"/>
+              <line x1="45" y1="85" x2="45" y2="150" stroke="#EF4444"/><rect x="41" y="90" width="8" height="50" fill="#EF4444"/>
+              <line x1="60" y1="60" x2="60" y2="120" stroke="#22C55E"/><rect x="56" y="70" width="8" height="40" fill="#22C55E"/>
+              <line x1="75" y1="55" x2="75" y2="115" stroke="#22C55E"/><rect x="71" y="65" width="8" height="40" fill="#22C55E"/>
+              <line x1="90" y1="65" x2="90" y2="135" stroke="#EF4444"/><rect x="86" y="75" width="8" height="50" fill="#EF4444"/>
+              <line x1="105" y1="50" x2="105" y2="110" stroke="#22C55E"/><rect x="101" y="60" width="8" height="40" fill="#22C55E"/>
+              <line x1="120" y1="40" x2="120" y2="95" stroke="#22C55E"/><rect x="116" y="50" width="8" height="35" fill="#22C55E"/>
+              <line x1="135" y1="35" x2="135" y2="105" stroke="#EF4444"/><rect x="131" y="45" width="8" height="50" fill="#EF4444"/>
+              <line x1="150" y1="30" x2="150" y2="85" stroke="#22C55E"/><rect x="146" y="40" width="8" height="35" fill="#22C55E"/>
+              <line x1="165" y1="40" x2="165" y2="100" stroke="#22C55E"/><rect x="161" y="50" width="8" height="40" fill="#22C55E"/>
+              <line x1="180" y1="55" x2="180" y2="120" stroke="#EF4444"/><rect x="176" y="65" width="8" height="45" fill="#EF4444"/>
+              <line x1="195" y1="45" x2="195" y2="105" stroke="#22C55E"/><rect x="191" y="55" width="8" height="40" fill="#22C55E"/>
+              <line x1="210" y1="35" x2="210" y2="90" stroke="#22C55E"/><rect x="206" y="45" width="8" height="35" fill="#22C55E"/>
+              <line x1="225" y1="50" x2="225" y2="115" stroke="#EF4444"/><rect x="221" y="60" width="8" height="45" fill="#EF4444"/>
+              <line x1="240" y1="40" x2="240" y2="95" stroke="#22C55E"/><rect x="236" y="50" width="8" height="35" fill="#22C55E"/>
+              <line x1="255" y1="30" x2="255" y2="80" stroke="#22C55E"/><rect x="251" y="40" width="8" height="30" fill="#22C55E"/>
+              <line x1="270" y1="35" x2="270" y2="85" stroke="#EF4444"/><rect x="266" y="45" width="8" height="30" fill="#EF4444"/>
+              <line x1="285" y1="25" x2="285" y2="75" stroke="#22C55E"/><rect x="281" y="35" width="8" height="30" fill="#22C55E"/>
+              <line x1="300" y1="20" x2="300" y2="65" stroke="#22C55E"/><rect x="296" y="30" width="8" height="25" fill="#22C55E"/>
+              <line x1="315" y1="30" x2="315" y2="80" stroke="#EF4444"/><rect x="311" y="40" width="8" height="30" fill="#EF4444"/>
+              <line x1="330" y1="20" x2="330" y2="60" stroke="#22C55E"/><rect x="326" y="28" width="8" height="22" fill="#22C55E"/>
+            </g>
+            <!-- EMA 线 -->
+            <polyline points="15,110 30,100 45,108 60,90 75,82 90,98 105,80 120,68 135,75 150,58 165,68 180,82 195,72 210,62 225,78 240,68 255,55 270,60 285,50 300,42 315,55 330,40" fill="none" stroke="#6366F1" stroke-width="1.5" opacity="0.8"/>
+            <!-- 入场标记 -->
+            <line x1="0" y1="68" x2="350" y2="68" stroke="#22C55E" stroke-width="1" stroke-dasharray="4,4" opacity="0.6"/>
+            <text x="345" y="65" text-anchor="end" font-size="9" fill="#22C55E" font-family="monospace">入场 67120</text>
+            <!-- 止损线 -->
+            <line x1="0" y1="160" x2="350" y2="160" stroke="#EF4444" stroke-width="1" stroke-dasharray="4,4" opacity="0.5"/>
+            <text x="345" y="157" text-anchor="end" font-size="9" fill="#EF4444" font-family="monospace">SL 65800</text>
+          </svg>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;">
+          <span>O <span style="color: var(--text-main);">67120</span></span>
+          <span>H <span style="color: var(--success);">68850</span></span>
+          <span>L <span style="color: var(--danger);">66950</span></span>
+          <span>C <span style="color: var(--text-main);">68803</span></span>
+          <span class="change-value up">+2.51%</span>
+        </div>
+      </div>
+
+      <div style="padding: 0 20px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">当前持仓</div>
+          <span class="badge badge-primary">1 ACTIVE</span>
+        </div>
+
+        <!-- 持仓卡片 #1 -->
+        <div class="pos-card">
+          <div class="row1">
+            <div class="symbol">
+              BTCUSDT
+              <span class="side-tag side-long">做多</span>
+            </div>
+            <div>
+              <div class="pnl-amt" style="color: var(--success);">+24.18</div>
+              <div class="pnl-pct" style="color: var(--success);">+2.31%</div>
+            </div>
+          </div>
+          <div class="grid4">
+            <div class="kv"><span class="k">入场价</span><span class="v">67,250.50</span></div>
+            <div class="kv"><span class="k">标记价</span><span class="v">68,803.20</span></div>
+            <div class="kv"><span class="k">数量</span><span class="v">0.0156</span></div>
+            <div class="kv"><span class="k">价值</span><span class="v">1,073.33</span></div>
+            <div class="kv"><span class="k">杠杆</span><span class="v" style="color: var(--primary);">5x</span></div>
+            <div class="kv"><span class="k">强平价</span><span class="v" style="color: var(--danger);">54,800.20</span></div>
+          </div>
+        </div>
+
+        <!-- 空状态示例（注释掉，仅演示）
+        <div style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
+          <div style="font-size: 48px; opacity: 0.3; margin-bottom: 12px;">📊</div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 4px;">暂无持仓</div>
+          <div style="font-size: 12px;">AI 将根据策略自动开仓</div>
+        </div>
+        -->
+      </div>
+    </div>
+
+    <!-- ====== Tab 内容：决策 ====== -->
+    <div class="tab-pane" id="tab-decisions">
+      <div style="padding: 0 20px 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">最近决策</div>
+          <select style="background: var(--bg-elevated); color: var(--text-main); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11px;">
+            <option>最近 5</option>
+            <option>最近 10</option>
+            <option>最近 20</option>
+          </select>
+        </div>
+
+        <!-- 决策卡 #36 -->
+        <div class="dec-card">
+          <div class="dec-head">
+            <div>
+              <div class="dec-cycle">周期 #36</div>
+              <div class="dec-time">2026/4/7 22:36:07</div>
+            </div>
+            <span class="badge badge-success">成功</span>
+          </div>
+
+          <!-- ActionCard #1 - 开多 -->
+          <div class="action-card long">
+            <div class="ac-row1">
+              <div class="ac-tag">
+                <span class="ac-action" style="background: rgba(34,197,94,0.15); color: var(--success);">OPEN LONG</span>
+                <span class="ac-symbol">BTC</span>
+              </div>
+              <span class="ac-conf" style="background: rgba(34,197,94,0.15); color: var(--success);">82%</span>
+            </div>
+            <div class="ac-grid">
+              <div class="ac-cell">
+                <div class="lbl">入场价</div>
+                <div class="val">67,250.50</div>
+              </div>
+              <div class="ac-cell">
+                <div class="lbl">止损</div>
+                <div class="val" style="color: var(--danger);">65,800.00</div>
+                <div class="sub">-2.16%</div>
+              </div>
+              <div class="ac-cell">
+                <div class="lbl">止盈</div>
+                <div class="val" style="color: var(--success);">70,500.00</div>
+                <div class="sub">+4.83%</div>
+              </div>
+              <div class="ac-cell">
+                <div class="lbl">杠杆</div>
+                <div class="val" style="color: var(--primary);">5x</div>
+              </div>
+              <div class="ac-cell">
+                <div class="lbl">数量</div>
+                <div class="val">0.0156</div>
+              </div>
+              <div class="ac-cell">
+                <div class="lbl">名义</div>
+                <div class="val">1,049</div>
+              </div>
+            </div>
+            <div class="ac-rr">R:R = 1 : 2.24 · 风险 $22.6 · 收益 $50.7</div>
+            <div class="ac-reason">
+              <strong>理由：</strong>EMA20 上穿 EMA50，OI 持续扩张，多空比 38%（偏空，反向信号），资金费率 +0.012% 正常区间，4h K 线突破前期高点。综合得分 82。
+            </div>
+          </div>
+
+          <!-- System Prompt 折叠 -->
+          <div class="collapse-row" onclick="toggleCollapse(this)">
+            <span class="icn">⚙️ System Prompt · 4,328 字符</span>
+            <span class="arrow">▶</span>
+          </div>
+          <div class="collapse-body">你是一个专业的加密货币量化交易 AI...（完整系统提示词）</div>
+
+          <!-- User Prompt 折叠 -->
+          <div class="collapse-row" onclick="toggleCollapse(this)">
+            <span class="icn">📨 User Prompt · 12,456 字符</span>
+            <span class="arrow">▶</span>
+          </div>
+          <div class="collapse-body">[市场数据]\nBTCUSDT 当前价格: 67250.50\nOI 变化: +3.2%\n资金费率: +0.012%\n...</div>
+
+          <!-- AI 思维链 折叠 -->
+          <div class="collapse-row" onclick="toggleCollapse(this)">
+            <span class="icn">🧠 AI 思维链 · 2,108 字符</span>
+            <span class="arrow">▶</span>
+          </div>
+          <div class="collapse-body">分析阶段：\n1. 趋势判定：1h EMA20=67120 > EMA50=66890，多头排列\n2. 持仓量：OI 24h +3.2%，价格同步上涨，趋势确认\n3. 多空比：long_ratio 38%，市场偏空，反向看多信号增强\n...</div>
+
+          <!-- 执行日志 -->
+          <div class="exec-log">
+            <div class="log-line ok">✓ AI call duration: 51391 ms</div>
+            <div class="log-line ok">✓ BTCUSDT validate succeeded</div>
+            <div class="log-line ok">✓ BTCUSDT gatekeeper passed (G1-G9)</div>
+            <div class="log-line ok">✓ BTCUSDT order placed: id=8429103</div>
+          </div>
+        </div>
+
+        <!-- 决策卡 #35 - wait 示例 -->
+        <div class="dec-card">
+          <div class="dec-head">
+            <div>
+              <div class="dec-cycle">周期 #35</div>
+              <div class="dec-time">2026/4/7 22:21:03</div>
+            </div>
+            <span class="badge badge-muted">等待</span>
+          </div>
+
+          <div class="action-card wait">
+            <div class="ac-row1">
+              <div class="ac-tag">
+                <span class="ac-action" style="background: var(--bg-elevated); color: var(--text-muted);">WAIT</span>
+                <span class="ac-symbol">ETH</span>
+              </div>
+              <span class="ac-conf" style="background: var(--bg-elevated); color: var(--text-muted);">45%</span>
+            </div>
+            <div class="ac-reason">
+              <strong>理由：</strong>趋势不明，OI 横盘，资金费率接近 0，等待方向确认。Gatekeeper G4 (ATR 过低) 拒绝开仓。
+            </div>
+          </div>
+
+          <div class="collapse-row" onclick="toggleCollapse(this)">
+            <span class="icn">⚙️ System Prompt</span>
+            <span class="arrow">▶</span>
+          </div>
+          <div class="collapse-body">...</div>
+        </div>
+
+        <!-- 决策卡 #34 - 失败示例 -->
+        <div class="dec-card">
+          <div class="dec-head">
+            <div>
+              <div class="dec-cycle">周期 #34</div>
+              <div class="dec-time">2026/4/7 22:06:02</div>
+            </div>
+            <span class="badge badge-danger">失败</span>
+          </div>
+          <div class="exec-log">
+            <div class="log-line err">✗ AI call timeout after 60000 ms</div>
+            <div class="log-line err">✗ Skipped this cycle</div>
+          </div>
+          <div style="margin-top: 8px; padding: 8px; background: rgba(239,68,68,0.08); border-left: 2px solid var(--danger); border-radius: 4px; font-size: 11px; color: var(--danger);">
+            ❌ AI 模型响应超时
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== Tab 内容：历史 ====== -->
+    <div class="tab-pane" id="tab-history">
+      <div style="padding: 0 20px 20px;">
+        <!-- 6 个统计卡 -->
+        <div class="stat-grid" style="margin-bottom: 16px;">
+          <div class="stat-card">
+            <div class="stat-label">总交易</div>
+            <div class="stat-value tabular">142</div>
+            <div class="stat-extra">已平仓</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">胜率</div>
+            <div class="stat-value tabular" style="color: var(--success);">62.7%</div>
+            <div class="stat-extra">89W / 53L</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">总盈亏</div>
+            <div class="stat-value tabular" style="color: var(--success);">+356.42</div>
+            <div class="stat-extra">USDT</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">盈亏比</div>
+            <div class="stat-value tabular" style="color: var(--success);">1.85</div>
+            <div class="stat-extra">PROFIT FACTOR</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">夏普比率</div>
+            <div class="stat-value tabular" style="color: var(--success);">2.14</div>
+            <div class="stat-extra">SHARPE</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">平均持仓</div>
+            <div class="stat-value tabular">3.2h</div>
+            <div class="stat-extra">DURATION</div>
+          </div>
+        </div>
+
+        <!-- 多空对比 -->
+        <div style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 8px;">多 / 空 表现</div>
+        <div class="dir-cmp">
+          <div class="dir-box">
+            <div class="lbl">📈 做多</div>
+            <div class="num" style="color: var(--success);">+248.16</div>
+            <div class="sub">82 笔 · 胜率 67%</div>
+          </div>
+          <div class="dir-box">
+            <div class="lbl">📉 做空</div>
+            <div class="num" style="color: var(--success);">+108.26</div>
+            <div class="sub">60 笔 · 胜率 57%</div>
+          </div>
+        </div>
+
+        <!-- 币种统计 -->
+        <div style="font-size: 14px; font-weight: 600; color: var(--text-main); margin: 16px 0 8px;">币种表现</div>
+        <div class="card">
+          <div class="data-row">
+            <span class="label">BTCUSDT · 58 笔</span>
+            <span class="value tabular" style="color: var(--success);">+186.42</span>
+          </div>
+          <div class="data-row">
+            <span class="label">ETHUSDT · 47 笔</span>
+            <span class="value tabular" style="color: var(--success);">+102.18</span>
+          </div>
+          <div class="data-row">
+            <span class="label">SOLUSDT · 37 笔</span>
+            <span class="value tabular" style="color: var(--success);">+67.82</span>
+          </div>
+        </div>
+
+        <!-- 历史持仓列表 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 8px;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">历史持仓</div>
+          <select style="background: var(--bg-elevated); color: var(--text-main); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11px;">
+            <option>全部</option>
+            <option>盈利</option>
+            <option>亏损</option>
+          </select>
+        </div>
+
+        <!-- 历史卡片 #1 - 盈利 -->
+        <div class="hist-card">
+          <div class="hist-row1">
+            <div class="hist-symbol">
+              BTCUSDT <span class="side-tag side-long">多</span>
+            </div>
+            <div class="hist-pnl" style="color: var(--success);">+18.42</div>
+          </div>
+          <div class="hist-grid">
+            <div><span class="k">入场</span> <span class="v">67,120</span></div>
+            <div><span class="k">出场</span> <span class="v">68,256</span></div>
+            <div><span class="k">数量</span> <span class="v">0.0162</span></div>
+            <div><span class="k">杠杆</span> <span class="v">5x</span></div>
+            <div><span class="k">持仓</span> <span class="v">2.5h</span></div>
+            <div><span class="k">收益率</span> <span class="v" style="color: var(--success);">+1.69%</span></div>
+          </div>
+          <div class="hist-reason">📅 04-07 18:24 · 平仓原因：止盈触发</div>
+        </div>
+
+        <!-- 历史卡片 #2 - 亏损 -->
+        <div class="hist-card">
+          <div class="hist-row1">
+            <div class="hist-symbol">
+              ETHUSDT <span class="side-tag side-short">空</span>
+            </div>
+            <div class="hist-pnl" style="color: var(--danger);">-8.16</div>
+          </div>
+          <div class="hist-grid">
+            <div><span class="k">入场</span> <span class="v">3,456.20</span></div>
+            <div><span class="k">出场</span> <span class="v">3,492.10</span></div>
+            <div><span class="k">数量</span> <span class="v">0.318</span></div>
+            <div><span class="k">杠杆</span> <span class="v">3x</span></div>
+            <div><span class="k">持仓</span> <span class="v">45m</span></div>
+            <div><span class="k">收益率</span> <span class="v" style="color: var(--danger);">-1.04%</span></div>
+          </div>
+          <div class="hist-reason">📅 04-07 16:08 · 平仓原因：止损触发</div>
+        </div>
+
+        <!-- 历史卡片 #3 - AI 主动平仓 -->
+        <div class="hist-card">
+          <div class="hist-row1">
+            <div class="hist-symbol">
+              SOLUSDT <span class="side-tag side-long">多</span>
+            </div>
+            <div class="hist-pnl" style="color: var(--success);">+12.85</div>
+          </div>
+          <div class="hist-grid">
+            <div><span class="k">入场</span> <span class="v">142.36</span></div>
+            <div><span class="k">出场</span> <span class="v">146.82</span></div>
+            <div><span class="k">数量</span> <span class="v">2.85</span></div>
+            <div><span class="k">杠杆</span> <span class="v">4x</span></div>
+            <div><span class="k">持仓</span> <span class="v">4.2h</span></div>
+            <div><span class="k">收益率</span> <span class="v" style="color: var(--success);">+3.13%</span></div>
+          </div>
+          <div class="hist-reason">📅 04-07 14:32 · 平仓原因：AI 信号反转</div>
+        </div>
+
+        <div style="text-align: center; padding: 16px; color: var(--text-muted); font-size: 12px;">
+          显示 3 / 142 条 · <a href="#" style="color: var(--primary);">加载更多</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 切换脚本 -->
+    <script>
+      function showTab(ev, name) {
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.top-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.add('active');
+        ev.currentTarget.classList.add('active');
+      }
+      function toggleCollapse(el) {
+        const body = el.nextElementSibling;
+        body.classList.toggle('open');
+        el.querySelector('.arrow').textContent = body.classList.contains('open') ? '▼' : '▶';
+      }
+    </script>
+
+    <!-- 底部 Tab Bar -->
+    <nav class="tab-bar">
+      <a href="config.html" class="tab-item">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span class="tab-label">配置</span>
+      </a>
+      <a href="dashboard.html" class="tab-item active">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9"/>
+          <rect x="14" y="3" width="7" height="5"/>
+          <rect x="14" y="12" width="7" height="9"/>
+          <rect x="3" y="16" width="7" height="5"/>
+        </svg>
+        <span class="tab-label">看板</span>
+      </a>
+      <a href="strategy.html" class="tab-item">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+        </svg>
+        <span class="tab-label">策略</span>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>

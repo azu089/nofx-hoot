@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=390, initial-scale=1.0">
+  <title>HOOT - AI 策略测试</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .nav-back {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+    }
+    .nav-back .back-btn {
+      background: none; border: none; color: var(--text-main);
+      font-size: 18px; cursor: pointer; padding: 4px;
+    }
+    .nav-back .nav-title {
+      font-size: 16px; font-weight: 600; color: var(--text-main); flex: 1;
+    }
+    .test-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin: 12px 20px;
+    }
+    .test-title {
+      font-size: 12px; font-weight: 700;
+      color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 12px;
+    }
+    .form-input, .form-select {
+      width: 100%; background: var(--bg-elevated);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; color: var(--text-main); font-size: 13px;
+    }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .result-card {
+      background: var(--bg-elevated);
+      border-left: 3px solid var(--success);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 8px;
+    }
+    .result-row {
+      display: flex; justify-content: space-between;
+      padding: 4px 0; font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-row:last-child { border-bottom: none; }
+    .result-row .k { color: var(--text-muted); }
+    .result-row .v { color: var(--text-main); font-variant-numeric: tabular-nums; font-weight: 600; }
+    .reasoning {
+      margin-top: 10px; padding: 10px;
+      background: rgba(99,102,241,0.08);
+      border-left: 2px solid var(--primary);
+      border-radius: 4px;
+      font-size: 11px; color: var(--text-body); line-height: 1.6;
+    }
+    .ai-progress {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px; background: var(--bg-elevated); border-radius: 8px;
+      margin-top: 8px;
+    }
+    .spinner {
+      width: 14px; height: 14px; border: 2px solid var(--border);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="mobile-container">
+    <div class="nav-back">
+      <button class="back-btn" onclick="history.back()">←</button>
+      <div class="nav-title">AI 策略测试</div>
+      <span class="badge badge-warning">沙盒</span>
+    </div>
+
+    <!-- 模拟市场输入 -->
+    <div class="test-section">
+      <div class="test-title">🧪 模拟市场数据</div>
+      <div class="field">
+        <label>测试币种</label>
+        <select class="form-select">
+          <option>BTCUSDT</option>
+          <option>ETHUSDT</option>
+          <option>SOLUSDT</option>
+        </select>
+      </div>
+      <div class="field row2">
+        <div>
+          <label>当前价格</label>
+          <input type="number" class="form-input" value="67250.50">
+        </div>
+        <div>
+          <label>OI 24h (%)</label>
+          <input type="number" class="form-input" value="3.2" step="0.1">
+        </div>
+      </div>
+      <div class="field row2">
+        <div>
+          <label>资金费率 (%)</label>
+          <input type="number" class="form-input" value="0.012" step="0.001">
+        </div>
+        <div>
+          <label>多空比 (%)</label>
+          <input type="number" class="form-input" value="38" step="1">
+        </div>
+      </div>
+      <div class="field">
+        <label>市场状态</label>
+        <select class="form-select">
+          <option>TRENDING</option>
+          <option>RANGING</option>
+          <option>HIGH_VOLATILITY</option>
+          <option>LOW_LIQUIDITY</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" style="width: 100%; margin-top: 8px;">🚀 运行 AI 决策</button>
+    </div>
+
+    <!-- AI 执行进度 -->
+    <div class="test-section">
+      <div class="test-title">⏱ 执行进度</div>
+      <div class="ai-progress">
+        <span style="color: var(--success);">✓</span>
+        <span style="font-size: 11px; color: var(--text-body);">构建 prompt（4,328 + 12,456 字符）</span>
+      </div>
+      <div class="ai-progress">
+        <span style="color: var(--success);">✓</span>
+        <span style="font-size: 11px; color: var(--text-body);">DeepSeek 调用完成（4,820 ms）</span>
+      </div>
+      <div class="ai-progress">
+        <span style="color: var(--success);">✓</span>
+        <span style="font-size: 11px; color: var(--text-body);">Gatekeeper 9 条规则全部通过</span>
+      </div>
+    </div>
+
+    <!-- AI 决策结果 -->
+    <div class="test-section">
+      <div class="test-title">🎯 AI 决策结果</div>
+      <div class="result-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div>
+            <span style="font-size: 11px; padding: 2px 8px; background: rgba(34,197,94,0.15); color: var(--success); border-radius: 4px; font-weight: 700;">OPEN LONG</span>
+            <span style="margin-left: 6px; font-size: 14px; font-weight: 700; color: var(--text-main);">BTC</span>
+          </div>
+          <span class="badge badge-success">82% 置信</span>
+        </div>
+        <div class="result-row"><span class="k">入场价</span><span class="v">67,250.50</span></div>
+        <div class="result-row"><span class="k">止损</span><span class="v" style="color: var(--danger);">65,800.00 (-2.16%)</span></div>
+        <div class="result-row"><span class="k">止盈</span><span class="v" style="color: var(--success);">70,500.00 (+4.83%)</span></div>
+        <div class="result-row"><span class="k">杠杆</span><span class="v" style="color: var(--primary);">5x</span></div>
+        <div class="result-row"><span class="k">R:R 比</span><span class="v">1 : 2.24</span></div>
+        <div class="result-row"><span class="k">标签</span><span class="v">trend_follow, oi_expansion</span></div>
+        <div class="reasoning">
+          <strong>AI 推理：</strong>EMA20 上穿 EMA50，OI 持续扩张，多空比 38%（偏空，反向信号），资金费率正常区间。综合得分 82。建议入场，止损置于 EMA50 下方。
+        </div>
+      </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div style="padding: 0 20px 20px;">
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-secondary" style="flex: 1;">🔄 重新测试</button>
+        <button class="btn btn-primary" style="flex: 1;">📊 查看完整 Prompt</button>
+      </div>
+      <div style="margin-top: 10px; padding: 10px; background: rgba(245,158,11,0.08); border-left: 2px solid var(--warning); border-radius: 6px; font-size: 11px; color: var(--warning);">
+        ⚠️ 沙盒环境 · 所有决策仅用于测试，不会真实下单
+      </div>
+    </div>
+  </div>
+</body>
+</html>
