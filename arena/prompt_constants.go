@@ -312,9 +312,15 @@ After your narrative above, append a fenced JSON block summarizing your final ju
 }
 ` + "```" + `
 
-Rules for confidence:
+Rules for confidence (aligned with AI Smart Trading strategy):
 - Use 0-100. Higher = stronger conviction.
-- For close/exit decisions (Sell when holding, or risk-driven exit), use confidence ≥ 70 so the execution layer does not block a needed exit.
+- High (85+): Use 80-100% of max position value — strong, decisive action
+- Medium (70-84): Use 50-80% of max position value — moderate conviction
+- Low (60-69): Use 30-50% of max position value — minimal size or skip
+- Below 60: Observation only (rating = Hold, entry/SL/TP = 0)
+- Be honest — do not inflate confidence just to pass execution gates.
+- Close/exit actions bypass the confidence gate in execution layer, so do not artificially boost them.
+- If your decision is "wait and observe" / "no new position", rating MUST be "Hold" and entry_price/stop_loss/take_profit MUST be 0.
 - ` + "`entry_price`" + `, ` + "`stop_loss`" + `, ` + "`take_profit`" + `, ` + "`leverage`" + ` are optional — set 0 if not applicable.
 
 {account_context}
