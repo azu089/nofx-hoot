@@ -443,11 +443,44 @@ func (r *ArenaRunner) executeSignal(symbol string, signal *ArenaSignal, marketDa
 		}
 	}
 
-	// 设置杠杆
-	if r.engine.Config.MaxLeverage > 0 {
-		if err := r.trader.SetLeverage(symbol, r.engine.Config.MaxLeverage); err != nil {
-			log.Printf("[ArenaRunner] ⚠ SetLeverage failed: %v", err)
+	// ── 开仓校验守卫：open_long/open_short 必须带 entry/stop/tp ──
+	if action == "open_long" || action == "open_short" {
+		if signal.EntryPrice <= 0 {
+			reason := "arena validator: open action with entry_price=0"
+			log.Printf("[ArenaRunner] %s: %s BLOCKED — %s", symbol, action, reason)
+			return false, reason, nil
 		}
+		if signal.StopLoss <= 0 || signal.TakeProfit <= 0 {
+			reason := "arena validator: open action missing stop_loss or take_profit"
+			log.Printf("[ArenaRunner] %s: %s BLOCKED — %s", symbol, action, reason)
+			return false, reason, nil
+		}
+	}
+
+	// ── Leverage 决策优先级：LLM signal → config → 硬兜底 ──
+	// 优先用 LLM 自报的 leverage；超过配置上限则 cap；LLM 未给或无效则回退到 config；
+	// config 也 <=0 时硬 fallback 到 3，避免把 0 传给 SetLeverage 触发 Binance -4028。
+	cfgMax := r.engine.Config.MaxLeverage
+	lev := signal.Leverage
+	if lev <= 0 {
+		lev = cfgMax
+	}
+	if cfgMax > 0 && lev > cfgMax {
+		log.Printf("[ArenaRunner] %s: LLM leverage %d exceeds config max %d, capping",
+			symbol, signal.Leverage, cfgMax)
+		lev = cfgMax
+	}
+	if lev <= 0 {
+		log.Printf("[ArenaRunner] %s: WARN both signal(%d) and config(%d) leverage invalid, using default 3",
+			symbol, signal.Leverage, cfgMax)
+		lev = 3
+	}
+	// 回写实际使用的 leverage，便于 saveRecord 审计
+	signal.Leverage = lev
+
+	// 设置杠杆
+	if err := r.trader.SetLeverage(symbol, lev); err != nil {
+		log.Printf("[ArenaRunner] ⚠ SetLeverage(%s, %d) failed: %v", symbol, lev, err)
 	}
 
 	// 计算数量 — 必须把 USD notional 换算为合约数量

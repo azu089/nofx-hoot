@@ -3,10 +3,13 @@ package arena
 import "nofx/store"
 
 // ArenaConfigFromStore 将 store.ArenaStrategyConfig 转换为 arena.ArenaConfig
-// 策略层只包含辩论配置；AI模型/杠杆/仓位大小由交易员层在运行时填充
-func ArenaConfigFromStore(sc *store.ArenaStrategyConfig) *ArenaConfig {
+// 策略层只包含辩论配置；AI模型/仓位大小由交易员层在运行时填充
+// rc 是父层 StrategyConfig.RiskControl，用于映射 MaxLeverage（可为 nil）
+func ArenaConfigFromStore(sc *store.ArenaStrategyConfig, rc *store.RiskControlConfig) *ArenaConfig {
 	if sc == nil {
-		return DefaultArenaConfig()
+		cfg := DefaultArenaConfig()
+		applyRiskControlLeverage(cfg, rc)
+		return cfg
 	}
 
 	cfg := &ArenaConfig{
@@ -63,5 +66,24 @@ func ArenaConfigFromStore(sc *store.ArenaStrategyConfig) *ArenaConfig {
 	cfg.PositionSizeUSD = 1000
 	cfg.OutputLanguage = "Chinese"
 
+	// 从父层 RiskControl 映射 leverage 上限，覆盖默认 3
+	applyRiskControlLeverage(cfg, rc)
+
 	return cfg
+}
+
+// applyRiskControlLeverage 从 RiskControl 映射 leverage 上限到 ArenaConfig。
+// 优先 BTC/ETH 杠杆(Arena 通常交易主流币)，否则 altcoin 杠杆，再否则保留传入默认。
+// 最终双重保险：如果 MaxLeverage 仍 <= 0，兜底为 3。
+func applyRiskControlLeverage(cfg *ArenaConfig, rc *store.RiskControlConfig) {
+	if rc != nil {
+		if rc.BTCETHMaxLeverage > 0 {
+			cfg.MaxLeverage = rc.BTCETHMaxLeverage
+		} else if rc.AltcoinMaxLeverage > 0 {
+			cfg.MaxLeverage = rc.AltcoinMaxLeverage
+		}
+	}
+	if cfg.MaxLeverage <= 0 {
+		cfg.MaxLeverage = 3
+	}
 }

@@ -370,7 +370,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 
 	// 初始化 Arena 策略 runner（当 StrategyType == "arena" 时）
 	if at.IsArenaStrategy() {
-		arenaCfg := arena.ArenaConfigFromStore(at.config.StrategyConfig.ArenaConfig)
+		arenaCfg := arena.ArenaConfigFromStore(at.config.StrategyConfig.ArenaConfig, &at.config.StrategyConfig.RiskControl)
 		arenaEngine := arena.NewArenaEngine(arenaCfg, at.mcpClient)
 		adapter := NewArenaTraderAdapter(at.trader, at.exchange)
 

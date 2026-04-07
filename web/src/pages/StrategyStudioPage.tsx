@@ -129,16 +129,26 @@ export function StrategyStudioPage() {
       })
       if (!response.ok) throw new Error('Failed to fetch strategies')
       const data = await response.json()
-      setStrategies(data.strategies || [])
+      // 把后端顶层 min_hold_seconds 镜像到 risk_control，让 RiskControlEditor 显示
+      const hydrate = (s: Strategy): Strategy => {
+        const c: any = s.config
+        if (c && typeof c === 'object' && c.risk_control && c.min_hold_seconds != null
+            && c.risk_control.min_hold_seconds == null) {
+          c.risk_control.min_hold_seconds = c.min_hold_seconds
+        }
+        return s
+      }
+      const strategies = (data.strategies || []).map(hydrate)
+      setStrategies(strategies)
 
       // Select active or first strategy
-      const active = data.strategies?.find((s: Strategy) => s.is_active)
+      const active = strategies.find((s: Strategy) => s.is_active)
       if (active) {
         setSelectedStrategy(active)
         setEditingConfig(active.config)
-      } else if (data.strategies?.length > 0) {
-        setSelectedStrategy(data.strategies[0])
-        setEditingConfig(data.strategies[0].config)
+      } else if (strategies.length > 0) {
+        setSelectedStrategy(strategies[0])
+        setEditingConfig(strategies[0].config)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -363,9 +373,12 @@ export function StrategyStudioPage() {
     setIsSaving(true)
     try {
       // Always sync the config language with the current interface language
-      const configWithLanguage = {
+      // 同时把 risk_control.min_hold_seconds 提到顶层（后端读顶层 min_hold_seconds）
+      const minHoldFromRC = (editingConfig.risk_control as any)?.min_hold_seconds
+      const configWithLanguage: any = {
         ...editingConfig,
         language: language as 'zh' | 'en',
+        ...(minHoldFromRC ? { min_hold_seconds: minHoldFromRC } : {}),
       }
       const response = await fetch(
         `${API_BASE}/api/strategies/${selectedStrategy.id}`,

@@ -320,8 +320,12 @@ Rules for confidence (aligned with AI Smart Trading strategy):
 - Below 60: Observation only (rating = Hold, entry/SL/TP = 0)
 - Be honest — do not inflate confidence just to pass execution gates.
 - Close/exit actions bypass the confidence gate in execution layer, so do not artificially boost them.
-- If your decision is "wait and observe" / "no new position", rating MUST be "Hold" and entry_price/stop_loss/take_profit MUST be 0.
-- ` + "`entry_price`" + `, ` + "`stop_loss`" + `, ` + "`take_profit`" + `, ` + "`leverage`" + ` are optional — set 0 if not applicable.
+- If rating is Buy / Overweight / Sell / Underweight (any action that opens or adjusts a position):
+    ` + "`entry_price`" + `, ` + "`stop_loss`" + `, ` + "`take_profit`" + `, ` + "`leverage`" + ` are **REQUIRED** and MUST be non-zero.
+    ` + "`leverage`" + ` must be an integer between 1 and 10.
+    The execution layer will REJECT any open action with missing/zero values.
+- If rating is Hold: ` + "`entry_price`" + `, ` + "`stop_loss`" + `, ` + "`take_profit`" + `, ` + "`leverage`" + ` MUST all be 0.
+- Do NOT output "Sell with leverage=0" or "Buy with entry_price=0" — such decisions will be discarded.
 
 {account_context}
 {risk_constraints}`

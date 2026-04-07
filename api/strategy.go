@@ -467,7 +467,7 @@ func (s *Server) handlePreviewPrompt(c *gin.Context) {
 
 	// ─── Arena 策略分支：13 角色辩论 prompt 拼接预览 ────────────────────────
 	if req.Config.StrategyType == "arena" {
-		arenaCfg := arena.ArenaConfigFromStore(req.Config.ArenaConfig)
+		arenaCfg := arena.ArenaConfigFromStore(req.Config.ArenaConfig, &req.Config.RiskControl)
 		systemPrompt := arena.BuildSystemPrompt(arenaCfg, req.PromptVariant)
 		c.JSON(http.StatusOK, gin.H{
 			"system_prompt":  systemPrompt,
