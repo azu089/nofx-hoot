@@ -183,3 +183,26 @@ export interface RiskControlConfig {
   min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
   min_confidence: number;          // Min AI confidence to open position (AI guided)
 }
+
+// ── Arena 决策记录类型 ──
+export interface ArenaDecisionRecord {
+  id?: string
+  trader_id?: string
+  symbol: string
+  cycle_number?: number
+  signal: string
+  confidence?: number
+  entry_price?: number
+  stop_loss?: number
+  take_profit?: number
+  leverage?: number
+  risk_reward_ratio?: number
+  action_executed?: boolean
+  reject_reason?: string
+  error_message?: string
+  system_prompt?: string
+  user_prompt?: string
+  cot_trace?: any
+  ai_call_duration_ms?: number
+  created_at: string
+}

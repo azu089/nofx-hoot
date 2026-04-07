@@ -114,7 +114,8 @@ type TraderPosition struct {
 	Fee                float64 `gorm:"column:fee;default:0" json:"fee"`
 	Leverage           int     `gorm:"column:leverage;default:1" json:"leverage"`
 	Status             string  `gorm:"column:status;default:OPEN;index:idx_positions_status" json:"status"`
-	CloseReason        string  `gorm:"column:close_reason;default:''" json:"close_reason"`
+	CloseReason        string  `gorm:"column:close_reason;default:''" json:"close_reason"` // manual/take_profit/stop_loss/signal/sync/timeout
+	OpenTimestamp      int64   `gorm:"column:open_timestamp;default:0" json:"open_timestamp"` // Unix seconds when position was opened (for hold time checks)
 	Source             string  `gorm:"column:source;default:system" json:"source"`
 	CreatedAt          int64   `gorm:"column:created_at" json:"created_at"`   // Unix milliseconds UTC
 	UpdatedAt          int64   `gorm:"column:updated_at" json:"updated_at"`   // Unix milliseconds UTC

@@ -1,7 +1,5 @@
 import { Grid, DollarSign, TrendingUp, Shield, Compass } from 'lucide-react'
 import type { GridStrategyConfig } from '../../types'
-import { gridConfig, ts } from '../../i18n/strategy-translations'
-import { NofxSelect } from '../ui/select'
 
 interface GridConfigEditorProps {
   config: GridStrategyConfig
@@ -10,7 +8,7 @@ interface GridConfigEditorProps {
   language: string
 }
 
-// Default grid configuration
+// Default grid config
 export const defaultGridConfig: GridStrategyConfig = {
   symbol: 'BTCUSDT',
   grid_count: 10,
@@ -35,6 +33,71 @@ export function GridConfigEditor({
   disabled,
   language,
 }: GridConfigEditorProps) {
+  const t = (key: string) => {
+    const translations: Record<string, Record<string, string>> = {
+      // Section titles
+      tradingPair: { zh: '交易设置', en: 'Trading Setup' },
+      gridParameters: { zh: '网格参数', en: 'Grid Parameters' },
+      priceBounds: { zh: '价格边界', en: 'Price Bounds' },
+      riskControl: { zh: '风险控制', en: 'Risk Control' },
+
+      // Trading pair
+      symbol: { zh: '交易对', en: 'Trading Pair' },
+      symbolDesc: { zh: '选择要进行网格交易的交易对', en: 'Select trading pair for grid trading' },
+
+      // Investment
+      totalInvestment: { zh: '投资金额 (USDT)', en: 'Investment (USDT)' },
+      totalInvestmentDesc: { zh: '网格策略的总投资金额', en: 'Total investment for grid strategy' },
+      leverage: { zh: '杠杆倍数', en: 'Leverage' },
+      leverageDesc: { zh: '交易使用的杠杆倍数 (1-5)', en: 'Leverage for trading (1-5)' },
+
+      // Grid parameters
+      gridCount: { zh: '网格数量', en: 'Grid Count' },
+      gridCountDesc: { zh: '网格层级数量 (5-50)', en: 'Number of grid levels (5-50)' },
+      distribution: { zh: '资金分配方式', en: 'Distribution' },
+      distributionDesc: { zh: '网格层级的资金分配方式', en: 'Fund allocation across grid levels' },
+      uniform: { zh: '均匀分配', en: 'Uniform' },
+      gaussian: { zh: '高斯分配 (推荐)', en: 'Gaussian (Recommended)' },
+      pyramid: { zh: '金字塔分配', en: 'Pyramid' },
+
+      // Price bounds
+      useAtrBounds: { zh: '自动计算边界 (ATR)', en: 'Auto-calculate Bounds (ATR)' },
+      useAtrBoundsDesc: { zh: '基于 ATR 自动计算网格上下边界', en: 'Auto-calculate bounds based on ATR' },
+      atrMultiplier: { zh: 'ATR 倍数', en: 'ATR Multiplier' },
+      atrMultiplierDesc: { zh: '边界距离当前价格的 ATR 倍数', en: 'ATR multiplier for bounds distance' },
+      upperPrice: { zh: '上边界价格', en: 'Upper Price' },
+      upperPriceDesc: { zh: '网格上边界价格 (0=自动计算)', en: 'Grid upper bound (0=auto)' },
+      lowerPrice: { zh: '下边界价格', en: 'Lower Price' },
+      lowerPriceDesc: { zh: '网格下边界价格 (0=自动计算)', en: 'Grid lower bound (0=auto)' },
+
+      // Risk control
+      maxDrawdown: { zh: '最大回撤 (%)', en: 'Max Drawdown (%)' },
+      maxDrawdownDesc: { zh: '触发紧急退出的最大回撤百分比', en: 'Max drawdown before emergency exit' },
+      stopLoss: { zh: '止损 (%)', en: 'Stop Loss (%)' },
+      stopLossDesc: { zh: '单仓位止损百分比', en: 'Stop loss per position' },
+      dailyLossLimit: { zh: '日损失限制 (%)', en: 'Daily Loss Limit (%)' },
+      dailyLossLimitDesc: { zh: '每日最大亏损百分比', en: 'Maximum daily loss percentage' },
+      useMakerOnly: { zh: '仅使用 Maker 订单', en: 'Maker Only Orders' },
+      useMakerOnlyDesc: { zh: '使用限价单以降低手续费', en: 'Use limit orders for lower fees' },
+
+      // Direction adjustment
+      directionAdjust: { zh: '方向自动调整', en: 'Direction Auto-Adjust' },
+      enableDirectionAdjust: { zh: '启用方向调整', en: 'Enable Direction Adjust' },
+      enableDirectionAdjustDesc: { zh: '根据箱体突破自动调整网格方向', en: 'Auto-adjust grid direction based on box breakouts' },
+      directionBiasRatio: { zh: '偏向强度', en: 'Bias Strength' },
+      directionBiasRatioDesc: { zh: '偏多/偏空模式的强度', en: 'Strength for long_bias/short_bias modes' },
+      directionBiasExplain: { zh: '偏多模式：X%买 + (100-X)%卖 | 偏空模式：(100-X)%买 + X%卖', en: 'Long bias: X% buy + (100-X)% sell | Short bias: (100-X)% buy + X% sell' },
+      directionExplain: { zh: '短期箱体突破 → 偏向，中期箱体突破 → 全仓，价格回归 → 逐步恢复中性', en: 'Short box breakout → bias, Mid box breakout → full, Price return → gradually recover to neutral' },
+      directionModes: { zh: '方向模式说明', en: 'Direction Modes' },
+      modeNeutral: { zh: '中性：50%买 + 50%卖（默认）', en: 'Neutral: 50% buy + 50% sell (default)' },
+      modeLongBias: { zh: '偏多：X%买 + (100-X)%卖', en: 'Long Bias: X% buy + (100-X)% sell' },
+      modeLong: { zh: '全多：100%买 + 0%卖', en: 'Long: 100% buy + 0% sell' },
+      modeShortBias: { zh: '偏空：(100-X)%买 + X%卖', en: 'Short Bias: (100-X)% buy + X% sell' },
+      modeShort: { zh: '全空：0%买 + 100%卖', en: 'Short: 0% buy + 100% sell' },
+    }
+    return translations[key]?.[language] || key
+  }
+
   const updateField = <K extends keyof GridStrategyConfig>(
     key: K,
     value: GridStrategyConfig[K]
@@ -62,7 +125,7 @@ export function GridConfigEditor({
         <div className="flex items-center gap-2 mb-4">
           <DollarSign className="w-5 h-5" style={{ color: '#F0B90B' }} />
           <h3 className="font-medium" style={{ color: '#EAECEF' }}>
-            {ts(gridConfig.tradingPair, language)}
+            {t('tradingPair')}
           </h3>
         </div>
 
@@ -70,35 +133,34 @@ export function GridConfigEditor({
           {/* Symbol */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.symbol, language)}
+              {t('symbol')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.symbolDesc, language)}
+              {t('symbolDesc')}
             </p>
-            <NofxSelect
+            <select
               value={config.symbol}
-              onChange={(val) => updateField('symbol', val)}
+              onChange={(e) => updateField('symbol', e.target.value)}
               disabled={disabled}
               className="w-full px-3 py-2 rounded"
               style={inputStyle}
-              options={[
-                { value: 'BTCUSDT', label: 'BTC/USDT' },
-                { value: 'ETHUSDT', label: 'ETH/USDT' },
-                { value: 'SOLUSDT', label: 'SOL/USDT' },
-                { value: 'BNBUSDT', label: 'BNB/USDT' },
-                { value: 'XRPUSDT', label: 'XRP/USDT' },
-                { value: 'DOGEUSDT', label: 'DOGE/USDT' },
-              ]}
-            />
+            >
+              <option value="BTCUSDT">BTC/USDT</option>
+              <option value="ETHUSDT">ETH/USDT</option>
+              <option value="SOLUSDT">SOL/USDT</option>
+              <option value="BNBUSDT">BNB/USDT</option>
+              <option value="XRPUSDT">XRP/USDT</option>
+              <option value="DOGEUSDT">DOGE/USDT</option>
+            </select>
           </div>
 
           {/* Investment */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.totalInvestment, language)}
+              {t('totalInvestment')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.totalInvestmentDesc, language)}
+              {t('totalInvestmentDesc')}
             </p>
             <input
               type="number"
@@ -115,10 +177,10 @@ export function GridConfigEditor({
           {/* Leverage */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.leverage, language)}
+              {t('leverage')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.leverageDesc, language)}
+              {t('leverageDesc')}
             </p>
             <input
               type="number"
@@ -139,7 +201,7 @@ export function GridConfigEditor({
         <div className="flex items-center gap-2 mb-4">
           <Grid className="w-5 h-5" style={{ color: '#F0B90B' }} />
           <h3 className="font-medium" style={{ color: '#EAECEF' }}>
-            {ts(gridConfig.gridParameters, language)}
+            {t('gridParameters')}
           </h3>
         </div>
 
@@ -147,10 +209,10 @@ export function GridConfigEditor({
           {/* Grid Count */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.gridCount, language)}
+              {t('gridCount')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.gridCountDesc, language)}
+              {t('gridCountDesc')}
             </p>
             <input
               type="number"
@@ -167,23 +229,22 @@ export function GridConfigEditor({
           {/* Distribution */}
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.distribution, language)}
+              {t('distribution')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.distributionDesc, language)}
+              {t('distributionDesc')}
             </p>
-            <NofxSelect
+            <select
               value={config.distribution}
-              onChange={(val) => updateField('distribution', val as 'uniform' | 'gaussian' | 'pyramid')}
+              onChange={(e) => updateField('distribution', e.target.value as 'uniform' | 'gaussian' | 'pyramid')}
               disabled={disabled}
               className="w-full px-3 py-2 rounded"
               style={inputStyle}
-              options={[
-                { value: 'uniform', label: ts(gridConfig.uniform, language) },
-                { value: 'gaussian', label: ts(gridConfig.gaussian, language) },
-                { value: 'pyramid', label: ts(gridConfig.pyramid, language) },
-              ]}
-            />
+            >
+              <option value="uniform">{t('uniform')}</option>
+              <option value="gaussian">{t('gaussian')}</option>
+              <option value="pyramid">{t('pyramid')}</option>
+            </select>
           </div>
         </div>
       </div>
@@ -193,7 +254,7 @@ export function GridConfigEditor({
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-5 h-5" style={{ color: '#F0B90B' }} />
           <h3 className="font-medium" style={{ color: '#EAECEF' }}>
-            {ts(gridConfig.priceBounds, language)}
+            {t('priceBounds')}
           </h3>
         </div>
 
@@ -202,10 +263,10 @@ export function GridConfigEditor({
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm" style={{ color: '#EAECEF' }}>
-                {ts(gridConfig.useAtrBounds, language)}
+                {t('useAtrBounds')}
               </label>
               <p className="text-xs" style={{ color: '#848E9C' }}>
-                {ts(gridConfig.useAtrBoundsDesc, language)}
+                {t('useAtrBoundsDesc')}
               </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -224,10 +285,10 @@ export function GridConfigEditor({
         {config.use_atr_bounds ? (
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.atrMultiplier, language)}
+              {t('atrMultiplier')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.atrMultiplierDesc, language)}
+              {t('atrMultiplierDesc')}
             </p>
             <input
               type="number"
@@ -245,10 +306,10 @@ export function GridConfigEditor({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-lg" style={sectionStyle}>
               <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-                {ts(gridConfig.upperPrice, language)}
+                {t('upperPrice')}
               </label>
               <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-                {ts(gridConfig.upperPriceDesc, language)}
+                {t('upperPriceDesc')}
               </p>
               <input
                 type="number"
@@ -263,10 +324,10 @@ export function GridConfigEditor({
             </div>
             <div className="p-4 rounded-lg" style={sectionStyle}>
               <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-                {ts(gridConfig.lowerPrice, language)}
+                {t('lowerPrice')}
               </label>
               <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-                {ts(gridConfig.lowerPriceDesc, language)}
+                {t('lowerPriceDesc')}
               </p>
               <input
                 type="number"
@@ -288,17 +349,17 @@ export function GridConfigEditor({
         <div className="flex items-center gap-2 mb-4">
           <Shield className="w-5 h-5" style={{ color: '#F0B90B' }} />
           <h3 className="font-medium" style={{ color: '#EAECEF' }}>
-            {ts(gridConfig.riskControl, language)}
+            {t('riskControl')}
           </h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.maxDrawdown, language)}
+              {t('maxDrawdown')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.maxDrawdownDesc, language)}
+              {t('maxDrawdownDesc')}
             </p>
             <input
               type="number"
@@ -314,10 +375,10 @@ export function GridConfigEditor({
 
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.stopLoss, language)}
+              {t('stopLoss')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.stopLossDesc, language)}
+              {t('stopLossDesc')}
             </p>
             <input
               type="number"
@@ -333,10 +394,10 @@ export function GridConfigEditor({
 
           <div className="p-4 rounded-lg" style={sectionStyle}>
             <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-              {ts(gridConfig.dailyLossLimit, language)}
+              {t('dailyLossLimit')}
             </label>
             <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-              {ts(gridConfig.dailyLossLimitDesc, language)}
+              {t('dailyLossLimitDesc')}
             </p>
             <input
               type="number"
@@ -356,10 +417,10 @@ export function GridConfigEditor({
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm" style={{ color: '#EAECEF' }}>
-                {ts(gridConfig.useMakerOnly, language)}
+                {t('useMakerOnly')}
               </label>
               <p className="text-xs" style={{ color: '#848E9C' }}>
-                {ts(gridConfig.useMakerOnlyDesc, language)}
+                {t('useMakerOnlyDesc')}
               </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -381,7 +442,7 @@ export function GridConfigEditor({
         <div className="flex items-center gap-2 mb-4">
           <Compass className="w-5 h-5" style={{ color: '#F0B90B' }} />
           <h3 className="font-medium" style={{ color: '#EAECEF' }}>
-            {ts(gridConfig.directionAdjust, language)}
+            {t('directionAdjust')}
           </h3>
         </div>
 
@@ -390,10 +451,10 @@ export function GridConfigEditor({
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm" style={{ color: '#EAECEF' }}>
-                {ts(gridConfig.enableDirectionAdjust, language)}
+                {t('enableDirectionAdjust')}
               </label>
               <p className="text-xs" style={{ color: '#848E9C' }}>
-                {ts(gridConfig.enableDirectionAdjustDesc, language)}
+                {t('enableDirectionAdjustDesc')}
               </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -414,30 +475,30 @@ export function GridConfigEditor({
             {/* Direction Modes Explanation */}
             <div className="p-4 rounded-lg mb-4" style={{ background: '#1E2329', border: '1px solid #F0B90B33' }}>
               <p className="text-xs font-medium mb-2" style={{ color: '#F0B90B' }}>
-                📊 {ts(gridConfig.directionModes, language)}
+                📊 {t('directionModes')}
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs" style={{ color: '#848E9C' }}>
-                <div>• {ts(gridConfig.modeNeutral, language)}</div>
-                <div>• <span style={{ color: '#0ECB81' }}>{ts(gridConfig.modeLongBias, language)}</span></div>
-                <div>• <span style={{ color: '#0ECB81' }}>{ts(gridConfig.modeLong, language)}</span></div>
-                <div>• <span style={{ color: '#F6465D' }}>{ts(gridConfig.modeShortBias, language)}</span></div>
-                <div>• <span style={{ color: '#F6465D' }}>{ts(gridConfig.modeShort, language)}</span></div>
+                <div>• {t('modeNeutral')}</div>
+                <div>• <span style={{ color: '#0ECB81' }}>{t('modeLongBias')}</span></div>
+                <div>• <span style={{ color: '#0ECB81' }}>{t('modeLong')}</span></div>
+                <div>• <span style={{ color: '#F6465D' }}>{t('modeShortBias')}</span></div>
+                <div>• <span style={{ color: '#F6465D' }}>{t('modeShort')}</span></div>
               </div>
               <p className="text-xs mt-3 pt-2 border-t border-zinc-700" style={{ color: '#848E9C' }}>
-                💡 {ts(gridConfig.directionExplain, language)}
+                💡 {t('directionExplain')}
               </p>
             </div>
 
             {/* Bias Strength */}
             <div className="p-4 rounded-lg" style={sectionStyle}>
               <label className="block text-sm mb-1" style={{ color: '#EAECEF' }}>
-                {ts(gridConfig.directionBiasRatio, language)} (X)
+                {t('directionBiasRatio')} (X)
               </label>
               <p className="text-xs mb-1" style={{ color: '#848E9C' }}>
-                {ts(gridConfig.directionBiasRatioDesc, language)}
+                {t('directionBiasRatioDesc')}
               </p>
               <p className="text-xs mb-3" style={{ color: '#F0B90B' }}>
-                {ts(gridConfig.directionBiasExplain, language)}
+                {t('directionBiasExplain')}
               </p>
               <div className="flex items-center gap-3">
                 <input
@@ -457,12 +518,12 @@ export function GridConfigEditor({
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2 rounded" style={{ background: '#0ECB8115', border: '1px solid #0ECB8130' }}>
-                  <span style={{ color: '#0ECB81' }}>Long Bias: </span>
-                  <span style={{ color: '#EAECEF' }}>{Math.round((config.direction_bias_ratio ?? 0.7) * 100)}% {ts(gridConfig.buy, language)} + {Math.round((1 - (config.direction_bias_ratio ?? 0.7)) * 100)}% {ts(gridConfig.sell, language)}</span>
+                  <span style={{ color: '#0ECB81' }}>偏多/Long Bias: </span>
+                  <span style={{ color: '#EAECEF' }}>{Math.round((config.direction_bias_ratio ?? 0.7) * 100)}% 买 + {Math.round((1 - (config.direction_bias_ratio ?? 0.7)) * 100)}% 卖</span>
                 </div>
                 <div className="p-2 rounded" style={{ background: '#F6465D15', border: '1px solid #F6465D30' }}>
-                  <span style={{ color: '#F6465D' }}>Short Bias: </span>
-                  <span style={{ color: '#EAECEF' }}>{Math.round((1 - (config.direction_bias_ratio ?? 0.7)) * 100)}% {ts(gridConfig.buy, language)} + {Math.round((config.direction_bias_ratio ?? 0.7) * 100)}% {ts(gridConfig.sell, language)}</span>
+                  <span style={{ color: '#F6465D' }}>偏空/Short Bias: </span>
+                  <span style={{ color: '#EAECEF' }}>{Math.round((1 - (config.direction_bias_ratio ?? 0.7)) * 100)}% 买 + {Math.round((config.direction_bias_ratio ?? 0.7) * 100)}% 卖</span>
                 </div>
               </div>
             </div>
@@ -472,3 +533,4 @@ export function GridConfigEditor({
     </div>
   )
 }
+

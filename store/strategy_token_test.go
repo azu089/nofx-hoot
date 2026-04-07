@@ -104,9 +104,10 @@ func TestGetEffectiveCoinCount(t *testing.T) {
 		t.Errorf("static coin count = %d, want 2", got)
 	}
 
-	config.CoinSource.SourceType = "ai500"
-	config.CoinSource.AI500Limit = 5
+	// ai500 source removed; default branch falls back to static coin count.
+	config.CoinSource.SourceType = "oi_top"
+	config.CoinSource.OITopLimit = 5
 	if got := config.getEffectiveCoinCount(); got != 5 {
-		t.Errorf("ai500 coin count = %d, want 5", got)
+		t.Errorf("oi_top coin count = %d, want 5", got)
 	}
 }

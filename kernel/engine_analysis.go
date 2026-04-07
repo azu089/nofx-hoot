@@ -88,7 +88,7 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 	// Ensure OITopDataMap is initialized
 	if ctx.OITopDataMap == nil {
 		ctx.OITopDataMap = make(map[string]*OITopData)
-		oiPositions, err := engine.nofxosClient.GetOITopPositions()
+		oiPositions, err := engine.binanceClient.GetOITopPositions()
 		if err == nil {
 			for _, pos := range oiPositions {
 				ctx.OITopDataMap[pos.Symbol] = &OITopData{
@@ -96,6 +96,7 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 					OIDeltaPercent:    pos.OIDeltaPercent,
 					OIDeltaValue:      pos.OIDeltaValue,
 					PriceDeltaPercent: pos.PriceDeltaPercent,
+					PriceDeltaValid:   pos.PriceDeltaValid,
 				}
 			}
 		}
@@ -113,7 +114,18 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 	aiResponse, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
 	aiCallDuration := time.Since(aiCallStart)
 	if err != nil {
-		return nil, fmt.Errorf("AI API call failed: %w", err)
+		// Fallback: return an explicit "hold" decision rather than dropping the
+		// whole cycle. CallWithMessages already retries internally; if it still
+		// fails (timeout / 5xx / network), defaulting to hold is safer than
+		// leaving the trader blind for an entire cycle.
+		fallback := &FullDecision{
+			SystemPrompt:        systemPrompt,
+			UserPrompt:          userPrompt,
+			Decisions:           []Decision{{Action: "hold", Reasoning: fmt.Sprintf("AI call failed after retry, defaulting to hold for safety: %v", err)}},
+			Timestamp:           time.Now(),
+			AIRequestDurationMs: aiCallDuration.Milliseconds(),
+		}
+		return fallback, nil
 	}
 
 	// 5. Parse AI response
@@ -238,16 +250,21 @@ func parseFullDecisionResponse(aiResponse string, accountEquity float64, btcEthL
 		}, fmt.Errorf("failed to extract decisions: %w", err)
 	}
 
-	if err := validateDecisions(decisions, accountEquity, btcEthLeverage, altcoinLeverage, btcEthPosRatio, altcoinPosRatio); err != nil {
+	validated, skipped := validateDecisions(decisions, accountEquity, btcEthLeverage, altcoinLeverage, btcEthPosRatio, altcoinPosRatio)
+	if skipped > 0 {
+		logger.Warnf("⚠️  %d/%d decisions skipped due to validation errors (per-decision skip mode)", skipped, len(decisions))
+	}
+	if len(validated) == 0 && len(decisions) > 0 {
+		// All decisions were invalid — treat cycle as failed.
 		return &FullDecision{
 			CoTTrace:  cotTrace,
 			Decisions: decisions,
-		}, fmt.Errorf("decision validation failed: %w", err)
+		}, fmt.Errorf("all %d decisions failed validation", len(decisions))
 	}
 
 	return &FullDecision{
 		CoTTrace:  cotTrace,
-		Decisions: decisions,
+		Decisions: validated,
 	}, nil
 }
 
@@ -276,36 +293,13 @@ func extractDecisions(response string) ([]Decision, error) {
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
 
-	var jsonPart string
-	if match := reDecisionTag.FindStringSubmatch(s); match != nil && len(match) > 1 {
-		jsonPart = strings.TrimSpace(match[1])
-		logger.Infof("✓ Extracted JSON using <decision> tag")
-	} else {
-		jsonPart = s
-		logger.Infof("⚠️  <decision> tag not found, searching JSON in full text")
-	}
-
-	jsonPart = fixMissingQuotes(jsonPart)
-
-	if m := reJSONFence.FindStringSubmatch(jsonPart); m != nil && len(m) > 1 {
-		jsonContent := strings.TrimSpace(m[1])
-		jsonContent = compactArrayOpen(jsonContent)
-		jsonContent = fixMissingQuotes(jsonContent)
-		if err := validateJSONFormat(jsonContent); err != nil {
-			return nil, fmt.Errorf("JSON format validation failed: %w\nJSON content: %s\nFull response:\n%s", err, jsonContent, response)
-		}
-		var decisions []Decision
-		if err := json.Unmarshal([]byte(jsonContent), &decisions); err != nil {
-			return nil, fmt.Errorf("JSON parsing failed: %w\nJSON content: %s", err, jsonContent)
-		}
-		return decisions, nil
-	}
-
-	jsonContent := strings.TrimSpace(reJSONArray.FindString(jsonPart))
-	if jsonContent == "" {
+	// [HOOT] Use four-layer JSON extractor for robust extraction
+	jsonContent, err := ExtractFirstJSON(s)
+	if err != nil {
+		// Safe fallback: AI didn't output structured JSON
 		logger.Infof("⚠️  [SafeFallback] AI didn't output JSON decision, entering safe wait mode")
 
-		cotSummary := jsonPart
+		cotSummary := s
 		if len(cotSummary) > 240 {
 			cotSummary = cotSummary[:240] + "..."
 		}
@@ -315,10 +309,12 @@ func extractDecisions(response string) ([]Decision, error) {
 			Action:    "wait",
 			Reasoning: fmt.Sprintf("Model didn't output structured JSON decision, entering safe wait; summary: %s", cotSummary),
 		}
-
 		return []Decision{fallbackDecision}, nil
 	}
 
+	logger.Infof("✓ Extracted JSON (%d bytes) via four-layer extractor", len(jsonContent))
+
+	// Apply legacy fixups
 	jsonContent = compactArrayOpen(jsonContent)
 	jsonContent = fixMissingQuotes(jsonContent)
 

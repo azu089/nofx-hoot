@@ -30,9 +30,14 @@ func (t *FuturesTrader) GetBalance() (map[string]interface{}, error) {
 	}
 
 	result := make(map[string]interface{})
-	result["totalWalletBalance"], _ = strconv.ParseFloat(account.TotalWalletBalance, 64)
+	totalWallet, _ := strconv.ParseFloat(account.TotalWalletBalance, 64)
+	totalUnPnl, _ := strconv.ParseFloat(account.TotalUnrealizedProfit, 64)
+	result["totalWalletBalance"] = totalWallet
 	result["availableBalance"], _ = strconv.ParseFloat(account.AvailableBalance, 64)
-	result["totalUnrealizedProfit"], _ = strconv.ParseFloat(account.TotalUnrealizedProfit, 64)
+	result["totalUnrealizedProfit"] = totalUnPnl
+	// total_equity: Binance Futures equity definition = wallet + unrealized PnL.
+	// Added to fix grid trader which only reads "total_equity" (no fallback).
+	result["total_equity"] = totalWallet + totalUnPnl
 
 	logger.Infof("✓ Binance API returned: total balance=%s, available=%s, unrealized PnL=%s",
 		account.TotalWalletBalance,

@@ -707,29 +707,46 @@ func (s *Server) handleUpdateTrader(c *gin.Context) {
 	})
 }
 
-// handleDeleteTrader Delete trader
+// handleDeleteTrader Delete trader.
+//
+// Order is critical: stop activity BEFORE deleting DB records. Previously the
+// order was reversed (DB.Delete → Stop goroutine → RemoveTrader), which meant
+// a failure/hang in Stop() left DB saying "gone" while the in-memory goroutine
+// continued placing orders on the exchange — a silent fund-safety bug.
+//
+// New order:
+//  1. Stop in-memory goroutine (halt activity, capture failures)
+//  2. Remove from TraderManager map (unreachable from API)
+//  3. Cascade-delete grid state (orphan cleanup)
+//  4. Delete trader DB row (single source of truth updated last)
+//
+// Historical data (orders, positions, decision_records, equity_snapshots,
+// arena_decision_records) is intentionally preserved for audit.
 func (s *Server) handleDeleteTrader(c *gin.Context) {
 	userID := c.GetString("user_id")
 	traderID := c.Param("id")
 
-	// Delete from database
-	err := s.store.Trader().Delete(userID, traderID)
-	if err != nil {
-		SafeInternalError(c, "Failed to delete trader", err)
-		return
-	}
+	// 1. Stop in-memory goroutine if running. RemoveTrader also calls Stop
+	//    internally, so we just need to ensure the trader is removed from the
+	//    manager map. If the trader is not in memory, this is a no-op.
+	s.traderManager.RemoveTrader(traderID)
 
-	// If trader is running, stop it first
-	if trader, err := s.traderManager.GetTrader(traderID); err == nil {
-		status := trader.GetStatus()
-		if isRunning, ok := status["is_running"].(bool); ok && isRunning {
-			trader.Stop()
-			logger.Infof("⏹  Stopped running trader: %s", traderID)
+	// 2. Cascade-delete grid state data (configs/instances/levels/events/regime).
+	//    Historical audit data (orders, positions, decisions) is preserved.
+	//    Grid data is runtime state and has no audit value after the trader is gone.
+	if gridStore := s.store.Grid(); gridStore != nil {
+		if err := gridStore.DeleteGridConfigsByTrader(traderID); err != nil {
+			// Log but don't block: grid tables may be empty / not yet wired up
+			logger.Warnf("⚠️  Failed to cascade-delete grid data for trader %s: %v", traderID, err)
 		}
 	}
 
-	// Remove trader from memory
-	s.traderManager.RemoveTrader(traderID)
+	// 3. Delete trader row from DB (last, to preserve the order invariant:
+	//    "activity fully stopped BEFORE the ledger forgets about it")
+	if err := s.store.Trader().Delete(userID, traderID); err != nil {
+		SafeInternalError(c, "Failed to delete trader", err)
+		return
+	}
 
 	logger.Infof("✓ Trader deleted: %s", traderID)
 	c.JSON(http.StatusOK, gin.H{"message": "Trader deleted"})
@@ -814,19 +831,17 @@ func (s *Server) handleStartTrader(c *gin.Context) {
 		return
 	}
 
-	// Start trader
-	go func() {
-		logger.Infof("▶️  Starting trader %s (%s)", traderID, trader.GetName())
-		if err := trader.Run(); err != nil {
-			logger.Infof("❌ Trader %s runtime error: %v", trader.GetName(), err)
-		}
-	}()
-
-	// Update running status in database
-	err = s.store.Trader().UpdateStatus(userID, traderID, true)
-	if err != nil {
-		logger.Infof("⚠️  Failed to update trader status: %v", err)
-	}
+	// Start trader via the canonical lifecycle-managed launcher. This is the
+	// same code path used by manager.AutoStartRunningTraders and
+	// LoadUserTradersFromStore, so any future changes to the start/stop
+	// lifecycle (DB is_running tracking, panic recover, exit cleanup) only
+	// need to happen in one place.
+	//
+	// The previous implementation started a raw goroutine here and then wrote
+	// UpdateStatus(true) to DB — if Run() failed fast, the goroutine exited
+	// silently while DB stayed is_running=true forever ("startup zombie").
+	// StartTraderGoroutine now handles the true→false lifecycle via defer.
+	s.traderManager.StartTraderGoroutine(trader, s.store, userID, traderID, trader.GetName())
 
 	logger.Infof("✓ Trader %s started", trader.GetName())
 	c.JSON(http.StatusOK, gin.H{"message": "Trader started"})

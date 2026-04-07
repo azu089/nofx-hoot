@@ -341,3 +341,4 @@ export function getTraderAvatar(traderId: string, traderName: string): string {
   // Use a combination of ID and name for more unique results
   return `${traderId}-${traderName}`
 }
+

@@ -42,6 +42,31 @@ function getConfidenceColor(confidence: number | undefined): string {
   return '#F6465D'
 }
 
+// Expandable reasoning block
+function ReasoningBlock({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = text.length > 100
+  return (
+    <div
+      className="mt-3 pt-3"
+      style={{ borderTop: '1px solid #2B3139', cursor: isLong ? 'pointer' : 'default' }}
+      onClick={() => isLong && setExpanded(!expanded)}
+    >
+      <div
+        className={`text-xs ${expanded ? '' : 'line-clamp-2'}`}
+        style={{ color: '#848E9C' }}
+      >
+        💡 {text}
+      </div>
+      {isLong && (
+        <div className="text-xs mt-1" style={{ color: '#F0B90B' }}>
+          {expanded ? '▲ 收起' : '▼ 展开全部'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Single Action Card Component
 function ActionCard({ action, language, onSymbolClick }: { action: DecisionAction; language: Language; onSymbolClick?: (symbol: string) => void }) {
   const config = ACTION_CONFIG[action.action] || ACTION_CONFIG.wait
@@ -191,13 +216,9 @@ function ActionCard({ action, language, onSymbolClick }: { action: DecisionActio
         </div>
       )}
 
-      {/* Reasoning */}
+      {/* Reasoning — click to expand */}
       {action.reasoning && (
-        <div className="mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
-          <div className="text-xs line-clamp-2" style={{ color: '#848E9C' }}>
-            💡 {action.reasoning}
-          </div>
-        </div>
+        <ReasoningBlock text={action.reasoning} />
       )}
 
       {/* Error Message */}
@@ -479,3 +500,4 @@ export function DecisionCard({ decision, language, onSymbolClick }: DecisionCard
     </div>
   )
 }
+

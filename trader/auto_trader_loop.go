@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"nofx/kernel"
 	"nofx/logger"
+	"nofx/market"
 	"nofx/store"
-	"nofx/wallet"
 	"strings"
 	"time"
 )
@@ -26,11 +26,6 @@ func (at *AutoTrader) runCycle() error {
 	if !running {
 		logger.Infof("⏹ Trader is stopped, aborting cycle #%d", at.callCount)
 		return nil
-	}
-
-	// Check USDC balance periodically for claw402 users (every 10 cycles)
-	if at.callCount%10 == 0 && store.IsClaw402Config(at.config.AIModel) {
-		at.checkClaw402Balance()
 	}
 
 	// Create decision record
@@ -69,6 +64,14 @@ func (at *AutoTrader) runCycle() error {
 	// NOTE: Must be called BEFORE candidate coins check to ensure equity is always recorded
 	at.saveEquitySnapshot(ctx)
 
+	// [HOOT] Inject enhanced data into context
+	ctx.TraderID = at.id
+	at.injectMarketRegime(ctx)       // B1: Market regime detection per symbol
+	at.injectEventSignals(ctx)       // B3: Event signal injection
+	at.syncPositionLifecycles(ctx)   // Lifecycle: register/advance positions
+	at.syncRiskGuardPositions(ctx)   // Sync positions to real-time risk guard
+	ctx.RecentRiskEvents = at.consumeRiskEvents() // Consume risk events for AI awareness
+
 	// If no candidate coins available, log but do not error
 	if len(ctx.CandidateCoins) == 0 {
 		logger.Infof("ℹ️  No candidate coins available, skipping this cycle")
@@ -92,6 +95,14 @@ func (at *AutoTrader) runCycle() error {
 
 	logger.Infof("📊 Account equity: %.2f USDT | Available: %.2f USDT | Positions: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
+
+	// [HOOT] Cost guard: skip AI call when no positions and in cooldown
+	if at.costGuard != nil && at.costGuard.ShouldSkipAI(len(ctx.Positions)) {
+		record.Success = true
+		record.ExecutionLog = append(record.ExecutionLog, "Cost guard: skipped AI call (no positions, in cooldown)")
+		at.saveDecision(record)
+		return nil
+	}
 
 	// 5. Use strategy engine to call AI for decision
 	logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine]")
@@ -166,6 +177,11 @@ func (at *AutoTrader) runCycle() error {
 		return fmt.Errorf("failed to get AI decision: %w", err)
 	}
 
+	// [HOOT] Record successful AI call for cost guard cooldown
+	if at.costGuard != nil {
+		at.costGuard.RecordAICall()
+	}
+
 	// AI succeeded — reset failure counter and deactivate safe mode
 	if at.consecutiveAIFailures > 0 {
 		logger.Infof("✅ [%s] AI recovered after %d consecutive failures", at.name, at.consecutiveAIFailures)
@@ -204,6 +220,21 @@ func (at *AutoTrader) runCycle() error {
 	logger.Info(strings.Repeat("-", 70))
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
 	logger.Info(strings.Repeat("-", 70))
+
+	// [HOOT] Step D: Gatekeeper filtering (before sort, filter invalid candidates).
+	// Always runs when strategyEngine is set; gateFilterDecisions handles nil Signals internally.
+	if at.strategyEngine != nil {
+		aiDecision.Decisions = at.gateFilterDecisions(aiDecision.Decisions, ctx)
+	}
+
+	// [HOOT] Step E: PositionManager — evaluate existing positions
+	if len(ctx.Positions) > 0 {
+		pmDecisions := at.runPositionManagement(ctx)
+		if len(pmDecisions) > 0 {
+			logger.Infof("📊 [%s] PositionManager generated %d actions", at.name, len(pmDecisions))
+			aiDecision.Decisions = append(aiDecision.Decisions, pmDecisions...)
+		}
+	}
 
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
 	sortedDecisions := sortDecisionsByPriority(aiDecision.Decisions)
@@ -271,6 +302,19 @@ func (at *AutoTrader) runCycle() error {
 		} else {
 			actionRecord.Success = true
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("✓ %s %s succeeded", d.Symbol, d.Action))
+
+			// [HOOT] Track close events for OpenGate + Lifecycle
+			if isCloseAction(d.Action) {
+				if at.openGate != nil {
+					at.openGate.MarkClose(at.id, d.Symbol)
+				}
+				side := "LONG"
+				if d.Action == "close_short" {
+					side = "SHORT"
+				}
+				kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
+			}
+
 			// Brief delay after successful execution
 			time.Sleep(1 * time.Second)
 		}
@@ -526,26 +570,9 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		logger.Infof("⚠️ [%s] Store is nil, cannot get recent trades", at.name)
 	}
 
-	// 8. Get quantitative data (if enabled in strategy config)
-	if strategyConfig.Indicators.EnableQuantData {
-		// Collect symbols to query (candidate coins + position coins)
-		symbolsToQuery := make(map[string]bool)
-		for _, coin := range candidateCoins {
-			symbolsToQuery[coin.Symbol] = true
-		}
-		for _, pos := range positionInfos {
-			symbolsToQuery[pos.Symbol] = true
-		}
-
-		symbols := make([]string, 0, len(symbolsToQuery))
-		for sym := range symbolsToQuery {
-			symbols = append(symbols, sym)
-		}
-
-		logger.Infof("📊 [%s] Fetching quantitative data for %d symbols...", at.name, len(symbols))
-		ctx.QuantDataMap = at.strategyEngine.FetchQuantDataBatch(symbols)
-		logger.Infof("📊 [%s] Successfully fetched quantitative data for %d symbols", at.name, len(ctx.QuantDataMap))
-	}
+	// 8. Quant data fetching is disabled: FetchQuantData is a no-op stub after
+	// nofxos retirement. Skip the fetch+log block entirely (stub mode).
+	_ = strategyConfig.Indicators.EnableQuantData
 
 	// 9. Get OI ranking data (market-wide position changes)
 	if strategyConfig.Indicators.EnableOIRanking {
@@ -557,15 +584,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 	}
 
-	// 10. Get NetFlow ranking data (market-wide fund flow)
-	if strategyConfig.Indicators.EnableNetFlowRanking {
-		logger.Infof("💰 [%s] Fetching NetFlow ranking data...", at.name)
-		ctx.NetFlowRankingData = at.strategyEngine.FetchNetFlowRankingData()
-		if ctx.NetFlowRankingData != nil {
-			logger.Infof("💰 [%s] NetFlow ranking data ready: inst_in=%d, inst_out=%d",
-				at.name, len(ctx.NetFlowRankingData.InstitutionFutureTop), len(ctx.NetFlowRankingData.InstitutionFutureLow))
-		}
-	}
+	// 10. (NetFlow ranking removed with nofxos retirement.)
 
 	// 11. Get Price ranking data (market-wide gainers/losers)
 	if strategyConfig.Indicators.EnablePriceRanking {
@@ -577,7 +596,74 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 	}
 
+	// 12. [HOOT] Pre-fill MarketDataMap so injectMarketRegime / syncPositionLifecycles
+	// / runPositionManagement / gateFilterDecisions all have market data available
+	// before GetFullDecisionWithStrategy is called. Failures are non-fatal (skip symbol).
+	at.prefillMarketDataMap(ctx, strategyConfig)
+
 	return ctx, nil
+}
+
+// prefillMarketDataMap populates ctx.MarketDataMap before the HOOT injection hooks run.
+// This ensures injectMarketRegime / syncPositionLifecycles / runPositionManagement /
+// gateFilterDecisions all have live market data available.
+// Failures are non-fatal: the symbol is skipped, and GetFullDecisionWithStrategy will
+// re-fetch any missing symbols via fetchMarketDataWithStrategy.
+func (at *AutoTrader) prefillMarketDataMap(ctx *kernel.Context, strategyConfig *store.StrategyConfig) {
+	if ctx.MarketDataMap != nil && len(ctx.MarketDataMap) > 0 {
+		return // already populated (e.g., injected in tests)
+	}
+
+	// Resolve timeframes from strategy config (mirrors fetchMarketDataWithStrategy logic)
+	timeframes := strategyConfig.Indicators.Klines.SelectedTimeframes
+	primaryTF := strategyConfig.Indicators.Klines.PrimaryTimeframe
+	klineCount := strategyConfig.Indicators.Klines.PrimaryCount
+
+	if len(timeframes) == 0 {
+		if primaryTF != "" {
+			timeframes = append(timeframes, primaryTF)
+		} else {
+			timeframes = append(timeframes, "1h")
+		}
+		if strategyConfig.Indicators.Klines.LongerTimeframe != "" {
+			timeframes = append(timeframes, strategyConfig.Indicators.Klines.LongerTimeframe)
+		}
+	}
+	if primaryTF == "" && len(timeframes) > 0 {
+		primaryTF = timeframes[0]
+	}
+	if klineCount <= 0 {
+		klineCount = 30
+	}
+
+	// Collect all symbols: candidate coins + open positions
+	symbolsToFetch := make(map[string]bool)
+	for _, coin := range ctx.CandidateCoins {
+		symbolsToFetch[coin.Symbol] = true
+	}
+	for _, pos := range ctx.Positions {
+		symbolsToFetch[pos.Symbol] = true
+	}
+
+	if len(symbolsToFetch) == 0 {
+		return
+	}
+
+	ctx.MarketDataMap = make(map[string]*market.Data, len(symbolsToFetch))
+
+	fetched := 0
+	for sym := range symbolsToFetch {
+		data, err := market.GetWithTimeframes(sym, timeframes, primaryTF, klineCount)
+		if err != nil {
+			logger.Infof("⚠️ [%s] prefillMarketDataMap: failed to fetch %s: %v", at.name, sym, err)
+			continue
+		}
+		ctx.MarketDataMap[sym] = data
+		fetched++
+	}
+
+	logger.Infof("📊 [%s] prefillMarketDataMap: filled %d/%d symbols (timeframes=%v primary=%s)",
+		at.name, fetched, len(symbolsToFetch), timeframes, primaryTF)
 }
 
 // sortDecisionsByPriority sorts decisions: close positions first, then open positions, finally hold/wait
@@ -617,35 +703,4 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	return sorted
 }
 
-// checkClaw402Balance checks USDC balance and logs warnings if low
-func (at *AutoTrader) checkClaw402Balance() {
-	scanMinutes := int(at.config.ScanInterval.Minutes())
-	if scanMinutes <= 0 {
-		scanMinutes = 3
-	}
-	dailyCost, _ := store.EstimateRunway(1.0, at.config.CustomModelName, scanMinutes)
-	logger.Infof("💰 [%s] Estimated daily AI cost: ~$%.2f (model: %s, interval: %dm)",
-		at.name, dailyCost, at.config.CustomModelName, scanMinutes)
-
-	if at.claw402WalletAddr != "" {
-		balance, err := wallet.QueryUSDCBalance(at.claw402WalletAddr)
-		if err != nil {
-			logger.Warnf("⚠️ [%s] Failed to query USDC balance: %v", at.name, err)
-			return
-		}
-
-		if balance < 1.0 {
-			logger.Warnf("⚠️ [%s] Low USDC balance: $%.2f — AI may stop soon!", at.name, balance)
-		}
-		if balance <= 0 {
-			logger.Errorf("🚨 [%s] USDC balance is ZERO — AI calls will fail!", at.name)
-		}
-
-		runway := float64(0)
-		if dailyCost > 0 {
-			runway = balance / dailyCost
-		}
-		logger.Infof("💰 [%s] USDC Balance: $%.2f | Daily AI cost: ~$%.2f | Runway: ~%.1f days",
-			at.name, balance, dailyCost, runway)
-	}
-}
+// checkClaw402Balance was removed with the claw402 payment provider retirement.

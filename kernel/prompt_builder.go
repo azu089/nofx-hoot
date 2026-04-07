@@ -60,9 +60,13 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 - 单个持仓亏损达到-5%必须止损
 - 优先保护资本，再考虑盈利
 
-### 跟踪止盈
-- 当持仓盈亏从峰值回撤30%时，考虑部分或全部止盈
-- 例如：Peak PnL +5%，Current PnL +3.5% → 回撤了30%，应该止盈
+### 信号驱动平仓
+- 平仓需要同时满足以下三个条件：
+  1. EMA趋势反转（EMA20穿越EMA50反向）
+  2. OI萎缩（持仓量持续下降，资金在撤出）
+  3. 最小持仓时间已满足（避免因噪音过早退出）
+- 三个条件同时满足才建议平仓
+- 如果只满足1-2个条件，考虑减仓而非全部平仓
 
 ### 顺势交易
 - 只在多个时间框架趋势一致时进场
@@ -195,9 +199,13 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
 - Must stop-loss when single position loss reaches -5%
 - Capital protection first, profit second
 
-### Trailing Take-Profit
-- Consider partial/full profit-taking when PnL pulls back 30% from peak
-- Example: Peak PnL +5%, Current PnL +3.5% → 30% drawdown, should take profit
+### Signal-Driven Exit
+- Exit requires ALL THREE conditions to be met simultaneously:
+  1. EMA trend reversal (EMA20 crosses EMA50 in opposite direction)
+  2. OI contraction (open interest declining — capital is exiting)
+  3. Minimum hold time elapsed (avoid noise-driven premature exits)
+- All three conditions must be met before recommending a full close
+- If only 1-2 conditions met, consider partial close instead of full exit
 
 ### Trend Following
 - Only enter when trends align across multiple timeframes

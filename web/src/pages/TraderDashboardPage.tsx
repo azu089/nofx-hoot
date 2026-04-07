@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { ChartTabs } from '../components/charts/ChartTabs'
 import { DecisionCard } from '../components/trader/DecisionCard'
 import { PositionHistory } from '../components/trader/PositionHistory'
+import { ArenaDebatePanel } from '../components/trader/ArenaDebatePanel'
 import { PunkAvatar, getTraderAvatar } from '../components/common/PunkAvatar'
 import { confirmToast, notify } from '../lib/notify'
 import { formatPrice, formatQuantity } from '../utils/format'
@@ -818,6 +819,21 @@ export function TraderDashboardPage({
                             </h2>
                         </div>
                         <PositionHistory traderId={selectedTraderId} />
+                    </div>
+                )}
+
+                {selectedTraderId && (
+                    <div
+                        className="nofx-glass p-6 animate-slide-in"
+                        style={{ animationDelay: '0.3s' }}
+                    >
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-nofx-text-main">
+                                <span className="text-2xl">⚖️</span>
+                                Arena 辩论决策
+                            </h2>
+                        </div>
+                        <ArenaDebatePanel traderId={selectedTraderId} language={language} />
                     </div>
                 )}
             </div>

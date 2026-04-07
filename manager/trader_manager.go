@@ -80,6 +80,56 @@ func (tm *TraderManager) GetTraderIDs() []string {
 	return ids
 }
 
+// StartTraderGoroutine is the SINGLE entry point for launching a trader's
+// Run() loop as a goroutine. All callers (autoStart at boot, user-initiated
+// start from the API, StartAll admin action) MUST use this method so the
+// lifecycle (DB is_running, panic recover, exit cleanup) is managed in one
+// place.
+//
+// Guarantees:
+//   - DB is_running=true is written BEFORE the goroutine starts
+//   - On goroutine exit (normal, error, or panic), DB is_running=false
+//     is ALWAYS restored via defer
+//   - This eliminates the "zombie trader" class of bugs where Run() fails
+//     fast but DB still says running=true
+//
+// userID and traderID are required for DB status updates. Pass empty st
+// to skip DB writes (e.g. ephemeral test traders).
+func (tm *TraderManager) StartTraderGoroutine(at *trader.AutoTrader, st *store.Store, userID, traderID, traderName string) {
+	// Mark DB running BEFORE the goroutine kicks off, so the defer in the
+	// goroutine can safely reset it on any exit path.
+	if st != nil && userID != "" && traderID != "" {
+		if err := st.Trader().UpdateStatus(userID, traderID, true); err != nil {
+			logger.Warnf("⚠️  Failed to set trader %s is_running=true: %v", traderID, err)
+		}
+	}
+
+	go func() {
+		defer func() {
+			// Always reset DB is_running to false on exit, regardless of how
+			// the goroutine ended (clean return, error, or panic). This is the
+			// root-cause fix for zombie traders: previously, silent exits
+			// (panic recover, context cancel, fast Run() error) left DB in
+			// is_running=true while the goroutine was gone.
+			if st != nil && userID != "" && traderID != "" {
+				if updErr := st.Trader().UpdateStatus(userID, traderID, false); updErr != nil {
+					logger.Warnf("⚠️  Failed to reset trader %s is_running=false on exit: %v", traderID, updErr)
+				}
+			}
+			if r := recover(); r != nil {
+				logger.Errorf("💥 Trader '%s' (%s) panic recovered: %v", traderName, traderID, r)
+			}
+		}()
+
+		logger.Infof("▶️  Starting trader '%s' (%s)", traderName, traderID)
+		if err := at.Run(); err != nil {
+			logger.Warnf("⚠️  Trader '%s' stopped with error: %v", traderName, err)
+		} else {
+			logger.Infof("ℹ️  Trader '%s' Run() returned cleanly", traderName)
+		}
+	}()
+}
+
 // StartAll starts all traders
 func (tm *TraderManager) StartAll() {
 	tm.mu.RLock()
@@ -87,12 +137,17 @@ func (tm *TraderManager) StartAll() {
 
 	logger.Info("🚀 Starting all traders...")
 	for id, t := range tm.traders {
-		go func(traderID string, at *trader.AutoTrader) {
+		// Note: StartAll does not have userID/store context; callers relying
+		// on DB lifecycle tracking should use StartTraderGoroutine directly.
+		at := t
+		traderID := id
+		go func() {
 			logger.Infof("▶️  Starting %s...", at.GetName())
 			if err := at.Run(); err != nil {
 				logger.Infof("❌ %s runtime error: %v", at.GetName(), err)
 			}
-		}(id, t)
+			_ = traderID
+		}()
 	}
 }
 
@@ -116,11 +171,18 @@ func (tm *TraderManager) AutoStartRunningTraders(st *store.Store) {
 		return
 	}
 
-	// Build set of running trader IDs
-	runningTraderIDs := make(map[string]bool)
+	// Build map of running trader IDs → (userID, name) for lifecycle tracking
+	type runInfo struct {
+		userID string
+		name   string
+	}
+	runningTraderIDs := make(map[string]runInfo)
 	for _, traderCfg := range traderList {
 		if traderCfg.IsRunning {
-			runningTraderIDs[traderCfg.ID] = true
+			runningTraderIDs[traderCfg.ID] = runInfo{
+				userID: traderCfg.UserID,
+				name:   traderCfg.Name,
+			}
 		}
 	}
 
@@ -134,13 +196,9 @@ func (tm *TraderManager) AutoStartRunningTraders(st *store.Store) {
 
 	startedCount := 0
 	for id, t := range tm.traders {
-		if runningTraderIDs[id] {
-			go func(traderID string, at *trader.AutoTrader) {
-				logger.Infof("▶️  Auto-restoring %s...", at.GetName())
-				if err := at.Run(); err != nil {
-					logger.Infof("❌ %s runtime error: %v", at.GetName(), err)
-				}
-			}(id, t)
+		if info, ok := runningTraderIDs[id]; ok {
+			logger.Infof("▶️  Auto-restoring %s...", t.GetName())
+			tm.StartTraderGoroutine(t, st, info.userID, id, info.name)
 			startedCount++
 		}
 	}
@@ -655,6 +713,7 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 	case "binance":
 		traderConfig.BinanceAPIKey = string(exchangeCfg.APIKey)
 		traderConfig.BinanceSecretKey = string(exchangeCfg.SecretKey)
+		traderConfig.BinanceTestnet = exchangeCfg.Testnet
 	case "bybit":
 		traderConfig.BybitAPIKey = string(exchangeCfg.APIKey)
 		traderConfig.BybitSecretKey = string(exchangeCfg.SecretKey)
@@ -723,18 +782,12 @@ func (tm *TraderManager) addTraderFromStore(traderCfg *store.Trader, aiModelCfg 
 	tm.traders[traderCfg.ID] = at
 	logger.Infof("✓ Trader '%s' (%s + %s/%s) loaded to memory", traderCfg.Name, aiModelCfg.Provider, exchangeCfg.ExchangeType, exchangeCfg.AccountName)
 
-	// Auto-start if trader was running before shutdown
+	// Auto-start if trader was running before shutdown. Delegates to the
+	// canonical StartTraderGoroutine so the DB is_running lifecycle is managed
+	// in exactly one place.
 	if traderCfg.IsRunning {
 		logger.Infof("🔄 Auto-starting trader '%s' (was running before shutdown)...", traderCfg.Name)
-		go func(trader *trader.AutoTrader, traderName, traderID, userID string) {
-			if err := trader.Run(); err != nil {
-				logger.Warnf("⚠️ Trader '%s' stopped with error: %v", traderName, err)
-				// Update database to reflect stopped state
-				if st != nil {
-					_ = st.Trader().UpdateStatus(userID, traderID, false)
-				}
-			}
-		}(at, traderCfg.Name, traderCfg.ID, traderCfg.UserID)
+		tm.StartTraderGoroutine(at, st, traderCfg.UserID, traderCfg.ID, traderCfg.Name)
 		logger.Infof("✅ Trader '%s' auto-started successfully", traderCfg.Name)
 	}
 

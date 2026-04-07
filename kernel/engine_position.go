@@ -9,13 +9,23 @@ import (
 // Decision Validation
 // ============================================================================
 
-func validateDecisions(decisions []Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64) error {
+// validateDecisions validates each decision independently. Invalid decisions
+// are skipped with a warning; valid ones are returned. This per-decision skip
+// mode replaces the previous fail-fast behavior that dropped the entire batch
+// on a single bad action (e.g. AI occasionally emits "update_stop_loss" which
+// is not in the action whitelist — previously that killed all sibling
+// open/close decisions in the same cycle).
+func validateDecisions(decisions []Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64) (valid []Decision, skipped int) {
+	valid = make([]Decision, 0, len(decisions))
 	for i := range decisions {
 		if err := validateDecision(&decisions[i], accountEquity, btcEthLeverage, altcoinLeverage, btcEthPosRatio, altcoinPosRatio); err != nil {
-			return fmt.Errorf("decision #%d validation failed: %w", i+1, err)
+			logger.Warnf("⚠️  Decision #%d skipped: %v", i+1, err)
+			skipped++
+			continue
 		}
+		valid = append(valid, decisions[i])
 	}
-	return nil
+	return valid, skipped
 }
 
 func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int, btcEthPosRatio, altcoinPosRatio float64) error {

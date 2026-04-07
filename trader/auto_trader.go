@@ -2,14 +2,12 @@ package trader
 
 import (
 	"fmt"
+	"nofx/arena"
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/mcp"
-	_ "nofx/mcp/payment"
 	_ "nofx/mcp/provider"
 	"nofx/store"
-	"nofx/wallet"
-	"github.com/ethereum/go-ethereum/crypto"
 	"nofx/trader/aster"
 	"nofx/trader/binance"
 	"nofx/trader/bitget"
@@ -38,6 +36,7 @@ type AutoTraderConfig struct {
 	// Binance API configuration
 	BinanceAPIKey    string
 	BinanceSecretKey string
+	BinanceTestnet   bool // Demo Trading mode (demo-fapi.binance.com)
 
 	// Bybit API configuration
 	BybitAPIKey    string
@@ -147,10 +146,15 @@ type AutoTrader struct {
 	lastBalanceSyncTime   time.Time          // Last balance sync time
 	userID                string             // User ID
 	gridState             *GridState         // Grid trading state (only used when StrategyType == "grid_trading")
-	claw402WalletAddr     string             // Claw402 wallet address (derived from private key at start)
 	consecutiveAIFailures int               // Consecutive AI call failures
 	safeMode              bool              // Safe mode: no new positions, protect existing ones
 	safeModeReason        string            // Why safe mode was activated
+	openGate              *OpenGate          // Open-position frequency gate
+	costGuard             *CostGuard         // AI call cost guard (skip when no positions)
+	adaptiveState         *kernel.AdaptiveState // Rolling win-rate adaptive thresholds
+	getEventSignals       func() []kernel.EventSignal // Injected event signal fetcher (avoids circular deps)
+	riskGuard             *RealtimeRiskGuard    // Real-time risk monitoring between cycles
+	arenaRunner           *arena.ArenaRunner    // Arena strategy runner (only when StrategyType == "arena")
 }
 
 // NewAutoTrader creates an automatic trader
@@ -205,13 +209,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		mcpClient = mcp.New()
 	}
 
-	// Payment providers (claw402) ignore customURL
-	switch aiModel {
-	case "claw402":
-		mcpClient.SetAPIKey(apiKey, "", config.CustomModelName)
-	default:
-		mcpClient.SetAPIKey(apiKey, customURL, config.CustomModelName)
-	}
+	mcpClient.SetAPIKey(apiKey, customURL, config.CustomModelName)
 	logger.Infof("🤖 [%s] Using %s AI", config.Name, aiModel)
 
 	if config.CustomAPIURL != "" || config.CustomModelName != "" {
@@ -237,7 +235,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	switch config.Exchange {
 	case "binance":
 		logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
-		trader = binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
+		trader = binance.NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID, config.BinanceTestnet)
 	case "bybit":
 		logger.Infof("🏦 [%s] Using Bybit Futures trading", config.Name)
 		trader = bybit.NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
@@ -333,16 +331,10 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	if config.StrategyConfig == nil {
 		return nil, fmt.Errorf("[%s] strategy not configured", config.Name)
 	}
-	// Pass claw402 wallet key to strategy engine so nofxos data requests
-	// are routed through claw402 (reuses the same wallet as AI calls)
-	var claw402Key string
-	if config.AIModel == "claw402" && config.CustomAPIKey != "" {
-		claw402Key = config.CustomAPIKey
-	}
-	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig, claw402Key)
+	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig)
 	logger.Infof("✓ [%s] Using strategy engine (strategy configuration loaded)", config.Name)
 
-	return &AutoTrader{
+	at := &AutoTrader{
 		id:                    config.ID,
 		name:                  config.Name,
 		aiModel:               config.AIModel,
@@ -367,7 +359,59 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		peakPnLCacheMutex:     sync.RWMutex{},
 		lastBalanceSyncTime:   time.Now(),
 		userID:                userID,
-	}, nil
+		openGate:              NewOpenGate(),
+		costGuard:             NewCostGuard(),
+		adaptiveState:         kernel.NewAdaptiveState(kernel.DefaultAdaptiveConfig()),
+		// [HOOT CRITICAL-2] Initialize real-time risk guard.
+		// gridState is nil at construction time (set after InitializeGrid in Run()).
+		// maxExposureUSD=0 disables the exposure-limit check (relies on AI risk control instead).
+		riskGuard: NewRealtimeRiskGuard(trader, nil, config.BinanceTestnet, 0),
+	}
+
+	// 初始化 Arena 策略 runner（当 StrategyType == "arena" 时）
+	if at.IsArenaStrategy() {
+		arenaCfg := arena.ArenaConfigFromStore(at.config.StrategyConfig.ArenaConfig)
+		arenaEngine := arena.NewArenaEngine(arenaCfg, at.mcpClient)
+		adapter := NewArenaTraderAdapter(at.trader, at.exchange)
+
+		// [HOOT CRITICAL-3] Build a real DataProvider instead of passing nil.
+		// Resolve timeframes from strategy config (mirrors fetchMarketDataWithStrategy).
+		klinesCfg := config.StrategyConfig.Indicators.Klines
+		arenaDP := NewArenaDataProvider(
+			klinesCfg.SelectedTimeframes,
+			klinesCfg.PrimaryTimeframe,
+			klinesCfg.PrimaryCount,
+			config.Name,
+		)
+
+		// [N3] 注入信号/事件函数（避免循环依赖，通过 SetSignalsFunc/SetEventsFunc 延迟注入）
+		// 信号：返回最新 MarketSignals（at.getEventSignals 已是事件函数，信号从策略引擎获取）
+		// 注意：arenaDP 此时已构造，在 at 构造完成后闭包捕获 at
+		arenaDP.SetSignalsFunc(func() *kernel.MarketSignals {
+			// 直接返回空 MarketSignals：arena DataProvider 会自行降级，无需依赖 at 内部状态
+			return kernel.NewMarketSignals()
+		})
+		arenaDP.SetEventsFunc(func() []kernel.EventSignal {
+			// 复用 at.getEventSignals（若已注入）
+			if at.getEventSignals != nil {
+				return at.getEventSignals()
+			}
+			return nil
+		})
+
+		// [HOOT CRITICAL-4] Build a real GatekeeperFunc instead of passing nil.
+		// [N1] 构建持久化适配器（st 为 nil 时跳过）
+		var recordSaver arena.ArenaRecordSaver
+		if st != nil {
+			recordSaver = NewArenaRecordSaverAdapter(st.ArenaRecord())
+		}
+
+		at.arenaRunner = arena.NewArenaRunner(arenaEngine, adapter, arenaDP, at.buildArenaGatekeeper(), recordSaver, config.ID)
+		logger.Infof("🏟️ [%s] Arena strategy initialized: %d symbols, interval=%dm (DataProvider+Gatekeeper+RecordStore attached)",
+			at.name, len(arenaCfg.Symbols), arenaCfg.IntervalMinutes)
+	}
+
+	return at, nil
 }
 
 // Run runs the automatic trading main loop
@@ -384,10 +428,18 @@ func (at *AutoTrader) Run() error {
 	logger.Infof("⚙️  Scan interval: %v", at.config.ScanInterval)
 	logger.Info("🤖 AI will make full decisions on leverage, position size, stop loss/take profit, etc.")
 
-	// Pre-launch checks for claw402 users
-	at.runPreLaunchChecks()
 	at.monitorWg.Add(1)
 	defer at.monitorWg.Done()
+
+	// [HOOT CRITICAL-2] Start real-time risk guard with monitored symbols
+	if at.riskGuard != nil {
+		symbols := at.collectMonitoredSymbols()
+		if err := at.riskGuard.Start(symbols); err != nil {
+			logger.Warnf("⚠️ [%s] RealtimeRiskGuard failed to start: %v (continuing without real-time guard)", at.name, err)
+		} else {
+			logger.Infof("🛡️ [%s] RealtimeRiskGuard started: %d symbols", at.name, len(symbols))
+		}
+	}
 
 	// Start drawdown monitoring
 	at.startDrawdownMonitor()
@@ -467,8 +519,10 @@ func (at *AutoTrader) Run() error {
 	ticker := time.NewTicker(at.config.ScanInterval)
 	defer ticker.Stop()
 
-	// Check if this is a grid trading strategy
+	// Check strategy type for branching
 	isGridStrategy := at.IsGridStrategy()
+	isArenaStrategy := at.IsArenaStrategy()
+
 	if isGridStrategy {
 		logger.Infof("🔲 [%s] Grid trading strategy detected, initializing grid...", at.name)
 		if err := at.InitializeGrid(); err != nil {
@@ -477,12 +531,20 @@ func (at *AutoTrader) Run() error {
 		}
 	}
 
+	if isArenaStrategy {
+		// Arena 策略有自己的定时循环，启动后由 ArenaRunner 管理
+		logger.Infof("🏟️ [%s] Arena strategy detected, starting arena runner...", at.name)
+		if err := at.runArenaCycle(); err != nil {
+			logger.Errorf("❌ [%s] Arena start failed: %v", at.name, err)
+		}
+	}
+
 	// Execute immediately on first run
 	if isGridStrategy {
 		if err := at.RunGridCycle(); err != nil {
 			logger.Infof("❌ Grid execution failed: %v", err)
 		}
-	} else {
+	} else if !isArenaStrategy {
 		if err := at.runCycle(); err != nil {
 			logger.Infof("❌ Execution failed: %v", err)
 		}
@@ -499,7 +561,12 @@ func (at *AutoTrader) Run() error {
 
 		select {
 		case <-ticker.C:
-			if isGridStrategy {
+			if isArenaStrategy {
+				// Arena runner 自带定时器，主循环只需确认 runner 在运行
+				if err := at.runArenaCycle(); err != nil {
+					logger.Infof("❌ Arena cycle check failed: %v", err)
+				}
+			} else if isGridStrategy {
 				if err := at.RunGridCycle(); err != nil {
 					logger.Infof("❌ Grid execution failed: %v", err)
 				}
@@ -526,6 +593,16 @@ func (at *AutoTrader) Stop() {
 	}
 	at.isRunning = false
 	at.isRunningMutex.Unlock()
+
+	// Stop arena runner if running
+	if at.arenaRunner != nil {
+		at.arenaRunner.Stop()
+	}
+
+	// [HOOT CRITICAL-2] Stop real-time risk guard
+	if at.riskGuard != nil {
+		at.riskGuard.Stop()
+	}
 
 	close(at.stopMonitorCh) // Notify monitoring goroutine to stop
 	at.monitorWg.Wait()     // Wait for monitoring goroutine to finish
@@ -594,6 +671,31 @@ func (at *AutoTrader) GetStore() *store.Store {
 	return at.store
 }
 
+// IsArenaStrategy returns true if current strategy is arena (multi-AI debate)
+func (at *AutoTrader) IsArenaStrategy() bool {
+	if at.config.StrategyConfig == nil {
+		return false
+	}
+	return at.config.StrategyConfig.StrategyType == "arena" && at.config.StrategyConfig.ArenaConfig != nil
+}
+
+// runArenaCycle ensures the ArenaRunner is started (it has its own internal timer)
+func (at *AutoTrader) runArenaCycle() error {
+	if at.arenaRunner == nil {
+		return fmt.Errorf("arena runner not initialized")
+	}
+	if !at.arenaRunner.IsRunning() {
+		symbols := at.config.StrategyConfig.ArenaConfig.Symbols
+		return at.arenaRunner.Start(symbols)
+	}
+	return nil
+}
+
+// GetArenaRunner returns the arena runner (for API access to signals)
+func (at *AutoTrader) GetArenaRunner() *arena.ArenaRunner {
+	return at.arenaRunner
+}
+
 // calculatePnLPercentage calculates P&L percentage (based on margin, automatically considers leverage)
 // Return rate = Unrealized P&L / Margin x 100%
 func calculatePnLPercentage(unrealizedPnl, marginUsed float64) float64 {
@@ -603,62 +705,6 @@ func calculatePnLPercentage(unrealizedPnl, marginUsed float64) float64 {
 	return 0.0
 }
 
-// runPreLaunchChecks performs pre-launch checks for claw402 users (wallet balance, runway estimate)
-func (at *AutoTrader) runPreLaunchChecks() {
-	if !store.IsClaw402Config(at.config.AIModel) {
-		return
-	}
-
-	logger.Info("🔍 Running pre-launch checks (claw402)...")
-
-	// Derive wallet address from CustomAPIKey (which is the private key for claw402)
-	if at.config.CustomAPIKey != "" {
-		// Try to derive address using go-ethereum
-		addr := deriveWalletAddress(at.config.CustomAPIKey)
-		if addr != "" {
-			at.claw402WalletAddr = addr
-			logger.Infof("💳 [%s] Claw402 wallet: %s", at.name, addr)
-
-			// Query USDC balance
-			balance, err := wallet.QueryUSDCBalance(addr)
-			if err != nil {
-				logger.Warnf("⚠️ [%s] Could not query USDC balance: %v", at.name, err)
-			} else {
-				// Estimate runway
-				scanMinutes := int(at.config.ScanInterval.Minutes())
-				modelName := at.config.CustomModelName
-				if modelName == "" {
-					modelName = "deepseek"
-				}
-				dailyCost, runway := store.EstimateRunway(balance, modelName, scanMinutes)
-				logger.Infof("💰 [%s] USDC Balance: $%.2f | Daily AI cost: ~$%.2f | Runway: ~%.1f days",
-					at.name, balance, dailyCost, runway)
-
-				if balance < 1.0 {
-					logger.Warnf("⚠️ [%s] Low USDC balance! Consider topping up.", at.name)
-				}
-				if balance <= 0 {
-					logger.Errorf("🚨 [%s] USDC balance is ZERO — AI calls will fail!", at.name)
-				}
-			}
-		}
-	}
-
-	logger.Info("✅ Pre-launch checks complete")
-}
-
-// deriveWalletAddress derives an Ethereum address from a hex private key
-func deriveWalletAddress(privateKeyHex string) string {
-	// Remove 0x prefix if present
-	if len(privateKeyHex) > 2 && privateKeyHex[:2] == "0x" {
-		privateKeyHex = privateKeyHex[2:]
-	}
-
-	privateKey, err := crypto.HexToECDSA(privateKeyHex)
-	if err != nil {
-		return ""
-	}
-
-	address := crypto.PubkeyToAddress(privateKey.PublicKey)
-	return address.Hex()
-}
+// runPreLaunchChecks is retained as a no-op stub. Claw402 wallet checks were
+// removed when the payment provider was retired.
+func (at *AutoTrader) runPreLaunchChecks() {}

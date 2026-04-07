@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"nofx/logger"
 	"nofx/market"
+	"nofx/provider/binance_data"
 	"nofx/provider/hyperliquid"
-	"nofx/provider/nofxos"
 	"nofx/security"
 	"nofx/store"
 	"strings"
@@ -61,6 +60,7 @@ type OITopData struct {
 	OIDeltaPercent    float64 // Open interest change percentage (1 hour)
 	OIDeltaValue      float64 // Open interest change value
 	PriceDeltaPercent float64 // Price change percentage
+	PriceDeltaValid   bool    // false when kline-based price delta unavailable
 }
 
 // TradingStats trading statistics (for AI input)
@@ -103,12 +103,17 @@ type Context struct {
 	MultiTFMarket      map[string]map[string]*market.Data `json:"-"`
 	OITopDataMap       map[string]*OITopData              `json:"-"`
 	QuantDataMap       map[string]*QuantData              `json:"-"`
-	OIRankingData      *nofxos.OIRankingData              `json:"-"` // Market-wide OI ranking data
-	NetFlowRankingData *nofxos.NetFlowRankingData         `json:"-"` // Market-wide fund flow ranking data
-	PriceRankingData   *nofxos.PriceRankingData           `json:"-"` // Market-wide price gainers/losers
+	OIRankingData      *binance_data.OIRankingData        `json:"-"` // Market-wide OI ranking data (Binance)
+	PriceRankingData   *binance_data.PriceRankingData     `json:"-"` // Market-wide price gainers/losers (Binance)
 	BTCETHLeverage     int                                `json:"-"`
 	AltcoinLeverage    int                                `json:"-"`
 	Timeframes         []string                           `json:"-"`
+	// HOOT extensions
+	Signals            *MarketSignals                     `json:"-"` // Structured market signals
+	EventSignals       []EventSignal                      `json:"-"` // Active event signals
+	EventRiskMode      string                             `json:"-"` // "normal" | "threshold_raised" | "blocked_open"
+	TraderID           string                             `json:"-"` // Trader identifier for lifecycle tracking
+	RecentRiskEvents   []RiskEventInfo                    `json:"-"` // Real-time risk guard events from last cycle
 }
 
 // Decision AI trading decision
@@ -180,47 +185,24 @@ type OIDeltaData struct {
 // StrategyEngine - Core Strategy Execution Engine
 // ============================================================================
 
-// StrategyEngine strategy execution engine
+// StrategyEngine holds per-strategy runtime state.
+//
+// CONCURRENCY NOTE: `config` is a bare pointer without locking. Updating the
+// strategy config while a trader loop is running is NOT safe — callers must
+// restart the strategy after changing config fields. Adding a mutex across
+// every field access is prohibitively invasive and low-value for a
+// single-tenant local deployment.
 type StrategyEngine struct {
-	config       *store.StrategyConfig
-	nofxosClient *nofxos.Client
+	config        *store.StrategyConfig
+	binanceClient *binance_data.Client
 }
 
 // NewStrategyEngine creates strategy execution engine.
-// claw402WalletKey is optional — if provided, nofxos data requests are routed through claw402.
-func NewStrategyEngine(config *store.StrategyConfig, claw402WalletKey ...string) *StrategyEngine {
-	// Create NofxOS client with API key from config
-	apiKey := config.Indicators.NofxOSAPIKey
-	if apiKey == "" {
-		apiKey = nofxos.DefaultAuthKey
-	}
-	client := nofxos.NewClient(nofxos.DefaultBaseURL, apiKey)
-
-	// If claw402 wallet key is provided (from trader's AI config), route through claw402
-	walletKey := ""
-	if len(claw402WalletKey) > 0 {
-		walletKey = claw402WalletKey[0]
-	}
-	if walletKey == "" {
-		walletKey = os.Getenv("CLAW402_WALLET_KEY")
-	}
-	if walletKey != "" {
-		claw402URL := os.Getenv("CLAW402_URL")
-		if claw402URL == "" {
-			claw402URL = "https://claw402.ai"
-		}
-		claw402Client, err := nofxos.NewClaw402DataClient(claw402URL, walletKey, &logger.MCPLogger{})
-		if err == nil {
-			client.SetClaw402(claw402Client)
-			logger.Infof("🔗 NofxOS data routed through claw402 (%s)", claw402URL)
-		} else {
-			logger.Warnf("⚠️ Failed to init claw402 data client: %v (using direct nofxos.ai)", err)
-		}
-	}
-
+// All market data sources are now served by Binance public APIs (no auth).
+func NewStrategyEngine(config *store.StrategyConfig) *StrategyEngine {
 	return &StrategyEngine{
-		config:       config,
-		nofxosClient: client,
+		config:        config,
+		binanceClient: binance_data.DefaultClient(),
 	}
 }
 
@@ -271,24 +253,16 @@ func (e *StrategyEngine) GetCandidateCoins() ([]CandidateCoin, error) {
 		return e.filterExcludedCoins(candidates), nil
 
 	case "ai500":
-		// Check use_ai500 flag; if false, fall back to static coins
-		if !coinSource.UseAI500 {
-			logger.Infof("⚠️  source_type is 'ai500' but use_ai500 is false, falling back to static coins")
-			for _, symbol := range coinSource.StaticCoins {
-				symbol = market.Normalize(symbol)
-				candidates = append(candidates, CandidateCoin{
-					Symbol:  symbol,
-					Sources: []string{"static"},
-				})
-			}
-			return e.filterExcludedCoins(candidates), nil
+		// AI500 source removed (nofxos retired). Fall back to static coins.
+		logger.Infof("⚠️  source_type 'ai500' is no longer supported, falling back to static coins")
+		for _, symbol := range coinSource.StaticCoins {
+			symbol = market.Normalize(symbol)
+			candidates = append(candidates, CandidateCoin{
+				Symbol:  symbol,
+				Sources: []string{"static"},
+			})
 		}
-		coins, err := e.getAI500Coins(coinSource.AI500Limit)
-		if err != nil {
-			return nil, err
-		}
-		// Empty list is a normal condition, return directly
-		return e.filterExcludedCoins(coins), nil
+		return e.filterExcludedCoins(candidates), nil
 
 	case "oi_top":
 		// Check use_oi_top flag; if false, fall back to static coins
@@ -369,17 +343,6 @@ func (e *StrategyEngine) GetCandidateCoins() ([]CandidateCoin, error) {
 		return e.filterExcludedCoins(coins), nil
 
 	case "mixed":
-		if coinSource.UseAI500 {
-			poolCoins, err := e.getAI500Coins(coinSource.AI500Limit)
-			if err != nil {
-				logger.Infof("⚠️  Failed to get AI500 coins: %v", err)
-			} else {
-				for _, coin := range poolCoins {
-					symbolSources[coin.Symbol] = append(symbolSources[coin.Symbol], "ai500")
-				}
-			}
-		}
-
 		if coinSource.UseOITop {
 			oiCoins, err := e.getOITopCoins(coinSource.OITopLimit)
 			if err != nil {
@@ -472,32 +435,12 @@ func (e *StrategyEngine) filterExcludedCoins(candidates []CandidateCoin) []Candi
 	return filtered
 }
 
-func (e *StrategyEngine) getAI500Coins(limit int) ([]CandidateCoin, error) {
-	if limit <= 0 {
-		limit = 30
-	}
-
-	symbols, err := e.nofxosClient.GetTopRatedCoins(limit)
-	if err != nil {
-		return nil, err
-	}
-
-	var candidates []CandidateCoin
-	for _, symbol := range symbols {
-		candidates = append(candidates, CandidateCoin{
-			Symbol:  symbol,
-			Sources: []string{"ai500"},
-		})
-	}
-	return candidates, nil
-}
-
 func (e *StrategyEngine) getOITopCoins(limit int) ([]CandidateCoin, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
-	positions, err := e.nofxosClient.GetOITopPositions()
+	positions, err := e.binanceClient.GetOITopPositions()
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +464,7 @@ func (e *StrategyEngine) getOILowCoins(limit int) ([]CandidateCoin, error) {
 		limit = 10
 	}
 
-	positions, err := e.nofxosClient.GetOILowPositions()
+	positions, err := e.binanceClient.GetOILowPositions()
 	if err != nil {
 		return nil, err
 	}
@@ -672,103 +615,25 @@ func extractJSONPath(data interface{}, path string) interface{} {
 	return current
 }
 
-// FetchQuantData fetches quantitative data for a single coin
+// FetchQuantData fetches quantitative data for a single coin.
+//
+// NOTE: After the nofxos retirement, per-coin Netflow data is no longer
+// available from a public endpoint. This function is intentionally a no-op
+// shell — callers still rely on the type, but it returns nil. Per-coin OI
+// and price are still surfaced via market data + the OI ranking pipeline.
 func (e *StrategyEngine) FetchQuantData(symbol string) (*QuantData, error) {
-	if !e.config.Indicators.EnableQuantData {
-		return nil, nil
-	}
-
-	// Use nofxos client with unified API key
-	include := "oi,price"
-	if e.config.Indicators.EnableQuantNetflow {
-		include = "netflow,oi,price"
-	}
-
-	nofxosData, err := e.nofxosClient.GetCoinData(symbol, include)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch quant data: %w", err)
-	}
-
-	if nofxosData == nil {
-		return nil, nil
-	}
-
-	// Convert nofxos.QuantData to kernel.QuantData
-	quantData := &QuantData{
-		Symbol:      nofxosData.Symbol,
-		Price:       nofxosData.Price,
-		PriceChange: nofxosData.PriceChange,
-	}
-
-	// Convert OI data
-	if nofxosData.OI != nil {
-		quantData.OI = make(map[string]*OIData)
-		for exchange, oiData := range nofxosData.OI {
-			if oiData != nil {
-				kData := &OIData{
-					CurrentOI: oiData.CurrentOI,
-				}
-				if oiData.Delta != nil {
-					kData.Delta = make(map[string]*OIDeltaData)
-					for dur, delta := range oiData.Delta {
-						if delta != nil {
-							kData.Delta[dur] = &OIDeltaData{
-								OIDelta:        delta.OIDelta,
-								OIDeltaValue:   delta.OIDeltaValue,
-								OIDeltaPercent: delta.OIDeltaPercent,
-							}
-						}
-					}
-				}
-				quantData.OI[exchange] = kData
-			}
-		}
-	}
-
-	// Convert Netflow data
-	if nofxosData.Netflow != nil {
-		quantData.Netflow = &NetflowData{}
-		if nofxosData.Netflow.Institution != nil {
-			quantData.Netflow.Institution = &FlowTypeData{
-				Future: nofxosData.Netflow.Institution.Future,
-				Spot:   nofxosData.Netflow.Institution.Spot,
-			}
-		}
-		if nofxosData.Netflow.Personal != nil {
-			quantData.Netflow.Personal = &FlowTypeData{
-				Future: nofxosData.Netflow.Personal.Future,
-				Spot:   nofxosData.Netflow.Personal.Spot,
-			}
-		}
-	}
-
-	return quantData, nil
+	return nil, nil
 }
 
-// FetchQuantDataBatch batch fetches quantitative data
+// FetchQuantDataBatch batch fetches quantitative data.
+// FetchQuantData is a no-op stub after nofxos retirement; return an empty map
+// so callers don't log "Fetching quantitative data for N symbols" each cycle.
 func (e *StrategyEngine) FetchQuantDataBatch(symbols []string) map[string]*QuantData {
-	result := make(map[string]*QuantData)
-
-	if !e.config.Indicators.EnableQuantData {
-		return result
-	}
-
-	for _, symbol := range symbols {
-		data, err := e.FetchQuantData(symbol)
-		if err != nil {
-			logger.Infof("⚠️  Failed to fetch quantitative data for %s: %v", symbol, err)
-			continue
-		}
-		if data != nil {
-			result[symbol] = data
-		}
-	}
-
-	return result
+	return make(map[string]*QuantData)
 }
 
-// FetchOIRankingData fetches market-wide OI ranking data
-func (e *StrategyEngine) FetchOIRankingData() *nofxos.OIRankingData {
+// FetchOIRankingData fetches market-wide OI ranking data via Binance public API.
+func (e *StrategyEngine) FetchOIRankingData() *binance_data.OIRankingData {
 	indicators := e.config.Indicators
 	if !indicators.EnableOIRanking {
 		return nil
@@ -778,15 +643,13 @@ func (e *StrategyEngine) FetchOIRankingData() *nofxos.OIRankingData {
 	if duration == "" {
 		duration = "1h"
 	}
-
 	limit := indicators.OIRankingLimit
 	if limit <= 0 {
 		limit = 10
 	}
 
 	logger.Infof("📊 Fetching OI ranking data (duration: %s, limit: %d)", duration, limit)
-
-	data, err := e.nofxosClient.GetOIRanking(duration, limit)
+	data, err := e.binanceClient.GetOIRanking(duration, limit)
 	if err != nil {
 		logger.Warnf("⚠️  Failed to fetch OI ranking data: %v", err)
 		return nil
@@ -794,44 +657,12 @@ func (e *StrategyEngine) FetchOIRankingData() *nofxos.OIRankingData {
 
 	logger.Infof("✓ OI ranking data ready: %d top, %d low positions",
 		len(data.TopPositions), len(data.LowPositions))
-
-	return data
-}
-
-// FetchNetFlowRankingData fetches market-wide NetFlow ranking data
-func (e *StrategyEngine) FetchNetFlowRankingData() *nofxos.NetFlowRankingData {
-	indicators := e.config.Indicators
-	if !indicators.EnableNetFlowRanking {
-		return nil
-	}
-
-	duration := indicators.NetFlowRankingDuration
-	if duration == "" {
-		duration = "1h"
-	}
-
-	limit := indicators.NetFlowRankingLimit
-	if limit <= 0 {
-		limit = 10
-	}
-
-	logger.Infof("💰 Fetching NetFlow ranking data (duration: %s, limit: %d)", duration, limit)
-
-	data, err := e.nofxosClient.GetNetFlowRanking(duration, limit)
-	if err != nil {
-		logger.Warnf("⚠️  Failed to fetch NetFlow ranking data: %v", err)
-		return nil
-	}
-
-	logger.Infof("✓ NetFlow ranking data ready: inst_in=%d, inst_out=%d, retail_in=%d, retail_out=%d",
-		len(data.InstitutionFutureTop), len(data.InstitutionFutureLow),
-		len(data.PersonalFutureTop), len(data.PersonalFutureLow))
-
 	return data
 }
 
 // FetchPriceRankingData fetches market-wide price ranking data (gainers/losers)
-func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
+// via Binance public API.
+func (e *StrategyEngine) FetchPriceRankingData() *binance_data.PriceRankingData {
 	indicators := e.config.Indicators
 	if !indicators.EnablePriceRanking {
 		return nil
@@ -841,22 +672,19 @@ func (e *StrategyEngine) FetchPriceRankingData() *nofxos.PriceRankingData {
 	if durations == "" {
 		durations = "1h"
 	}
-
 	limit := indicators.PriceRankingLimit
 	if limit <= 0 {
 		limit = 10
 	}
 
 	logger.Infof("📈 Fetching Price ranking data (durations: %s, limit: %d)", durations, limit)
-
-	data, err := e.nofxosClient.GetPriceRanking(durations, limit)
+	data, err := e.binanceClient.GetPriceRanking(durations, limit)
 	if err != nil {
 		logger.Warnf("⚠️  Failed to fetch Price ranking data: %v", err)
 		return nil
 	}
 
 	logger.Infof("✓ Price ranking data ready for %d durations", len(data.Durations))
-
 	return data
 }
 
@@ -873,4 +701,19 @@ func detectLanguage(text string) Language {
 		}
 	}
 	return LangEnglish
+}
+
+// FitUserPromptBudget truncates a user prompt to maxChars and appends a truncation notice.
+// If the prompt is within budget, it is returned unchanged.
+func FitUserPromptBudget(prompt string, maxChars int) string {
+	if maxChars <= 0 {
+		maxChars = 45000
+	}
+	if len(prompt) <= maxChars {
+		return prompt
+	}
+	truncated := prompt[:maxChars]
+	truncated += "\n\n[... TRUNCATED — prompt exceeded budget, remaining data omitted ...]\n"
+	logger.Infof("⚠️ User prompt truncated from %d to %d chars", len(prompt), maxChars)
+	return truncated
 }

@@ -32,6 +32,23 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📈 Open long: %s", decision.Symbol)
 
+	// [HOOT] Geometry validation: TP > Entry > SL, min R:R (pre-check with estimated entry)
+	if decision.StopLoss > 0 && decision.TakeProfit > 0 {
+		minRR := at.strategyEngine.GetConfig().RiskControl.MinRiskRewardRatio
+		estimatedEntry := decision.StopLoss + (decision.TakeProfit-decision.StopLoss)/3
+		if err := kernel.ValidateDecisionGeometry(decision, estimatedEntry, minRR); err != nil {
+			logger.Infof("  ⚠️ Geometry pre-check warning (will re-check with market price): %v", err)
+		}
+	}
+
+	// [HOOT] Open gate: frequency control
+	if at.openGate != nil {
+		rc := at.strategyEngine.GetConfig().RiskControl
+		if allowed, reason := at.openGate.AllowOpen(at.id, decision.Symbol, rc); !allowed {
+			return fmt.Errorf("❌ Open gate blocked: %s", reason)
+		}
+	}
+
 	// ⚠️ Get current positions for multiple checks
 	positions, err := at.trader.GetPositions()
 	if err != nil {
@@ -148,6 +165,23 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 // executeOpenShortWithRecord executes open short position and records detailed information
 func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📉 Open short: %s", decision.Symbol)
+
+	// [HOOT] Geometry validation: SL > Entry > TP, min R:R (pre-check with estimated entry)
+	if decision.StopLoss > 0 && decision.TakeProfit > 0 {
+		minRR := at.strategyEngine.GetConfig().RiskControl.MinRiskRewardRatio
+		estimatedEntry := decision.StopLoss - (decision.StopLoss-decision.TakeProfit)/3
+		if err := kernel.ValidateDecisionGeometry(decision, estimatedEntry, minRR); err != nil {
+			logger.Infof("  ⚠️ Geometry pre-check warning (will re-check with market price): %v", err)
+		}
+	}
+
+	// [HOOT] Open gate: frequency control
+	if at.openGate != nil {
+		rc := at.strategyEngine.GetConfig().RiskControl
+		if allowed, reason := at.openGate.AllowOpen(at.id, decision.Symbol, rc); !allowed {
+			return fmt.Errorf("❌ Open gate blocked: %s", reason)
+		}
+	}
 
 	// ⚠️ Get current positions for multiple checks
 	positions, err := at.trader.GetPositions()

@@ -22,9 +22,6 @@ const (
 // ClampLimits enforces product-level limits on strategy config to prevent token overflow.
 func (c *StrategyConfig) ClampLimits() {
 	// Clamp coin source limits
-	if c.CoinSource.AI500Limit > MaxCandidateCoins {
-		c.CoinSource.AI500Limit = MaxCandidateCoins
-	}
 	if c.CoinSource.OITopLimit > MaxCandidateCoins {
 		c.CoinSource.OITopLimit = MaxCandidateCoins
 	}
@@ -60,6 +57,19 @@ func (c *StrategyConfig) ClampLimits() {
 
 }
 
+// NormalizeStrategyConfig sets safe defaults for new fields.
+func (c *StrategyConfig) NormalizeStrategyConfig() {
+	if c.MinHoldSeconds <= 0 {
+		c.MinHoldSeconds = 720 // 12 minutes default
+	}
+	if c.MinHoldSeconds < 60 {
+		c.MinHoldSeconds = 60 // absolute minimum 1 minute
+	}
+	if c.RiskControl.Mode == "" {
+		c.RiskControl.Mode = "balanced"
+	}
+}
+
 // StrategyStore strategy storage
 type StrategyStore struct {
 	db *gorm.DB
@@ -84,7 +94,7 @@ func (Strategy) TableName() string { return "strategies" }
 
 // StrategyConfig strategy configuration details (JSON structure)
 type StrategyConfig struct {
-	// Strategy type: "ai_trading" (default) or "grid_trading"
+	// Strategy type: "ai_trading" (default), "grid_trading", or "arena"
 	StrategyType string `json:"strategy_type,omitempty"`
 
 	// language setting: "zh" for Chinese, "en" for English
@@ -101,8 +111,17 @@ type StrategyConfig struct {
 	// editable sections of System Prompt
 	PromptSections PromptSectionsConfig `json:"prompt_sections,omitempty"`
 
+	// --- Position hold time constraints ---
+	// Minimum seconds to hold a position before allowing close (default 720 = 12 min)
+	MinHoldSeconds int `json:"min_hold_seconds,omitempty"`
+	// Maximum seconds to hold a position (0 = unlimited)
+	MaxHoldSeconds int `json:"max_hold_seconds,omitempty"`
+
 	// Grid trading configuration (only used when StrategyType == "grid_trading")
 	GridConfig *GridStrategyConfig `json:"grid_config,omitempty"`
+
+	// Arena trading configuration (only used when StrategyType == "arena")
+	ArenaConfig *ArenaStrategyConfig `json:"arena_config,omitempty"`
 }
 
 // GridStrategyConfig grid trading specific configuration
@@ -139,6 +158,29 @@ type GridStrategyConfig struct {
 	DirectionBiasRatio float64 `json:"direction_bias_ratio"`
 }
 
+// ArenaStrategyConfig arena (multi-AI debate) strategy configuration
+// Note: AI model, leverage, position size, and language are inherited from the trader layer,
+// not configured per-strategy. Only debate-specific settings are here.
+type ArenaStrategyConfig struct {
+	// Trading symbols
+	Symbols []string `json:"symbols"`
+	// Enabled analysts: "market", "social", "news", "fundamentals"
+	SelectedAnalysts []string `json:"selected_analysts"`
+	// Number of bull/bear debate rounds (default 1)
+	MaxDebateRounds int `json:"max_debate_rounds"`
+	// Number of risk debate rounds (default 1)
+	MaxRiskRounds int `json:"max_risk_rounds"`
+	// Risk preference: "aggressive" / "balanced" / "conservative"
+	RiskPreference string `json:"risk_preference"`
+
+	// Risk control constraints (visible to AI during debate)
+	MaxPositions      int     `json:"max_positions,omitempty"`       // max concurrent positions (default 3)
+	PositionSizeRatio float64 `json:"position_size_ratio,omitempty"` // single position size as ratio of balance 0-1 (default 0.3)
+	MaxMarginUsage    float64 `json:"max_margin_usage,omitempty"`    // max margin utilization 0-1 (default 0.8)
+	MinRiskReward     float64 `json:"min_risk_reward,omitempty"`     // min risk/reward ratio (default 1.5)
+	MinConfidence     int     `json:"min_confidence,omitempty"`      // min AI confidence 0-100 (default 60)
+}
+
 // PromptSectionsConfig editable sections of System Prompt
 type PromptSectionsConfig struct {
 	// role definition (title + description)
@@ -159,10 +201,6 @@ type CoinSourceConfig struct {
 	StaticCoins []string `json:"static_coins,omitempty"`
 	// excluded coins list (filtered out from all sources)
 	ExcludedCoins []string `json:"excluded_coins,omitempty"`
-	// whether to use AI500 coin pool
-	UseAI500 bool `json:"use_ai500"`
-	// AI500 coin pool maximum count
-	AI500Limit int `json:"ai500_limit,omitempty"`
 	// whether to use OI Top (OI increase ranking, suitable for long positions)
 	UseOITop bool `json:"use_oi_top"`
 	// OI Top maximum count
@@ -177,7 +215,6 @@ type CoinSourceConfig struct {
 	UseHyperMain bool `json:"use_hyper_main"`
 	// Hyperliquid Main maximum count (default 20)
 	HyperMainLimit int `json:"hyper_main_limit,omitempty"`
-	// Note: API URLs are now built automatically using NofxOSAPIKey from IndicatorConfig
 }
 
 // IndicatorConfig indicator configuration
@@ -206,24 +243,15 @@ type IndicatorConfig struct {
 	// external data sources
 	ExternalDataSources []ExternalDataSource `json:"external_data_sources,omitempty"`
 
-	// ========== NofxOS Unified API Configuration ==========
-	// Unified API Key for all NofxOS data sources
-	NofxOSAPIKey string `json:"nofxos_api_key,omitempty"`
-
 	// quantitative data sources (capital flow, position changes, price changes)
 	EnableQuantData    bool `json:"enable_quant_data"`    // whether to enable quantitative data
 	EnableQuantOI      bool `json:"enable_quant_oi"`      // whether to show OI data
-	EnableQuantNetflow bool `json:"enable_quant_netflow"` // whether to show Netflow data
+	EnableQuantNetflow bool `json:"enable_quant_netflow"` // DEPRECATED: no-op after nofxos retirement, kept for DB compat
 
 	// OI ranking data (market-wide open interest increase/decrease rankings)
 	EnableOIRanking   bool   `json:"enable_oi_ranking"`             // whether to enable OI ranking data
 	OIRankingDuration string `json:"oi_ranking_duration,omitempty"` // duration: 1h, 4h, 24h
 	OIRankingLimit    int    `json:"oi_ranking_limit,omitempty"`    // number of entries (default 10)
-
-	// NetFlow ranking data (market-wide fund flow rankings - institution/personal)
-	EnableNetFlowRanking   bool   `json:"enable_netflow_ranking"`             // whether to enable NetFlow ranking data
-	NetFlowRankingDuration string `json:"netflow_ranking_duration,omitempty"` // duration: 1h, 4h, 24h
-	NetFlowRankingLimit    int    `json:"netflow_ranking_limit,omitempty"`    // number of entries (default 10)
 
 	// Price ranking data (market-wide gainers/losers)
 	EnablePriceRanking   bool   `json:"enable_price_ranking"`             // whether to enable price ranking data
@@ -282,6 +310,25 @@ type RiskControlConfig struct {
 	MinRiskRewardRatio float64 `json:"min_risk_reward_ratio"`
 	// Min AI confidence to open position (AI guided)
 	MinConfidence int `json:"min_confidence"`
+
+	// Risk control mode: "aggressive" | "balanced" | "high_win_rate" (default: "balanced")
+	Mode string `json:"mode,omitempty"`
+
+	// --- Open Gate: frequency control ---
+	// Cooldown minutes after closing a position on same symbol (0 = disabled)
+	CooldownMinutesAfterClose int `json:"cooldown_minutes_after_close,omitempty"`
+	// Minimum interval minutes between opens on same symbol (0 = disabled)
+	MinHoldMinutes int `json:"min_hold_minutes,omitempty"`
+	// Max opens per hour across all symbols for this trader (0 = unlimited)
+	MaxOpensPerHour int `json:"max_opens_per_hour,omitempty"`
+	// Consecutive open intents required before allowing open (soft gate, 0/1 = disabled)
+	ConfirmTimes int `json:"confirm_times,omitempty"`
+	// Time window in seconds for confirm counting (default 3600)
+	ConfirmWindowSeconds int `json:"confirm_window_seconds,omitempty"`
+	// Consecutive losses before cooldown (0 = disabled)
+	ConsecutiveLossLimit int `json:"consecutive_loss_limit,omitempty"`
+	// Cooldown minutes after hitting consecutive loss limit
+	ConsecutiveLossCooldownMinutes int `json:"consecutive_loss_cooldown_minutes,omitempty"`
 }
 
 // NewStrategyStore creates a new StrategyStore
@@ -310,9 +357,7 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 	config := StrategyConfig{
 		Language: normalizedLang,
 		CoinSource: CoinSourceConfig{
-			SourceType: "ai500",
-			UseAI500:   true,
-			AI500Limit: 3,
+			SourceType: "static",
 			UseOITop:   false,
 			OITopLimit: 3,
 			UseOILow:   false,
@@ -340,20 +385,14 @@ func GetDefaultStrategyConfig(lang string) StrategyConfig {
 			RSIPeriods:        []int{7, 14},
 			ATRPeriods:        []int{14},
 			BOLLPeriods:       []int{20},
-			// NofxOS unified API key
-			NofxOSAPIKey: "cm_568c67eae410d912c54c",
 			// Quant data
 			EnableQuantData:    true,
 			EnableQuantOI:      true,
-			EnableQuantNetflow: true,
+			EnableQuantNetflow: false, // DEPRECATED: no-op after nofxos retirement
 			// OI ranking data
 			EnableOIRanking:   true,
 			OIRankingDuration: "1h",
 			OIRankingLimit:    10,
-			// NetFlow ranking data
-			EnableNetFlowRanking:   true,
-			NetFlowRankingDuration: "1h",
-			NetFlowRankingLimit:    10,
 			// Price ranking data
 			EnablePriceRanking:   true,
 			PriceRankingDuration: "1h,4h,24h",
@@ -635,30 +674,9 @@ func GetContextLimit(provider string) int {
 }
 
 // GetContextLimitForClient returns context limit for a provider+model pair.
-// For claw402, the underlying model is inferred from the model name prefix.
+// (claw402 path removed; underlying model can be inferred via provider name.)
 func GetContextLimitForClient(provider, model string) int {
-	if provider == "claw402" {
-		switch {
-		case strings.HasPrefix(model, "claude"):
-			return ModelContextLimits["claude"]
-		case strings.HasPrefix(model, "gpt"), strings.HasPrefix(model, "o1"), strings.HasPrefix(model, "o3"):
-			return ModelContextLimits["openai"]
-		case strings.HasPrefix(model, "gemini"):
-			return ModelContextLimits["gemini"]
-		case strings.HasPrefix(model, "grok"):
-			return ModelContextLimits["grok"]
-		case strings.HasPrefix(model, "kimi"):
-			return ModelContextLimits["kimi"]
-		case strings.HasPrefix(model, "qwen"):
-			return ModelContextLimits["qwen"]
-		case strings.HasPrefix(model, "minimax"):
-			return ModelContextLimits["minimax"]
-		case strings.HasPrefix(model, "deepseek"):
-			return ModelContextLimits["deepseek"]
-		default:
-			return ModelContextLimits["deepseek"]
-		}
-	}
+	_ = model
 	return GetContextLimit(provider)
 }
 
@@ -733,16 +751,13 @@ func (c *StrategyConfig) EstimateTokens() TokenEstimate {
 	breakdown.MarketData = totalMarketChars / 4 // numeric data: ~4 chars per token
 
 	// --- Quant Data ---
-	if c.Indicators.EnableQuantData {
-		quantCharsPerCoin := 0
-		if c.Indicators.EnableQuantOI {
-			quantCharsPerCoin += 300
-		}
-		if c.Indicators.EnableQuantNetflow {
-			quantCharsPerCoin += 300
-		}
-		breakdown.QuantData = (numCoins * quantCharsPerCoin) / 4
-	}
+	// FetchQuantData is a no-op stub after nofxos retirement, so formatQuantData
+	// never produces output regardless of these flags. Keep the field references
+	// to preserve JSON schema but zero the budget.
+	_ = c.Indicators.EnableQuantData
+	_ = c.Indicators.EnableQuantOI
+	_ = c.Indicators.EnableQuantNetflow
+	breakdown.QuantData = 0
 
 	// --- Ranking Data ---
 	rankingChars := 0
@@ -752,13 +767,6 @@ func (c *StrategyConfig) EstimateTokens() TokenEstimate {
 			limit = 10
 		}
 		rankingChars += limit * 60
-	}
-	if c.Indicators.EnableNetFlowRanking {
-		limit := c.Indicators.NetFlowRankingLimit
-		if limit <= 0 {
-			limit = 10
-		}
-		rankingChars += limit * 80
 	}
 	if c.Indicators.EnablePriceRanking {
 		limit := c.Indicators.PriceRankingLimit
@@ -841,16 +849,11 @@ func (c *StrategyConfig) getEffectiveCoinCount() int {
 	switch c.CoinSource.SourceType {
 	case "static":
 		count = len(c.CoinSource.StaticCoins)
-	case "ai500":
-		count = c.CoinSource.AI500Limit
 	case "oi_top":
 		count = c.CoinSource.OITopLimit
 	case "oi_low":
 		count = c.CoinSource.OILowLimit
 	case "mixed":
-		if c.CoinSource.UseAI500 {
-			count += c.CoinSource.AI500Limit
-		}
 		if c.CoinSource.UseOITop {
 			count += c.CoinSource.OITopLimit
 		}
@@ -858,7 +861,7 @@ func (c *StrategyConfig) getEffectiveCoinCount() int {
 			count += c.CoinSource.OILowLimit
 		}
 	default:
-		count = c.CoinSource.AI500Limit
+		count = len(c.CoinSource.StaticCoins)
 	}
 	if count <= 0 {
 		count = 3

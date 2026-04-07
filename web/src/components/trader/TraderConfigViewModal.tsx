@@ -1,9 +1,7 @@
 import type { TraderConfigData } from '../../types'
-import { t } from '../../i18n/translations'
-import { useLanguage } from '../../contexts/LanguageContext'
 import { PunkAvatar, getTraderAvatar } from '../common/PunkAvatar'
 
-// Extract the name part after the last underscore
+// 提取下划线后面的名称部分
 function getShortName(fullName: string): string {
   const parts = fullName.split('_')
   return parts.length > 1 ? parts[parts.length - 1] : fullName
@@ -20,7 +18,6 @@ export function TraderConfigViewModal({
   onClose,
   traderData,
 }: TraderConfigViewModalProps) {
-  const { language } = useLanguage()
   if (!isOpen || !traderData) return null
 
   const InfoRow = ({
@@ -33,7 +30,7 @@ export function TraderConfigViewModal({
     <div className="flex justify-between items-start py-2 border-b border-[#2B3139] last:border-b-0">
       <span className="text-sm text-[#848E9C] font-medium">{label}</span>
       <span className="text-sm text-[#EAECEF] font-mono text-right">
-        {typeof value === 'boolean' ? (value ? t('traderConfigView.yes', language) : t('traderConfigView.no', language)) : value}
+        {typeof value === 'boolean' ? (value ? '是' : '否') : value}
       </span>
     </div>
   )
@@ -53,9 +50,9 @@ export function TraderConfigViewModal({
               className="rounded-lg"
             />
             <div>
-              <h2 className="text-xl font-bold text-[#EAECEF]">{t('traderConfigView.traderConfig', language)}</h2>
+              <h2 className="text-xl font-bold text-[#EAECEF]">交易员配置</h2>
               <p className="text-sm text-[#848E9C] mt-1">
-                {t('traderConfigView.configInfo', language, { name: traderData.trader_name })}
+                {traderData.trader_name} 的配置信息
               </p>
             </div>
           </div>
@@ -70,7 +67,7 @@ export function TraderConfigViewModal({
               }
             >
               <span>{traderData.is_running ? '●' : '○'}</span>
-              {traderData.is_running ? t('traderConfigView.running', language) : t('traderConfigView.stopped', language)}
+              {traderData.is_running ? '运行中' : '已停止'}
             </div>
             <button
               onClick={onClose}
@@ -86,32 +83,32 @@ export function TraderConfigViewModal({
           {/* Basic Info */}
           <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
             <h3 className="text-lg font-semibold text-[#EAECEF] mb-4 flex items-center gap-2">
-              {'🤖 ' + t('traderConfigView.basicInfo', language)}
+              🤖 基础信息
             </h3>
             <div className="space-y-3">
               <InfoRow
-                label={t('traderConfigView.traderName', language)}
+                label="交易员名称"
                 value={traderData.trader_name}
               />
               <InfoRow
-                label={t('traderConfigView.aiModel', language)}
+                label="AI模型"
                 value={getShortName(traderData.ai_model).toUpperCase()}
               />
               <InfoRow
-                label={t('traderConfigView.exchange', language)}
+                label="交易所"
                 value={getShortName(traderData.exchange_id).toUpperCase()}
               />
               <InfoRow
-                label={t('traderConfigView.initialBalance', language)}
+                label="初始余额"
                 value={`$${traderData.initial_balance.toLocaleString()}`}
               />
               <InfoRow
-                label={t('traderConfigView.marginMode', language)}
-                value={traderData.is_cross_margin ? t('traderConfigView.crossMargin', language) : t('traderConfigView.isolatedMargin', language)}
+                label="保证金模式"
+                value={traderData.is_cross_margin ? '全仓' : '逐仓'}
               />
               <InfoRow
-                label={t('traderConfigView.scanIntervalLabel', language)}
-                value={t('traderConfigView.scanInterval', language, { minutes: traderData.scan_interval_minutes || 3 })}
+                label="扫描间隔"
+                value={`${traderData.scan_interval_minutes || 3} 分钟`}
               />
             </div>
           </div>
@@ -120,11 +117,11 @@ export function TraderConfigViewModal({
           {traderData.strategy_id && (
             <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
               <h3 className="text-lg font-semibold text-[#EAECEF] mb-4 flex items-center gap-2">
-                {'📋 ' + t('traderConfigView.strategyUsed', language)}
+                📋 使用策略
               </h3>
               <div className="space-y-3">
                 <InfoRow
-                  label={t('traderConfigView.strategyName', language)}
+                  label="策略名称"
                   value={traderData.strategy_name || traderData.strategy_id}
                 />
               </div>
@@ -138,10 +135,11 @@ export function TraderConfigViewModal({
             onClick={onClose}
             className="px-6 py-3 bg-[#2B3139] text-[#EAECEF] rounded-lg hover:bg-[#404750] transition-all duration-200 border border-[#404750]"
           >
-            {t('traderConfigView.close', language)}
+            关闭
           </button>
         </div>
       </div>
     </div>
   )
 }
+

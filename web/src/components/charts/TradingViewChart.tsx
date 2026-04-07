@@ -396,3 +396,4 @@ function TradingViewChartComponent({
 
 // 使用 memo 避免不必要的重渲染
 export const TradingViewChart = memo(TradingViewChartComponent)
+

@@ -61,8 +61,14 @@ type FuturesTrader struct {
 }
 
 // NewFuturesTrader creates futures trader
-func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
+func NewFuturesTrader(apiKey, secretKey string, userId string, testnet bool) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
+
+	// Binance Demo Trading mode uses demo-fapi.binance.com
+	if testnet {
+		client.BaseURL = "https://demo-fapi.binance.com"
+		logger.Infof("🧪 Binance Demo Trading 模式已启用 (demo-fapi.binance.com)")
+	}
 
 	hookRes := hook.HookExec[hook.NewBinanceTraderResult](hook.NEW_BINANCE_TRADER, userId, client)
 	if hookRes != nil && hookRes.GetResult() != nil {
@@ -79,7 +85,12 @@ func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	// Set dual-side position mode (Hedge Mode)
 	// This is required because the code uses PositionSide (LONG/SHORT)
 	if err := trader.setDualSidePosition(); err != nil {
-		logger.Infof("⚠️ Failed to set dual-side position mode: %v (ignore this warning if already in dual-side mode)", err)
+		// -4067 = "No need to change position side" → already in dual-side mode (benign)
+		if strings.Contains(err.Error(), "-4067") || strings.Contains(err.Error(), "No need to change position side") {
+			logger.Infof("  ✓ Account already in dual-side position mode")
+		} else {
+			logger.Warnf("⚠️ Failed to ensure dual-side position mode: %v — orders with PositionSide=LONG/SHORT may be rejected by Binance", err)
+		}
 	}
 
 	return trader

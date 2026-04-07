@@ -293,6 +293,27 @@ func (s *GridStore) ListGridConfigs(userID string) ([]GridConfigModel, error) {
 	return configs, nil
 }
 
+// DeleteGridConfigsByTrader deletes ALL grid configurations (and their related
+// instances/levels/events/regime assessments) belonging to a given trader.
+// Used by the cascade-delete path in handleDeleteTrader so that grid runtime
+// state does not become orphan data after a trader is removed.
+//
+// Returns nil (success) even when no grid configs exist for the trader,
+// which is the current state of production since grid persistence is not
+// yet wired up. This method is idempotent.
+func (s *GridStore) DeleteGridConfigsByTrader(traderID string) error {
+	var configs []GridConfigModel
+	if err := s.db.Where("trader_id = ?", traderID).Find(&configs).Error; err != nil {
+		return fmt.Errorf("find grid configs for trader %s: %w", traderID, err)
+	}
+	for _, cfg := range configs {
+		if err := s.DeleteGridConfig(cfg.ID); err != nil {
+			return fmt.Errorf("delete grid config %s: %w", cfg.ID, err)
+		}
+	}
+	return nil
+}
+
 // DeleteGridConfig deletes a grid configuration and all related data
 func (s *GridStore) DeleteGridConfig(id string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {

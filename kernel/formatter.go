@@ -3,7 +3,7 @@ package kernel
 import (
 	"fmt"
 	"nofx/market"
-	"nofx/provider/nofxos"
+	"nofx/provider/binance_data"
 	"sort"
 	"strings"
 	"time"
@@ -91,11 +91,11 @@ func formatContextData(ctx *Context, lang Language) string {
 
 	// 7. OI ranking data (if available)
 	if ctx.OIRankingData != nil {
-		nofxosLang := nofxos.LangEnglish
+		bdLang := binance_data.LangEnglish
 		if lang == LangChinese {
-			nofxosLang = nofxos.LangChinese
+			bdLang = binance_data.LangChinese
 		}
-		sb.WriteString(nofxos.FormatOIRankingForAI(ctx.OIRankingData, nofxosLang))
+		sb.WriteString(binance_data.FormatOIRankingForAI(ctx.OIRankingData, bdLang))
 	}
 
 	return sb.String()
@@ -289,25 +289,35 @@ func formatCandidateCoinsZH(ctx *Context) string {
 		// OI data (if available)
 		if ctx.OITopDataMap != nil {
 			if oiData, ok := ctx.OITopDataMap[coin.Symbol]; ok {
-				sb.WriteString(fmt.Sprintf("**持仓量变化**: OI排名 #%d | 变化 %+.2f%% (%+.2fM USDT) | 价格变化 %+.2f%%\n\n",
+				oiWin := "1h"
+				if ctx.OIRankingData != nil && ctx.OIRankingData.Duration != "" {
+					oiWin = ctx.OIRankingData.Duration
+				}
+				priceStr := "N/A"
+				if oiData.PriceDeltaValid {
+					priceStr = fmt.Sprintf("%+.2f%% (%s)", oiData.PriceDeltaPercent, oiWin)
+				}
+				sb.WriteString(fmt.Sprintf("**持仓量变化**: OI排名 #%d | 变化 %+.2f%% (%+.2fM USDT) | 价格变化 %s\n\n",
 					oiData.Rank,
 					oiData.OIDeltaPercent,
 					oiData.OIDeltaValue/1_000_000,
-					oiData.PriceDeltaPercent,
+					priceStr,
 				))
 
-				// OI interpretation
-				oiChange := "增加"
-				if oiData.OIDeltaPercent < 0 {
-					oiChange = "减少"
-				}
-				priceChange := "上涨"
-				if oiData.PriceDeltaPercent < 0 {
-					priceChange = "下跌"
-				}
+				// OI interpretation (skip when price delta is unavailable to avoid misleading output)
+				if oiData.PriceDeltaValid {
+					oiChange := "增加"
+					if oiData.OIDeltaPercent < 0 {
+						oiChange = "减少"
+					}
+					priceChange := "上涨"
+					if oiData.PriceDeltaPercent < 0 {
+						priceChange = "下跌"
+					}
 
-				interpretation := getOIInterpretationZH(oiChange, priceChange)
-				sb.WriteString(fmt.Sprintf("**市场解读**: %s\n\n", interpretation))
+					interpretation := getOIInterpretationZH(oiChange, priceChange)
+					sb.WriteString(fmt.Sprintf("**市场解读**: %s\n\n", interpretation))
+				}
 			}
 		}
 	}
@@ -552,24 +562,34 @@ func formatCandidateCoinsEN(ctx *Context) string {
 
 		if ctx.OITopDataMap != nil {
 			if oiData, ok := ctx.OITopDataMap[coin.Symbol]; ok {
-				sb.WriteString(fmt.Sprintf("**OI Change**: Rank #%d | Change %+.2f%% (%+.2fM USDT) | Price Change %+.2f%%\n\n",
+				oiWin := "1h"
+				if ctx.OIRankingData != nil && ctx.OIRankingData.Duration != "" {
+					oiWin = ctx.OIRankingData.Duration
+				}
+				priceStr := "N/A"
+				if oiData.PriceDeltaValid {
+					priceStr = fmt.Sprintf("%+.2f%% (%s)", oiData.PriceDeltaPercent, oiWin)
+				}
+				sb.WriteString(fmt.Sprintf("**OI Change**: Rank #%d | Change %+.2f%% (%+.2fM USDT) | Price Change %s\n\n",
 					oiData.Rank,
 					oiData.OIDeltaPercent,
 					oiData.OIDeltaValue/1_000_000,
-					oiData.PriceDeltaPercent,
+					priceStr,
 				))
 
-				oiChange := "increase"
-				if oiData.OIDeltaPercent < 0 {
-					oiChange = "decrease"
-				}
-				priceChange := "up"
-				if oiData.PriceDeltaPercent < 0 {
-					priceChange = "down"
-				}
+				if oiData.PriceDeltaValid {
+					oiChange := "increase"
+					if oiData.OIDeltaPercent < 0 {
+						oiChange = "decrease"
+					}
+					priceChange := "up"
+					if oiData.PriceDeltaPercent < 0 {
+						priceChange = "down"
+					}
 
-				interpretation := getOIInterpretationEN(oiChange, priceChange)
-				sb.WriteString(fmt.Sprintf("**Market Interpretation**: %s\n\n", interpretation))
+					interpretation := getOIInterpretationEN(oiChange, priceChange)
+					sb.WriteString(fmt.Sprintf("**Market Interpretation**: %s\n\n", interpretation))
+				}
 			}
 		}
 	}

@@ -29,6 +29,8 @@ type Store struct {
 	order          *OrderStore
 	grid           *GridStore
 	aiCharge       *AIChargeStore
+	event          *EventStore
+	arenaRecord    *ArenaRecordStore
 	telegramConfig TelegramConfigStore
 
 	mu sync.RWMutex
@@ -164,6 +166,16 @@ func (s *Store) initTables() error {
 	if err := s.AICharge().initTables(); err != nil {
 		return fmt.Errorf("failed to initialize AI charge tables: %w", err)
 	}
+	if err := s.Event().InitTables(); err != nil {
+		return fmt.Errorf("failed to initialize event tables: %w", err)
+	}
+	if err := s.ArenaRecord().InitTables(); err != nil {
+		return fmt.Errorf("failed to initialize arena record tables: %w", err)
+	}
+	// HOOT: run incremental migrations for new columns + backfill
+	if err := RunMigrations(s.gdb); err != nil {
+		logger.Warnf("⚠️ HOOT migrations warning: %v", err)
+	}
 	return nil
 }
 
@@ -177,6 +189,10 @@ func (s *Store) initDefaultData() error {
 	}
 	if err := s.Strategy().initDefaultData(); err != nil {
 		return err
+	}
+	// Ensure default event source exists
+	if err := s.Event().EnsureManualSource(); err != nil {
+		logger.Warnf("⚠️ Failed to ensure manual event source: %v", err)
 	}
 	// Migrate old decision_account_snapshots data to new trader_equity_snapshots table
 	if migrated, err := s.Equity().MigrateFromDecision(); err != nil {
@@ -295,6 +311,26 @@ func (s *Store) AICharge() *AIChargeStore {
 		s.aiCharge = NewAIChargeStore(s.gdb)
 	}
 	return s.aiCharge
+}
+
+// Event returns the event store (lazy init)
+func (s *Store) Event() *EventStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.event == nil {
+		s.event = NewEventStore(s.gdb)
+	}
+	return s.event
+}
+
+// ArenaRecord gets arena decision record storage
+func (s *Store) ArenaRecord() *ArenaRecordStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.arenaRecord == nil {
+		s.arenaRecord = NewArenaRecordStore(s.gdb)
+	}
+	return s.arenaRecord
 }
 
 // TelegramConfig gets Telegram bot configuration storage

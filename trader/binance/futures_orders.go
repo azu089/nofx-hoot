@@ -36,7 +36,7 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 		return nil, fmt.Errorf("position size too small, rounded to 0 (original: %.8f → formatted: %s). Suggest increasing position amount or selecting a lower-priced coin", quantity, quantityStr)
 	}
 
-	// Check minimum notional value (Binance requires at least 10 USDT)
+	// Check minimum notional value (fetched dynamically via GetMinNotional() — varies per symbol)
 	if err := t.CheckMinNotional(symbol, quantityFloat); err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 		return nil, fmt.Errorf("position size too small, rounded to 0 (original: %.8f → formatted: %s). Suggest increasing position amount or selecting a lower-priced coin", quantity, quantityStr)
 	}
 
-	// Check minimum notional value (Binance requires at least 10 USDT)
+	// Check minimum notional value (fetched dynamically via GetMinNotional() — varies per symbol)
 	if err := t.CheckMinNotional(symbol, quantityFloat); err != nil {
 		return nil, err
 	}

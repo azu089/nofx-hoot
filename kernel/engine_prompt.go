@@ -3,7 +3,7 @@ package kernel
 import (
 	"fmt"
 	"nofx/market"
-	"nofx/provider/nofxos"
+	"nofx/provider/binance_data"
 	"nofx/store"
 	"strings"
 	"time"
@@ -211,8 +211,8 @@ func (e *StrategyEngine) writeAvailableIndicators(sb *strings.Builder) {
 		sb.WriteString("- Funding rate\n")
 	}
 
-	if len(e.config.CoinSource.StaticCoins) > 0 || e.config.CoinSource.UseAI500 || e.config.CoinSource.UseOITop {
-		sb.WriteString("- AI500 / OI_Top filter tags (if available)\n")
+	if len(e.config.CoinSource.StaticCoins) > 0 || e.config.CoinSource.UseOITop {
+		sb.WriteString("- OI_Top filter tags (if available)\n")
 	}
 
 	if indicators.EnableQuantData {
@@ -373,24 +373,19 @@ func (e *StrategyEngine) BuildUserPrompt(ctx *Context) string {
 	sb.WriteString("\n")
 
 	// Get language for market data formatting
-	nofxosLang := nofxos.LangEnglish
+	bdLang := binance_data.LangEnglish
 	if e.GetLanguage() == LangChinese {
-		nofxosLang = nofxos.LangChinese
+		bdLang = binance_data.LangChinese
 	}
 
 	// OI Ranking data (market-wide open interest changes)
 	if ctx.OIRankingData != nil {
-		sb.WriteString(nofxos.FormatOIRankingForAI(ctx.OIRankingData, nofxosLang))
-	}
-
-	// NetFlow Ranking data (market-wide fund flow)
-	if ctx.NetFlowRankingData != nil {
-		sb.WriteString(nofxos.FormatNetFlowRankingForAI(ctx.NetFlowRankingData, nofxosLang))
+		sb.WriteString(binance_data.FormatOIRankingForAI(ctx.OIRankingData, bdLang))
 	}
 
 	// Price Ranking data (market-wide gainers/losers)
 	if ctx.PriceRankingData != nil {
-		sb.WriteString(nofxos.FormatPriceRankingForAI(ctx.PriceRankingData, nofxosLang))
+		sb.WriteString(binance_data.FormatPriceRankingForAI(ctx.PriceRankingData, bdLang))
 	}
 
 	sb.WriteString("---\n\n")

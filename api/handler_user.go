@@ -302,7 +302,6 @@ func (s *Server) createDefaultStrategies(userID string, lang string) error {
 				c.RiskControl.MaxPositions = 5
 				c.RiskControl.AltcoinMaxPositionValueRatio = 2.0
 				c.RiskControl.MinConfidence = 70
-				c.CoinSource.AI500Limit = 5
 				c.CoinSource.UseOITop = true
 				c.CoinSource.OITopLimit = 5
 				c.Indicators.Klines.SelectedTimeframes = []string{"3m", "15m", "1h"}

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"nofx/arena"
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
-	_ "nofx/mcp/payment"
 	_ "nofx/mcp/provider"
 	"nofx/store"
 	"time"
@@ -21,13 +21,8 @@ import (
 func validateStrategyConfig(config *store.StrategyConfig) []string {
 	var warnings []string
 
-	// Validate NofxOS API key if any NofxOS feature is enabled
-	if (config.Indicators.EnableQuantData || config.Indicators.EnableOIRanking ||
-		config.Indicators.EnableNetFlowRanking || config.Indicators.EnablePriceRanking) &&
-		config.Indicators.NofxOSAPIKey == "" {
-		warnings = append(warnings, "NofxOS API key is not configured. NofxOS data sources may not work properly.")
-	}
-
+	// NofxOS validation removed — Binance public APIs require no key.
+	_ = config
 	return warnings
 }
 
@@ -470,6 +465,25 @@ func (s *Server) handlePreviewPrompt(c *gin.Context) {
 		req.PromptVariant = "balanced"
 	}
 
+	// ─── Arena 策略分支：13 角色辩论 prompt 拼接预览 ────────────────────────
+	if req.Config.StrategyType == "arena" {
+		arenaCfg := arena.ArenaConfigFromStore(req.Config.ArenaConfig)
+		systemPrompt := arena.BuildSystemPrompt(arenaCfg, req.PromptVariant)
+		c.JSON(http.StatusOK, gin.H{
+			"system_prompt":  systemPrompt,
+			"prompt_variant": req.PromptVariant,
+			"config_summary": gin.H{
+				"strategy_type":    "arena",
+				"symbols":          arenaCfg.Symbols,
+				"analysts":         len(arenaCfg.SelectedAnalysts),
+				"debate_rounds":    arenaCfg.MaxDebateRounds,
+				"risk_rounds":      arenaCfg.MaxRiskRounds,
+				"risk_preference":  arenaCfg.RiskPreference,
+			},
+		})
+		return
+	}
+
 	// Create strategy engine to build prompt
 	engine := kernel.NewStrategyEngine(&req.Config)
 
@@ -578,9 +592,6 @@ func (s *Server) handleStrategyTestRun(c *gin.Context) {
 	// Fetch OI ranking data (market-wide position changes)
 	oiRankingData := engine.FetchOIRankingData()
 
-	// Fetch NetFlow ranking data (market-wide fund flow)
-	netFlowRankingData := engine.FetchNetFlowRankingData()
-
 	// Fetch Price ranking data (market-wide gainers/losers)
 	priceRankingData := engine.FetchPriceRankingData()
 
@@ -604,9 +615,8 @@ func (s *Server) handleStrategyTestRun(c *gin.Context) {
 		PromptVariant:      req.PromptVariant,
 		MarketDataMap:      marketDataMap,
 		QuantDataMap:       quantDataMap,
-		OIRankingData:      oiRankingData,
-		NetFlowRankingData: netFlowRankingData,
-		PriceRankingData:   priceRankingData,
+		OIRankingData:    oiRankingData,
+		PriceRankingData: priceRankingData,
 	}
 
 	// Build System Prompt
@@ -681,13 +691,7 @@ func (s *Server) runRealAITest(userID, modelID, systemPrompt, userPrompt string)
 		aiClient = mcp.NewClient()
 	}
 
-	// Payment providers ignore custom URL
-	switch provider {
-	case "claw402":
-		aiClient.SetAPIKey(apiKey, "", model.CustomModelName)
-	default:
-		aiClient.SetAPIKey(apiKey, model.CustomAPIURL, model.CustomModelName)
-	}
+	aiClient.SetAPIKey(apiKey, model.CustomAPIURL, model.CustomModelName)
 
 	// Call AI API
 	response, err := aiClient.CallWithMessages(systemPrompt, userPrompt)

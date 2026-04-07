@@ -43,7 +43,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
 
   const { data: history, error, isLoading } = useSWR<EquityPoint[]>(
     user && token && traderId ? `equity-history-${traderId}` : null,
-    () => api.getEquityHistory(traderId, true),
+    () => api.getEquityHistory(traderId),
     {
       refreshInterval: 30000, // 30秒刷新（历史数据更新频率较低）
       revalidateOnFocus: false,
@@ -53,7 +53,7 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
 
   const { data: account } = useSWR(
     user && token && traderId ? `account-${traderId}` : null,
-    () => api.getAccount(traderId, true),
+    () => api.getAccount(traderId),
     {
       refreshInterval: 15000, // 15秒刷新（配合后端缓存）
       revalidateOnFocus: false,
@@ -476,3 +476,4 @@ export function EquityChart({ traderId, embedded = false }: EquityChartProps) {
     </div>
   )
 }
+

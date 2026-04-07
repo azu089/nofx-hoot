@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
-import type { AIModel, Exchange, CreateTraderRequest, ExchangeAccountStateResponse, Strategy } from '../../types'
+import type { AIModel, Exchange, CreateTraderRequest, Strategy } from '../../types'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { t } from '../../i18n/translations'
 import { toast } from 'sonner'
 import { Pencil, Plus, X as IconX, Sparkles, ExternalLink, UserPlus } from 'lucide-react'
 import { httpClient } from '../../lib/httpClient'
-import { NofxSelect } from '../ui/select'
 
 // 提取下划线后面的名称部分
 function getShortName(fullName: string): string {
@@ -124,33 +123,9 @@ export function TraderConfigModal({
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleExchangeChange = (exchangeId: string) => {
-    setBalanceFetchError('')
-    setFormData((prev) => {
-      if (prev.exchange_id === exchangeId) {
-        return prev
-      }
-
-      const next: FormState = { ...prev, exchange_id: exchangeId }
-
-      // Exchange balance belongs to the selected exchange, not the trader record.
-      // Clear the old baseline so we don't carry Exchange B's balance into Exchange A.
-      if (isEditMode) {
-        next.initial_balance = undefined
-      }
-
-      return next
-    })
-  }
-
   const handleFetchCurrentBalance = async () => {
-    if (!isEditMode) {
+    if (!isEditMode || !traderData?.trader_id) {
        setBalanceFetchError(t('fetchBalanceEditModeOnly', language))
-      return
-    }
-
-    if (!formData.exchange_id) {
-      setBalanceFetchError(t('balanceFetchFailed', language))
       return
     }
 
@@ -158,28 +133,22 @@ export function TraderConfigModal({
     setBalanceFetchError('')
 
     try {
-      const result = await httpClient.get<ExchangeAccountStateResponse>('/api/exchanges/account-state')
+      const result = await httpClient.get<{
+        total_equity?: number
+        balance?: number
+      }>(`/api/account?trader_id=${traderData.trader_id}`)
 
-      const selectedState = result.data?.states?.[formData.exchange_id]
-      if (result.success && selectedState?.status === 'ok') {
+      if (result.success && result.data) {
         const currentBalance =
-          selectedState.total_equity ??
-          selectedState.available_balance ??
-          0
+          result.data.total_equity || result.data.balance || 0
         setFormData((prev) => ({ ...prev, initial_balance: currentBalance }))
         toast.success(t('balanceFetched', language))
       } else {
-        setBalanceFetchError(
-          selectedState?.error_message || result.message || t('balanceFetchFailed', language)
-        )
+        throw new Error(result.message || t('balanceFetchFailed', language))
       }
     } catch (error) {
       console.error(t('balanceFetchFailed', language) + ':', error)
-      setBalanceFetchError(
-        error instanceof Error && error.message
-          ? error.message
-          : t('balanceFetchNetworkError', language)
-      )
+       setBalanceFetchError(t('balanceFetchNetworkError', language))
     } finally {
       setIsFetchingBalance(false)
     }
@@ -205,7 +174,12 @@ export function TraderConfigModal({
         saveData.initial_balance = formData.initial_balance
       }
 
-      await onSave(saveData)
+      await toast.promise(onSave(saveData), {
+        loading: t('saving', language),
+        success: t('saveSuccess', language),
+        error: t('saveFailed', language),
+      })
+      onClose()
     } catch (error) {
        console.error(t('saveFailed', language) + ':', error)
     } finally {
@@ -279,32 +253,38 @@ export function TraderConfigModal({
                   <label className="text-sm text-[#EAECEF] block mb-2">
                   {t('aiModelRequired', language)}
                   </label>
-                  <NofxSelect
+                  <select
                     value={formData.ai_model}
-                    onChange={(val) =>
-                      handleInputChange('ai_model', val)
+                    onChange={(e) =>
+                      handleInputChange('ai_model', e.target.value)
                     }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF]"
-                    options={availableModels.map((model) => ({
-                      value: model.id,
-                      label: getShortName(model.name || model.id).toUpperCase(),
-                    }))}
-                  />
+                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {getShortName(model.name || model.id).toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-sm text-[#EAECEF] block mb-2">
                   {t('exchangeRequired', language)}
                   </label>
-                  <NofxSelect
+                  <select
                     value={formData.exchange_id}
-                    onChange={handleExchangeChange}
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF]"
-                    options={availableExchanges.map((exchange) => ({
-                      value: exchange.id,
-                      label: getShortName(exchange.name || exchange.exchange_type || exchange.id).toUpperCase()
-                        + (exchange.account_name ? ` - ${exchange.account_name}` : ''),
-                    }))}
-                  />
+                    onChange={(e) =>
+                      handleInputChange('exchange_id', e.target.value)
+                    }
+                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                  >
+                    {availableExchanges.map((exchange) => (
+                      <option key={exchange.id} value={exchange.id}>
+                        {getShortName(exchange.name || exchange.exchange_type || exchange.id).toUpperCase()}
+                        {exchange.account_name ? ` - ${exchange.account_name}` : ''}
+                      </option>
+                    ))}
+                  </select>
                   {/* Exchange Registration Link */}
                   {formData.exchange_id && (() => {
                     // Find the selected exchange to get its type
@@ -346,20 +326,22 @@ export function TraderConfigModal({
                 <label className="text-sm text-[#EAECEF] block mb-2">
                   {t('useStrategy', language)}
                 </label>
-                <NofxSelect
+                <select
                   value={formData.strategy_id}
-                  onChange={(val) =>
-                    handleInputChange('strategy_id', val)
+                  onChange={(e) =>
+                    handleInputChange('strategy_id', e.target.value)
                   }
-                  className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF]"
-                  options={[
-                    { value: '', label: t('noStrategyManual', language) },
-                    ...strategies.map((strategy) => ({
-                      value: strategy.id,
-                      label: strategy.name + (strategy.is_active ? t('strategyActive', language) : '') + (strategy.is_default ? t('strategyDefault', language) : ''),
-                    })),
-                  ]}
-                />
+                  className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                >
+                  <option value="">{t('noStrategyManual', language)}</option>
+                  {strategies.map((strategy) => (
+                    <option key={strategy.id} value={strategy.id}>
+                      {strategy.name}
+                      {strategy.is_active ? t('strategyActive', language) : ''}
+                      {strategy.is_default ? t('strategyDefault', language) : ''}
+                    </option>
+                  ))}
+                </select>
                 {strategies.length === 0 && (
                     <p className="text-xs text-[#848E9C] mt-2">
                       {t('noStrategyHint', language)}
@@ -589,3 +571,4 @@ export function TraderConfigModal({
     </div>
   )
 }
+
