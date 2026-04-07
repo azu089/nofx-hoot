@@ -33,6 +33,7 @@ import type {
   TraderInfo,
   Exchange,
 } from './types'
+import type { ArenaDecisionRecord } from './types/strategy'
 
 type Page =
   | 'competition'
@@ -298,6 +299,19 @@ function App() {
     }
   )
 
+  const { data: arenaRecordsRaw } = useSWR<{ records: ArenaDecisionRecord[] }>(
+    currentPage === 'trader' && selectedTraderId && status?.strategy_type === 'arena'
+      ? `arena/records-${selectedTraderId}-${decisionsLimit}`
+      : null,
+    () => api.getArenaRecords(selectedTraderId!, decisionsLimit),
+    {
+      refreshInterval: decisionsPollOff ? 0 : 30000,
+      revalidateOnFocus: false,
+      dedupingInterval: 20000,
+    }
+  )
+  const arenaRecords = arenaRecordsRaw?.records
+
   const { data: stats } = useSWR<Statistics>(
     currentPage === 'trader' && selectedTraderId
       ? `statistics-${selectedTraderId}`
@@ -533,6 +547,7 @@ function App() {
                 positions={effectivePositions}
                 positionsFailed={positionsPollOff}
                 decisions={effectiveDecisions}
+                arenaRecords={arenaRecords}
                 decisionsFailed={decisionsPollOff}
                 decisionsLimit={decisionsLimit}
                 onDecisionsLimitChange={setDecisionsLimit}

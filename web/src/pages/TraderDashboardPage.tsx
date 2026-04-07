@@ -3,6 +3,7 @@ import { mutate } from 'swr'
 import { api } from '../lib/api'
 import { ChartTabs } from '../components/charts/ChartTabs'
 import { DecisionCard } from '../components/trader/DecisionCard'
+import { ArenaDecisionCard } from '../components/trader/ArenaDecisionCard'
 import { PositionHistory } from '../components/trader/PositionHistory'
 import { PunkAvatar, getTraderAvatar } from '../components/common/PunkAvatar'
 import { confirmToast, notify } from '../lib/notify'
@@ -19,6 +20,7 @@ import type {
     TraderInfo,
     Exchange,
 } from '../types'
+import type { ArenaDecisionRecord } from '../types/strategy'
 
 // --- Helper Functions ---
 
@@ -103,6 +105,7 @@ interface TraderDashboardPageProps {
     account?: AccountInfo
     positions?: Position[]
     decisions?: DecisionRecord[]
+    arenaRecords?: ArenaDecisionRecord[]
     decisionsLimit: number
     onDecisionsLimitChange: (limit: number) => void
     stats?: Statistics
@@ -120,6 +123,7 @@ export function TraderDashboardPage({
     account,
     positions,
     decisions,
+    arenaRecords,
     decisionsLimit,
     onDecisionsLimitChange,
     lastUpdate,
@@ -811,10 +815,18 @@ export function TraderDashboardPage({
                                 <h2 className="text-xl font-bold text-nofx-text-main">
                                     {t('recentDecisions', language)}
                                 </h2>
-                                {decisions && decisions.length > 0 && (
-                                    <div className="text-xs text-nofx-text-muted">
-                                        {t('lastCycles', language, { count: decisions.length })}
-                                    </div>
+                                {status?.strategy_type === 'arena' ? (
+                                    arenaRecords && arenaRecords.length > 0 && (
+                                        <div className="text-xs text-nofx-text-muted">
+                                            {t('lastCycles', language, { count: arenaRecords.length })}
+                                        </div>
+                                    )
+                                ) : (
+                                    decisions && decisions.length > 0 && (
+                                        <div className="text-xs text-nofx-text-muted">
+                                            {t('lastCycles', language, { count: decisions.length })}
+                                        </div>
+                                    )
                                 )}
                             </div>
                             {/* Limit Selector */}
@@ -836,20 +848,38 @@ export function TraderDashboardPage({
                             className="space-y-4 overflow-y-auto pr-2 custom-scrollbar"
                             style={{ maxHeight: 'calc(100vh - 280px)' }}
                         >
-                            {decisions && decisions.length > 0 ? (
-                                decisions.map((decision, i) => (
-                                    <DecisionCard key={i} decision={decision} language={language} onSymbolClick={handleSymbolClick} />
-                                ))
+                            {status?.strategy_type === 'arena' ? (
+                                arenaRecords && arenaRecords.length > 0 ? (
+                                    arenaRecords.map((record) => (
+                                        <ArenaDecisionCard key={record.id} record={record} language={language} />
+                                    ))
+                                ) : (
+                                    <div className="py-16 text-center text-nofx-text-muted opacity-60">
+                                        <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
+                                        <div className="text-lg font-semibold mb-2 text-nofx-text-main">
+                                            {t('noDecisionsYet', language)}
+                                        </div>
+                                        <div className="text-sm">
+                                            {t('aiDecisionsWillAppear', language)}
+                                        </div>
+                                    </div>
+                                )
                             ) : (
-                                <div className="py-16 text-center text-nofx-text-muted opacity-60">
-                                    <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
-                                    <div className="text-lg font-semibold mb-2 text-nofx-text-main">
-                                        {t('noDecisionsYet', language)}
+                                decisions && decisions.length > 0 ? (
+                                    decisions.map((decision, i) => (
+                                        <DecisionCard key={i} decision={decision} language={language} onSymbolClick={handleSymbolClick} />
+                                    ))
+                                ) : (
+                                    <div className="py-16 text-center text-nofx-text-muted opacity-60">
+                                        <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
+                                        <div className="text-lg font-semibold mb-2 text-nofx-text-main">
+                                            {t('noDecisionsYet', language)}
+                                        </div>
+                                        <div className="text-sm">
+                                            {t('aiDecisionsWillAppear', language)}
+                                        </div>
                                     </div>
-                                    <div className="text-sm">
-                                        {t('aiDecisionsWillAppear', language)}
-                                    </div>
-                                </div>
+                                )
                             )}
                         </div>
                     </div>
