@@ -15,17 +15,11 @@ import { useAuth } from '../../contexts/AuthContext'
 import { TraderConfigModal } from './TraderConfigModal'
 import { DeepVoidBackground } from '../common/DeepVoidBackground'
 import { ExchangeConfigModal } from './ExchangeConfigModal'
-import { TelegramConfigModal } from './TelegramConfigModal'
 import { ModelConfigModal } from './ModelConfigModal'
 import { ConfigStatusGrid } from './ConfigStatusGrid'
 import { TradersList } from './TradersList'
 import { BeginnerGuideCards } from './BeginnerGuideCards'
-import {
-  AlertTriangle,
-  Bot,
-  Plus,
-  MessageCircle,
-} from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { confirmToast } from '../../lib/notify'
 import { toast } from 'sonner'
 import {
@@ -48,7 +42,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
   const [showExchangeModal, setShowExchangeModal] = useState(false)
-  const [showTelegramModal, setShowTelegramModal] = useState(false)
   const [editingModel, setEditingModel] = useState<string | null>(null)
   const [editingExchange, setEditingExchange] = useState<string | null>(null)
   const [editingTrader, setEditingTrader] = useState<any>(null)
@@ -365,23 +358,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     }) || []
 
   const enabledModels = allModels?.filter((m) => m.enabled) || []
-  const enabledClaw402Model = enabledModels.find((model) => model.provider === 'claw402') || null
-  const enabledClaw402Balance = parseBalanceUsdc(enabledClaw402Model?.balanceUsdc)
-  const claw402BalanceAlert =
-    enabledClaw402Model && enabledClaw402Balance !== null && enabledClaw402Balance < 1
-      ? {
-          blocking: enabledClaw402Balance <= 0,
-          title:
-            language === 'zh'
-              ? enabledClaw402Balance <= 0
-                ? 'Claw402 钱包余额为 0'
-                : 'Claw402 钱包余额偏低'
-              : enabledClaw402Balance <= 0
-                ? 'Claw402 wallet balance is zero'
-                : 'Claw402 wallet balance is low',
-          description: getClaw402BalanceMessage(enabledClaw402Balance, enabledClaw402Balance <= 0),
-        }
-      : null
   const enabledExchanges =
     allExchanges?.filter((e) => {
       if (!e.enabled) return false
@@ -894,74 +870,34 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const canCreateTrader = configuredModels.length > 0 && configuredExchanges.length > 0
 
   return (
-    <DeepVoidBackground className="py-8" disableAnimation>
-      <div className="w-full px-4 md:px-8 space-y-8 animate-fade-in">
-        {/* Header - Terminal Style */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/10 pb-6">
-          <div className="flex items-center gap-4">
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-nofx-gold/20 rounded-xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-              <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center bg-black border border-nofx-gold/30 text-nofx-gold relative z-10 shadow-[0_0_15px_rgba(240,185,11,0.1)]">
-                <Bot className="w-6 h-6 md:w-7 md:h-7" />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold font-mono tracking-tight text-white flex items-center gap-3 uppercase">
-                {t('aiTraders', language)}
-                <span className="text-xs font-mono font-normal px-2 py-0.5 rounded bg-nofx-gold/10 text-nofx-gold border border-nofx-gold/20 tracking-wider">
-                  {traders?.length || 0} ACTIVE_NODES
-                </span>
-              </h1>
-              <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest mt-1 ml-1 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                SYSTEM_READY
-              </p>
-            </div>
-          </div>
+    <DeepVoidBackground className="py-4 md:py-8" disableAnimation>
+      <div className="w-full max-w-full px-3 md:px-8 space-y-5 md:space-y-6 animate-fade-in overflow-x-hidden">
+        {/* 顶部 segmented control —— 3 创建按钮连体 */}
+        <div className="bubble-card grid grid-cols-3 p-1 !rounded-full">
+          <button
+            onClick={handleAddModel}
+            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="whitespace-nowrap">{language === 'zh' ? 'AI 模型' : 'AI Model'}</span>
+          </button>
 
-          <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
-            <button
-              onClick={handleAddModel}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border border-zinc-700 bg-black/20 text-zinc-400 hover:text-white hover:border-zinc-500 whitespace-nowrap backdrop-blur-sm"
-            >
-              <div className="flex items-center gap-2">
-                <Plus className="w-3 h-3" />
-                <span>MODELS_CONFIG</span>
-              </div>
-            </button>
+          <button
+            onClick={handleAddExchange}
+            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="whitespace-nowrap">{language === 'zh' ? '交易所' : 'Exchange'}</span>
+          </button>
 
-            <button
-              onClick={handleAddExchange}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border border-zinc-700 bg-black/20 text-zinc-400 hover:text-white hover:border-zinc-500 whitespace-nowrap backdrop-blur-sm"
-            >
-              <div className="flex items-center gap-2">
-                <Plus className="w-3 h-3" />
-                <span>EXCHANGE_KEYS</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setShowTelegramModal(true)}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider transition-all border border-sky-900/50 bg-black/20 text-sky-500 hover:text-sky-300 hover:border-sky-700 whitespace-nowrap backdrop-blur-sm"
-            >
-              <div className="flex items-center gap-2">
-                <MessageCircle className="w-3 h-3" />
-                <span>TELEGRAM_BOT</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setShowCreateModal(true)}
-              disabled={configuredModels.length === 0 || configuredExchanges.length === 0}
-              className="group relative px-6 py-2 rounded text-xs font-bold font-mono uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap overflow-hidden bg-nofx-gold text-black hover:bg-yellow-400 shadow-[0_0_20px_rgba(240,185,11,0.2)] hover:shadow-[0_0_30px_rgba(240,185,11,0.4)]"
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                {t('createTrader', language)}
-              </span>
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-            </button>
-          </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            disabled={configuredModels.length === 0 || configuredExchanges.length === 0}
+            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-nofx-gold text-black hover:bg-yellow-400 shadow-[0_0_20px_rgba(240,185,11,0.25)]"
+          >
+            <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="whitespace-nowrap">{language === 'zh' ? '交易员' : 'Trader'}</span>
+          </button>
         </div>
 
         {isBeginnerMode ? (
@@ -978,52 +914,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
             onOpenStrategy={() => navigateInApp('/strategy')}
             onCreateTrader={() => setShowCreateModal(true)}
           />
-        ) : null}
-
-        {claw402BalanceAlert ? (
-          <div
-            className="mb-6 rounded-xl border px-4 py-4 md:px-5 md:py-4 flex flex-col md:flex-row md:items-start md:justify-between gap-3"
-            style={{
-              borderColor: claw402BalanceAlert.blocking ? 'rgba(239, 68, 68, 0.55)' : 'rgba(245, 158, 11, 0.45)',
-              background: claw402BalanceAlert.blocking ? 'rgba(127, 29, 29, 0.22)' : 'rgba(120, 53, 15, 0.18)',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="mt-0.5 rounded-full p-2"
-                style={{
-                  background: claw402BalanceAlert.blocking ? 'rgba(239, 68, 68, 0.16)' : 'rgba(245, 158, 11, 0.14)',
-                  color: claw402BalanceAlert.blocking ? '#F87171' : '#FBBF24',
-                }}
-              >
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <div
-                  className="text-sm font-semibold"
-                  style={{ color: claw402BalanceAlert.blocking ? '#FCA5A5' : '#FDE68A' }}
-                >
-                  {claw402BalanceAlert.title}
-                </div>
-                <div className="text-sm mt-1 leading-6" style={{ color: '#D4D4D8' }}>
-                  {claw402BalanceAlert.description}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => enabledClaw402Model && handleModelClick(enabledClaw402Model.id)}
-              className="px-4 py-2 rounded text-xs font-mono uppercase tracking-wider border whitespace-nowrap self-start"
-              style={{
-                borderColor: claw402BalanceAlert.blocking ? 'rgba(248, 113, 113, 0.45)' : 'rgba(251, 191, 36, 0.35)',
-                color: claw402BalanceAlert.blocking ? '#FCA5A5' : '#FDE68A',
-                background: 'rgba(0, 0, 0, 0.18)',
-              }}
-            >
-              {language === 'zh' ? '查看 AI 钱包' : 'Open AI wallet'}
-            </button>
-          </div>
         ) : null}
 
         {/* Configuration Status Grid */}
@@ -1124,13 +1014,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           />
         )}
 
-        {/* Telegram Bot Modal */}
-        {showTelegramModal && (
-          <TelegramConfigModal
-            onClose={() => setShowTelegramModal(false)}
-            language={language}
-          />
-        )}
       </div>
     </DeepVoidBackground>
   )

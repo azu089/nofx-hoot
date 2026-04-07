@@ -8,6 +8,39 @@
 /* 强制显示滚动条以确保所有页面布局一致 */
 html {
   overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+/* Bubble card — 半透明气泡：背景渗透 + 顶部高光 + 柔和投影 */
+.bubble-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.25rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+/* Row divider — 两端渐隐细分割线（用于气泡内多行项之间） */
+.row-divider {
+  position: relative;
+}
+.row-divider + .row-divider {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+.row-divider + .row-divider::before {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.12), transparent);
+  pointer-events: none;
 }
 
 :root {
@@ -135,6 +168,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background-color: var(--background);
   background-image: radial-gradient(circle at 50% 0%, #151921 0%, #05070a 60%);
   background-attachment: fixed;

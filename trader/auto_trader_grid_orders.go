@@ -5,6 +5,8 @@ import (
 	"math"
 	"nofx/kernel"
 	"nofx/logger"
+	"os"
+	"sort"
 	"time"
 )
 
@@ -309,6 +311,80 @@ func (at *AutoTrader) syncGridState() {
 			}
 		}
 	}
+	// [HOOT] Reverse check: detect filled levels that were closed externally
+	// (manual close via nofx UI, exchange native UI, or anything that bypassed the
+	// grid's own close flow). Without this, gridState.Levels stays "filled" forever
+	// and the grid stops placing new orders for that layer.
+	// Rollback: env NOFX_GRID_RECONCILE_DISABLED=1
+	if os.Getenv("NOFX_GRID_RECONCILE_DISABLED") != "1" {
+		absPos := math.Abs(currentPositionSize)
+		absExpected := math.Abs(expectedPositionSize)
+		// Require a meaningful discrepancy (at least 1 layer's quantity to avoid
+		// WS jitter / precision noise). If we can't establish a floor, fall back
+		// to 0.0001 (sub-cent quantity guardband).
+		minDelta := 0.0001
+		for _, lv := range at.gridState.Levels {
+			if lv.State == "filled" && lv.PositionSize > 0 {
+				if minDelta == 0.0001 || lv.PositionSize*0.5 < minDelta {
+					minDelta = lv.PositionSize * 0.5
+				}
+				break
+			}
+		}
+		if absExpected-absPos > minDelta {
+			diff := absExpected - absPos
+			// Need current price to sort by distance; reuse market price (best-effort).
+			refPrice := 0.0
+			if px, err := at.trader.GetMarketPrice(gridConfig.Symbol); err == nil {
+				refPrice = px
+			}
+			type idxDist struct {
+				i int
+				d float64
+			}
+			var cands []idxDist
+			for i, lv := range at.gridState.Levels {
+				if lv.State == "filled" && lv.PositionSize > 0 {
+					dist := 0.0
+					if refPrice > 0 {
+						dist = math.Abs(lv.Price - refPrice)
+					}
+					cands = append(cands, idxDist{i, dist})
+				}
+			}
+			// Farthest first (most likely to be the externally-closed layer)
+			sort.Slice(cands, func(a, b int) bool { return cands[a].d > cands[b].d })
+			cleared := 0
+			for _, c := range cands {
+				if diff <= 0.0001 {
+					break
+				}
+				lv := &at.gridState.Levels[c.i]
+				if lv.PositionSize <= diff+0.0001 {
+					logger.Warnf("[Grid Reconcile] Level %d externally closed (qty=%.4f @ %.4f), marking empty",
+						c.i, lv.PositionSize, lv.Price)
+					diff -= lv.PositionSize
+					lv.State = "empty"
+					lv.PositionEntry = 0
+					lv.PositionSize = 0
+					lv.UnrealizedPnL = 0
+					lv.OrderID = ""
+					lv.OrderQuantity = 0
+					cleared++
+				} else {
+					logger.Warnf("[Grid Reconcile] Level %d partially reduced (%.4f → %.4f)",
+						c.i, lv.PositionSize, lv.PositionSize-diff)
+					lv.PositionSize -= diff
+					diff = 0
+				}
+			}
+			if cleared > 0 {
+				logger.Warnf("[Grid Reconcile] Cleared %d filled level(s) to match exchange (expected=%.4f, actual=%.4f)",
+					cleared, expectedPositionSize, currentPositionSize)
+			}
+		}
+	}
+
 	at.gridState.mu.Unlock()
 
 	logger.Debugf("[Grid] Synced state: position=%.4f, orders=%d", currentPositionSize, len(openOrders))

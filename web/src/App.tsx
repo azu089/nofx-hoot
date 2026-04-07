@@ -5,7 +5,6 @@ import { api } from './lib/api'
 import { TraderDashboardPage } from './pages/TraderDashboardPage'
 
 import { AITradersPage } from './components/trader/AITradersPage'
-import { SettingsPage } from './pages/SettingsPage'
 import { CompetitionPage } from './components/trader/CompetitionPage'
 import { StrategyStudioPage } from './pages/StrategyStudioPage'
 import { StrategyMarketPage } from './pages/StrategyMarketPage'
@@ -340,23 +339,6 @@ function App() {
     setRoute('/traders')
     return null
   }
-  if (route === '/settings') {
-    return (
-      <div className="min-h-screen" style={{ background: '#0B0E11', color: '#EAECEF' }}>
-        <HeaderBar
-          isLoggedIn={!!user}
-          language={language}
-          onLanguageChange={setLanguage}
-          user={user}
-          onLogout={logout}
-          onLoginRequired={handleLoginRequired}
-          onPageChange={navigateToPage}
-        />
-        <SettingsPage />
-      </div>
-    )
-  }
-
   return (
     <div
       className="min-h-screen"
@@ -452,7 +434,8 @@ function App() {
         </AnimatePresence>
       </main>
 
-      {/* Footer */}
+      {/* Footer — 配置页（/traders）下隐藏 */}
+      {route !== '/traders' && (
       <footer
           className="mt-16"
           style={{ borderTop: '1px solid #2B3139', background: '#181A20' }}
@@ -563,6 +546,7 @@ function App() {
             </div>
           </div>
         </footer>
+      )}
 
     </div>
   )

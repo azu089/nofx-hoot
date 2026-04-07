@@ -393,6 +393,14 @@ func RunResearchManager(client mcp.AIClient, state *ArenaState, memory *Financia
 
 // ============================= 1 个交易员 ====================================
 
+// formatTradeStatsForPrompt 兜底:空字符串时返回 "No recent trade history available."
+func formatTradeStatsForPrompt(s string) string {
+	if s == "" {
+		return "No recent trade history available."
+	}
+	return s
+}
+
 // RunTrader 交易员 — 基于投资计划制定交易方案
 // 对应 Python: agents/trader/trader.py
 func RunTrader(client mcp.AIClient, state *ArenaState, memory *FinancialMemory, config *ArenaConfig) error {
@@ -407,6 +415,7 @@ func RunTrader(client mcp.AIClient, state *ArenaState, memory *FinancialMemory, 
 		"symbol":              state.Symbol,
 		"investment_plan":     state.InvestmentPlan,
 		"account_context":     FormatAccountContext(state),
+		"trade_stats":         formatTradeStatsForPrompt(state.TradeStats),
 		"risk_constraints":    FormatRiskConstraints(state.RiskConfig),
 		"market_report":       state.MarketReport,
 		"sentiment_report":    state.SentimentReport,

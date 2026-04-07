@@ -368,6 +368,13 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		return nil, fmt.Errorf("failed to get positions: %w", err)
 	}
 
+	// [HOOT] Reconcile DB trader_positions against exchange truth BEFORE building
+	// the AI context. This ensures ctx.RecentOrders / ctx.TradingStats reflect
+	// reality (manual closes via nofx UI or exchange native UI get surfaced in
+	// history, ghost partial-close records get marked CLOSED).
+	// Rollback: env NOFX_RECONCILE_DISABLED=1
+	at.reconcileDBPositions(positions)
+
 	var positionInfos []kernel.PositionInfo
 	totalMarginUsed := 0.0
 

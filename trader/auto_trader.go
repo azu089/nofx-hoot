@@ -407,6 +407,10 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		}
 
 		at.arenaRunner = arena.NewArenaRunner(arenaEngine, adapter, arenaDP, at.buildArenaGatekeeper(), recordSaver, config.ID)
+		// 注入历史交易统计 Provider（Trader 角色 prompt 使用）
+		if st != nil {
+			at.arenaRunner.SetTradeStatsProvider(NewArenaTradeStatsAdapter(st))
+		}
 		logger.Infof("🏟️ [%s] Arena strategy initialized: %d symbols, interval=%dm (DataProvider+Gatekeeper+RecordStore attached)",
 			at.name, len(arenaCfg.Symbols), arenaCfg.IntervalMinutes)
 	}
@@ -684,6 +688,13 @@ func (at *AutoTrader) runArenaCycle() error {
 	if at.arenaRunner == nil {
 		return fmt.Errorf("arena runner not initialized")
 	}
+	// [HOOT] Reconcile DB positions against exchange truth on every external
+	// arena tick. Arena's internal decision loop runs in its own goroutine and
+	// doesn't go through buildTradingContext, so this is the periodic safety net
+	// that surfaces externally-closed positions in history.
+	// Rollback: env NOFX_RECONCILE_DISABLED=1
+	at.TriggerReconcileNow()
+
 	if !at.arenaRunner.IsRunning() {
 		symbols := at.config.StrategyConfig.ArenaConfig.Symbols
 		return at.arenaRunner.Start(symbols)

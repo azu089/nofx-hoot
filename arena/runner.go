@@ -29,6 +29,11 @@ type TraderInterface interface {
 	GetAccountInfo() (AccountInfo, error)
 	GetPositions() ([]PositionInfo, error)
 	SetLeverage(symbol string, leverage int) error
+	// SetStopLoss / SetTakeProfit 提交独立的条件单到交易所
+	// positionSide: "LONG" 或 "SHORT"（对应开仓方向）
+	// 失败仅返回 error，调用方 log warning 不回滚开仓（与 AutoTrader 行为一致）
+	SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
+	SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
 	// GetExchangeType 返回交易所类型（binance/okx/bybit/...）
 	GetExchangeType() string
 }
@@ -65,6 +70,12 @@ type DataProvider interface {
 // GatekeeperFunc 风控检查函数类型（可选注入）
 type GatekeeperFunc func(symbol, action string, confidence int) (bool, string)
 
+// TradeStatsProvider 历史交易统计数据源（由 trader 包实现，避免循环依赖）
+// 返回的字符串将作为 Trader 角色 user prompt 的 {trade_stats} 段
+type TradeStatsProvider interface {
+	GetTradeStats(traderID string) string
+}
+
 // ArenaRunner 策略循环管理器
 type ArenaRunner struct {
 	engine       *ArenaEngine
@@ -72,6 +83,7 @@ type ArenaRunner struct {
 	dataProvider DataProvider
 	gatekeeper   GatekeeperFunc  // 可选，nil 时跳过风控
 	recordStore  ArenaRecordSaver // 可选，nil 时不持久化
+	statsProvider TradeStatsProvider // 可选，nil 时 trade_stats 段为空
 
 	// traderID 用于持久化记录（由外部传入）
 	traderID string
@@ -115,6 +127,11 @@ func NewArenaRunner(
 		lastSignals:  make(map[string]*ArenaSignal),
 		activeRounds: make(map[string]bool),
 	}
+}
+
+// SetTradeStatsProvider 注入历史交易统计数据源（可选，需在 Start 前调用）
+func (r *ArenaRunner) SetTradeStatsProvider(p TradeStatsProvider) {
+	r.statsProvider = p
 }
 
 // Start 启动策略循环（异步）
@@ -280,9 +297,15 @@ func (r *ArenaRunner) RunOneRound(symbol string) error {
 		MinConfidence:     r.engine.Config.MinConfidence,
 	}
 
+	// 4b. 历史交易统计（注入到 Trader prompt）
+	tradeStats := ""
+	if r.statsProvider != nil {
+		tradeStats = r.statsProvider.GetTradeStats(r.traderID)
+	}
+
 	// 5. 运行辩论（把完整账户信息塞进 state）
 	arenaSignal, err := r.engine.RunFullDebate(symbol, marketData, signals, events,
-		accountInfo, posSnapshots, riskConfig, exchangeType)
+		accountInfo, posSnapshots, riskConfig, exchangeType, tradeStats)
 	if err != nil {
 		return fmt.Errorf("arena debate for %s: %w", symbol, err)
 	}
@@ -510,6 +533,25 @@ func (r *ArenaRunner) executeSignal(symbol string, signal *ArenaSignal, marketDa
 	if apiErr != nil {
 		return false, "", apiErr
 	}
+
+	// 提交 SL/TP 条件单（仅对开仓动作；失败 warning，不回滚开仓 — 与 AutoTrader 一致）
+	if action == "open_long" || action == "open_short" {
+		posSide := "LONG"
+		if action == "open_short" {
+			posSide = "SHORT"
+		}
+		if signal.StopLoss > 0 {
+			if slErr := r.trader.SetStopLoss(symbol, posSide, qty, signal.StopLoss); slErr != nil {
+				log.Printf("[ArenaRunner] ⚠ SetStopLoss failed for %s (%s): %v", symbol, posSide, slErr)
+			}
+		}
+		if signal.TakeProfit > 0 {
+			if tpErr := r.trader.SetTakeProfit(symbol, posSide, qty, signal.TakeProfit); tpErr != nil {
+				log.Printf("[ArenaRunner] ⚠ SetTakeProfit failed for %s (%s): %v", symbol, posSide, tpErr)
+			}
+		}
+	}
+
 	return true, "", nil
 }
 

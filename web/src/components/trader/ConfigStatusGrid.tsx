@@ -100,72 +100,48 @@ export function ConfigStatusGrid({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* AI Models Card */}
-      <div className="nofx-glass rounded-lg border border-white/5 overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/5 bg-black/20 flex items-center gap-2 backdrop-blur-sm">
-          <Brain className="w-4 h-4 text-nofx-gold" />
-          <h3 className="text-sm font-mono tracking-widest text-zinc-300 uppercase">
-            {t('aiModels', language)}
-          </h3>
-        </div>
-
-        <div className="p-4 space-y-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+      {/* AI Models 气泡 */}
+      <section className="bubble-card p-3">
+        <div>
           {configuredModels.map((model) => {
             const inUse = isModelInUse(model.id)
             const usageInfo = getModelUsageInfo(model.id)
             return (
               <div
                 key={model.id}
-                className={`group relative flex items-center justify-between p-3 rounded-md transition-all border border-transparent ${inUse ? 'opacity-80' : 'hover:bg-white/5 hover:border-white/10 cursor-pointer'
-                  } bg-black/20`}
+                className={`row-divider group flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg transition-all ${inUse ? 'opacity-80' : 'hover:bg-white/5 cursor-pointer'
+                  }`}
                 onClick={() => onModelClick(model.id)}
               >
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-sm group-hover:bg-indigo-500/30 transition-all"></div>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black border border-white/10 relative z-10">
-                      {getModelIcon(model.provider || model.id, { width: 20, height: 20 }) || (
-                        <span className="text-xs font-bold text-indigo-400">{getShortName(model.name)[0]}</span>
-                      )}
-                    </div>
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center bg-black border border-white/10 flex-shrink-0">
+                    {getModelIcon(model.provider || model.id, { width: 18, height: 18 }) || (
+                      <span className="text-xs font-bold text-indigo-400">{getShortName(model.name)[0]}</span>
+                    )}
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="font-mono text-sm text-zinc-200 group-hover:text-nofx-gold transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-zinc-100 truncate">
                       {getShortName(model.name)}
                     </div>
-                    <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
+                    <div className="text-[10px] text-zinc-500 truncate">
                       {model.customModelName || AI_PROVIDER_CONFIG[model.provider]?.defaultModel || ''}
                     </div>
-                    {model.provider === 'claw402' && (model.balanceUsdc || model.walletAddress) ? (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] font-mono">
-                        {model.balanceUsdc ? (
-                          <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-400">
-                            {model.balanceUsdc} USDC
-                          </span>
-                        ) : null}
-                        {model.walletAddress ? (
-                          <span className="rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-sky-400">
-                            {truncateAddress(model.walletAddress)}
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
 
-                <div className="text-right">
+                <div className="flex-shrink-0">
                   {usageInfo.totalCount > 0 ? (
-                    <span className={`text-[10px] font-mono px-2 py-1 rounded border ${usageInfo.runningCount > 0
-                      ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                      : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                    <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${usageInfo.runningCount > 0
+                      ? 'bg-green-500/15 text-green-400'
+                      : 'bg-yellow-500/15 text-yellow-400'
                       }`}>
-                      {usageInfo.runningCount}/{usageInfo.totalCount} ACTIVE
+                      {usageInfo.runningCount}/{usageInfo.totalCount} {language === 'zh' ? '运行' : 'ACTIVE'}
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider">
-                      {language === 'zh' ? '就绪' : 'STANDBY'}
+                    <span className="text-[10px] text-zinc-500">
+                      {language === 'zh' ? '未使用' : 'IDLE'}
                     </span>
                   )}
                 </div>
@@ -174,24 +150,17 @@ export function ConfigStatusGrid({
           })}
 
           {configuredModels.length === 0 && (
-            <div className="text-center py-10 border border-dashed border-zinc-800 rounded-lg bg-black/20">
-              <Brain className="w-8 h-8 mx-auto mb-3 text-zinc-700" />
-              <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{t('noModelsConfigured', language)}</div>
+            <div className="text-center py-6 rounded-lg">
+              <Brain className="w-6 h-6 mx-auto mb-2 text-zinc-700" />
+              <div className="text-xs text-zinc-500">{t('noModelsConfigured', language)}</div>
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Exchanges Card */}
-      <div className="nofx-glass rounded-lg border border-white/5 overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/5 bg-black/20 flex items-center gap-2 backdrop-blur-sm">
-          <Landmark className="w-4 h-4 text-nofx-gold" />
-          <h3 className="text-sm font-mono tracking-widest text-zinc-300 uppercase">
-            {t('exchanges', language)}
-          </h3>
-        </div>
-
-        <div className="p-4 space-y-3">
+      {/* Exchanges 气泡 */}
+      <section className="bubble-card p-3">
+        <div>
           {configuredExchanges.map((exchange) => {
             const inUse = isExchangeInUse(exchange.id)
             const usageInfo = getExchangeUsageInfo(exchange.id)
@@ -200,45 +169,34 @@ export function ConfigStatusGrid({
             return (
               <div
                 key={exchange.id}
-                className={`group relative flex items-center justify-between p-3 rounded-md transition-all border border-transparent ${inUse ? 'opacity-80' : 'hover:bg-white/5 hover:border-white/10 cursor-pointer'
-                  } bg-black/20`}
+                className={`row-divider group flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg transition-all ${inUse ? 'opacity-80' : 'hover:bg-white/5 cursor-pointer'
+                  }`}
                 onClick={() => onExchangeClick(exchange.id)}
               >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-yellow-500/20 rounded-full blur-sm group-hover:bg-yellow-500/30 transition-all"></div>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black border border-white/10 relative z-10">
-                      {getExchangeIcon(exchange.exchange_type || exchange.id, { width: 20, height: 20 })}
-                    </div>
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center bg-black border border-white/10 flex-shrink-0">
+                    {getExchangeIcon(exchange.exchange_type || exchange.id, { width: 18, height: 18 })}
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="font-mono text-sm text-zinc-200 group-hover:text-nofx-gold transition-colors truncate">
-                      {exchange.exchange_type?.toUpperCase() || getShortName(exchange.name)}
-                      <span className="text-[10px] text-zinc-500 ml-2 border border-zinc-800 px-1 rounded">
-                        {exchange.account_name || 'DEFAULT'}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-zinc-100 truncate flex items-center gap-1.5">
+                      <span>{exchange.exchange_type?.toUpperCase() || getShortName(exchange.name)}</span>
+                      <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded bg-white/5 font-normal">
+                        {exchange.account_name || (exchange.type?.toUpperCase() || 'CEX')}
                       </span>
                     </div>
-                    <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
-                      {exchange.type?.toUpperCase() || 'CEX'}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-mono">
-                      <span className={`rounded border px-1.5 py-0.5 ${stateMeta.className}`}>
+                    <div className="mt-0.5 text-[10px] truncate">
+                      <span className={`px-1.5 py-0.5 rounded ${stateMeta.className}`}>
                         {isExchangeAccountStatesLoading && !state
-                          ? (language === 'zh' ? '检查中...' : 'CHECKING...')
+                          ? (language === 'zh' ? '检查中…' : 'Checking…')
                           : stateMeta.label}
                       </span>
-                      {state?.status !== 'ok' && state?.error_message ? (
-                        <span className="text-zinc-500 truncate max-w-[220px]">
-                          {state.error_message}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-1">
-                  {/* Wallet Address Display Logic */}
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {/* DEX 钱包地址 */}
                   {(() => {
                     const walletAddr = exchange.hyperliquidWalletAddr || exchange.asterUser || exchange.lighterWalletAddr
                     if (exchange.type !== 'dex' || !walletAddr) return null
@@ -247,7 +205,7 @@ export function ConfigStatusGrid({
 
                     return (
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[10px] font-mono text-zinc-400 bg-black/40 px-1.5 py-0.5 rounded border border-zinc-800">
+                        <span className="text-[9px] font-mono text-zinc-400 bg-black/40 px-1.5 py-0.5 rounded">
                           {isVisible ? walletAddr : truncateAddress(walletAddr)}
                         </span>
                         <button
@@ -267,15 +225,15 @@ export function ConfigStatusGrid({
                   })()}
 
                   {usageInfo.totalCount > 0 ? (
-                    <span className={`text-[10px] font-mono px-2 py-1 rounded border ${usageInfo.runningCount > 0
-                      ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                      : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                    <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${usageInfo.runningCount > 0
+                      ? 'bg-green-500/15 text-green-400'
+                      : 'bg-yellow-500/15 text-yellow-400'
                       }`}>
-                      {usageInfo.runningCount}/{usageInfo.totalCount} ACTIVE
+                      {usageInfo.runningCount}/{usageInfo.totalCount} {language === 'zh' ? '运行' : 'ACTIVE'}
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-wider">
-                      {language === 'zh' ? '就绪' : 'STANDBY'}
+                    <span className="text-[10px] text-zinc-500">
+                      {language === 'zh' ? '未使用' : 'IDLE'}
                     </span>
                   )}
                 </div>
@@ -283,13 +241,13 @@ export function ConfigStatusGrid({
             )
           })}
           {configuredExchanges.length === 0 && (
-            <div className="text-center py-10 border border-dashed border-zinc-800 rounded-lg bg-black/20">
-              <Landmark className="w-8 h-8 mx-auto mb-3 text-zinc-700" />
-              <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest">{t('noExchangesConfigured', language)}</div>
+            <div className="text-center py-6 rounded-lg">
+              <Landmark className="w-6 h-6 mx-auto mb-2 text-zinc-700" />
+              <div className="text-xs text-zinc-500">{t('noExchangesConfigured', language)}</div>
             </div>
           )}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

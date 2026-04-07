@@ -198,6 +198,10 @@ Fundamentals report: {fundamentals_report}
 Leverage these insights to make an informed and strategic decision.
 
 {account_context}
+
+=== Recent Trading Performance ===
+{trade_stats}
+
 {risk_constraints}`
 
 // ===== 3 风控辩论者 =====

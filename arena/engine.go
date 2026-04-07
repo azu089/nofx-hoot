@@ -103,6 +103,7 @@ func (e *ArenaEngine) RunFullDebate(
 	positions []PositionSnapshot,
 	riskConfig RiskConfigSnapshot,
 	exchangeType string,
+	tradeStats string,
 ) (*ArenaSignal, error) {
 	start := time.Now()
 	defer func() {
@@ -125,6 +126,7 @@ func (e *ArenaEngine) RunFullDebate(
 	state.CurrentPositions = positions
 	state.RiskConfig = riskConfig
 	state.ExchangeType = exchangeType
+	state.TradeStats = tradeStats
 
 	// ─── Phase 1: 分析师阶段 ────────────────────────────────────────
 	log.Printf("[Arena] Phase 1: Analysts for %s", symbol)

@@ -11,6 +11,27 @@ import {
 import type { ArenaDecisionRecord } from '../../types/strategy'
 import { t, type Language } from '../../i18n/translations'
 
+// 5 个辩论角色的 user_prompt 段主要是 {debate_history} 注入,与 CoT 完全重复,在 prompt 折叠区隐藏
+const REDUNDANT_AGENTS_IN_USER_PROMPT = [
+  'BullResearcher',
+  'BearResearcher',
+  'AggressiveDebater',
+  'ConservativeDebater',
+  'NeutralDebater',
+]
+
+function filterUserPromptRedundancy(text: string): string {
+  if (!text) return text
+  // 分隔符: "\n\n=== AgentName ===\n" (来自 arena/agents.go appendAgentTrace)
+  const sections = text.split(/(?=\n\n=== \w+ ===\n)/)
+  return sections
+    .filter((s) => {
+      const m = s.match(/=== (\w+) ===/)
+      return !m || !REDUNDANT_AGENTS_IN_USER_PROMPT.includes(m[1])
+    })
+    .join('')
+}
+
 // ── i18n (Arena 独有 key，DecisionCard 公共 key 直接用 t()) ─────────────────
 
 const ARENA_I18N: Record<string, Record<string, string>> = {
@@ -622,7 +643,7 @@ export function ArenaDecisionCard({
             icon="📥"
             title="User Prompt"
             color="#60a5fa"
-            content={record.user_prompt}
+            content={filterUserPromptRedundancy(record.user_prompt)}
             filename={`arena-user-prompt-cycle-{cycle}.txt`}
             cycleNumber={record.cycle_number}
           />

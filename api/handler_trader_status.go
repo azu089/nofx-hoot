@@ -267,6 +267,13 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 
 	logger.Infof("✅ Position closed successfully: symbol=%s, side=%s, qty=%.6f, result=%v", req.Symbol, req.Side, posQty, result)
 
+	// [HOOT] Trigger reconcile on the running trader so the closed position
+	// surfaces in history immediately (instead of waiting up to 15 min for the
+	// next runCycle). Best-effort: silently no-op if trader isn't running.
+	if runningTrader, err := s.traderManager.GetTrader(traderID); err == nil && runningTrader != nil {
+		go runningTrader.TriggerReconcileNow()
+	}
+
 	// Record order to database (for chart markers and history)
 	s.recordClosePositionOrder(traderID, exchangeCfg.ID, exchangeCfg.ExchangeType, req.Symbol, req.Side, posQty, entryPrice, result)
 

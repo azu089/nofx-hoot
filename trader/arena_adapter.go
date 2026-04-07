@@ -3,8 +3,36 @@ package trader
 import (
 	"fmt"
 	"nofx/arena"
+	"nofx/store"
 	"strings"
 )
+
+// ArenaTradeStatsAdapter 实现 arena.TradeStatsProvider
+// 从 store.PositionStore.GetFullStats 取数据并格式化为人类可读字符串
+type ArenaTradeStatsAdapter struct {
+	st *store.Store
+}
+
+var _ arena.TradeStatsProvider = (*ArenaTradeStatsAdapter)(nil)
+
+func NewArenaTradeStatsAdapter(st *store.Store) *ArenaTradeStatsAdapter {
+	return &ArenaTradeStatsAdapter{st: st}
+}
+
+func (a *ArenaTradeStatsAdapter) GetTradeStats(traderID string) string {
+	if a.st == nil {
+		return ""
+	}
+	stats, err := a.st.Position().GetFullStats(traderID)
+	if err != nil || stats == nil || stats.TotalTrades == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"Total Trades: %d | Win Rate: %.1f%% | Profit Factor: %.2f | Sharpe: %.2f\nTotal PnL: %.2f USDT | Avg Win: %.2f | Avg Loss: %.2f | Max Drawdown: %.1f%%",
+		stats.TotalTrades, stats.WinRate, stats.ProfitFactor, stats.SharpeRatio,
+		stats.TotalPnL, stats.AvgWin, stats.AvgLoss, stats.MaxDrawdownPct,
+	)
+}
 
 // ArenaTraderAdapter 将 nofx Trader 接口适配为 arena.TraderInterface
 // 解耦 arena 包与 trader 包的直接依赖。
@@ -150,6 +178,14 @@ func (a *ArenaTraderAdapter) GetPositions() ([]arena.PositionInfo, error) {
 
 func (a *ArenaTraderAdapter) SetLeverage(symbol string, leverage int) error {
 	return a.trader.SetLeverage(symbol, leverage)
+}
+
+func (a *ArenaTraderAdapter) SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error {
+	return a.trader.SetStopLoss(symbol, positionSide, quantity, stopPrice)
+}
+
+func (a *ArenaTraderAdapter) SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error {
+	return a.trader.SetTakeProfit(symbol, positionSide, quantity, takeProfitPrice)
 }
 
 // --- 辅助函数 ---

@@ -1,6 +1,6 @@
+import { useState, useRef, useEffect } from 'react'
 import {
   Bot,
-  Users,
   BarChart3,
   Trash2,
   Pencil,
@@ -8,6 +8,8 @@ import {
   EyeOff,
   Copy,
   Check,
+  MoreVertical,
+  Power,
 } from 'lucide-react'
 import type { TraderInfo, Exchange } from '../../types'
 import type { Language } from '../../i18n/translations'
@@ -59,24 +61,11 @@ export function TradersList({
   onCopyAddress,
 }: TradersListProps) {
   return (
-    <div className="binance-card p-4 md:p-6">
-      <div className="flex items-center justify-between mb-4 md:mb-5">
-        <h2
-          className="text-lg md:text-xl font-bold flex items-center gap-2"
-          style={{ color: '#EAECEF' }}
-        >
-          <Users
-            className="w-5 h-5 md:w-6 md:h-6"
-            style={{ color: '#F0B90B' }}
-          />
-          {t('currentTraders', language)}
-        </h2>
-      </div>
-
+    <section className="bubble-card p-3">
       {isLoading ? (
         <TradersLoadingSkeleton />
       ) : traders && traders.length > 0 ? (
-        <div className="space-y-3 md:space-y-4">
+        <div>
           {traders.map((trader) => (
             <TraderRow
               key={trader.trader_id}
@@ -103,7 +92,7 @@ export function TradersList({
           language={language}
         />
       )}
-    </div>
+    </section>
   )
 }
 
@@ -205,212 +194,165 @@ function TraderRow({
   const isVisible = visibleTraderAddresses.has(trader.trader_id)
   const isCopied = copiedId === trader.trader_id
 
+  // ⋯ 菜单状态
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
+  const handleViewClick = () => {
+    if (onTraderSelect) {
+      onTraderSelect(trader.trader_id)
+    } else {
+      const slug = `${trader.trader_name}-${trader.trader_id.slice(0, 4)}`
+      onNavigate(`/dashboard?trader=${encodeURIComponent(slug)}`)
+    }
+  }
+
   return (
-    <div
-      className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 rounded transition-all hover:translate-y-[-1px] gap-3 md:gap-4"
-      style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
-    >
-      <div className="flex items-center gap-3 md:gap-4">
-        <div className="flex-shrink-0">
-          <PunkAvatar
-            seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
-            size={48}
-            className="rounded-lg hidden md:block"
-          />
-          <PunkAvatar
-            seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
-            size={40}
-            className="rounded-lg md:hidden"
-          />
+    <div className="row-divider">
+      {/* 顶部信息行：头像 + 名称 + 状态 + ⋯ */}
+      <div className="flex items-center gap-3 px-2 py-2">
+        <PunkAvatar
+          seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
+          size={40}
+          className="rounded-lg flex-shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-semibold text-zinc-100 truncate">
+              {trader.trader_name}
+            </span>
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
+              style={
+                trader.is_running
+                  ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81' }
+                  : { background: 'rgba(132, 142, 156, 0.15)', color: '#848E9C' }
+              }
+            >
+              ● {trader.is_running ? t('running', language) : t('stopped', language)}
+            </span>
+          </div>
+          <div className="text-[11px] text-zinc-500 truncate">
+            <span style={{ color: trader.ai_model.includes('deepseek') ? '#60a5fa' : '#c084fc' }}>
+              {getModelDisplayName(trader.ai_model.split('_').pop() || trader.ai_model)}
+            </span>
+            <span className="mx-1.5 text-zinc-700">·</span>
+            <span>{getExchangeDisplayName(trader.exchange_id, allExchanges)}</span>
+          </div>
         </div>
-        <div className="min-w-0">
-          <div
-            className="font-bold text-base md:text-lg truncate"
-            style={{ color: '#EAECEF' }}
+
+        {/* ⋯ 菜单按钮 */}
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="p-1.5 rounded hover:bg-white/5 text-zinc-500 hover:text-zinc-300"
+            aria-label="More"
           >
-            {trader.trader_name}
-          </div>
-          <div
-            className="text-xs md:text-sm truncate"
-            style={{
-              color: trader.ai_model.includes('deepseek')
-                ? '#60a5fa'
-                : '#c084fc',
-            }}
-          >
-            {getModelDisplayName(
-              trader.ai_model.split('_').pop() || trader.ai_model
-            )}{' '}
-            Model • {getExchangeDisplayName(trader.exchange_id, allExchanges)}
-          </div>
+            <MoreVertical className="w-4 h-4" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-10 min-w-[140px] rounded-lg border border-white/10 bg-zinc-900 shadow-xl overflow-hidden">
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  onToggleCompetition(trader.trader_id, trader.show_in_competition ?? true)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5"
+              >
+                {trader.show_in_competition !== false ? (
+                  <><EyeOff className="w-3.5 h-3.5" /> {language === 'zh' ? '隐藏排行' : 'Hide rank'}</>
+                ) : (
+                  <><Eye className="w-3.5 h-3.5" /> {language === 'zh' ? '显示排行' : 'Show rank'}</>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  onDeleteTrader(trader.trader_id)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 border-t border-white/5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> {language === 'zh' ? '删除' : 'Delete'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-3 md:gap-4 flex-wrap md:flex-nowrap">
-        {/* Wallet Address for Perp-DEX */}
-        {isPerpDex && walletAddr && (
+      {/* DEX 钱包地址（如有） */}
+      {isPerpDex && walletAddr && (
+        <div className="px-2 pb-1 -mt-1">
           <div
-            className="flex items-center gap-1 px-2 py-1 rounded"
-            style={{
-              background: 'rgba(240, 185, 11, 0.08)',
-              border: '1px solid rgba(240, 185, 11, 0.2)',
-            }}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono"
+            style={{ background: 'rgba(240, 185, 11, 0.08)', border: '1px solid rgba(240, 185, 11, 0.2)', color: '#F0B90B' }}
           >
-            <span className="text-xs font-mono" style={{ color: '#F0B90B' }}>
-              {isVisible ? walletAddr : truncateAddress(walletAddr)}
-            </span>
+            <span>{isVisible ? walletAddr : truncateAddress(walletAddr)}</span>
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleTraderAddress(trader.trader_id)
-              }}
-              className="p-0.5 rounded hover:bg-gray-700 transition-colors"
+              onClick={() => onToggleTraderAddress(trader.trader_id)}
+              className="p-0.5 rounded hover:bg-black/30"
               title={isVisible ? (language === 'zh' ? '隐藏' : 'Hide') : (language === 'zh' ? '显示' : 'Show')}
             >
-              {isVisible ? (
-                <EyeOff className="w-3 h-3" style={{ color: '#848E9C' }} />
-              ) : (
-                <Eye className="w-3 h-3" style={{ color: '#848E9C' }} />
-              )}
+              {isVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
             </button>
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onCopyAddress(trader.trader_id, walletAddr)
-              }}
-              className="p-0.5 rounded hover:bg-gray-700 transition-colors"
+              onClick={() => onCopyAddress(trader.trader_id, walletAddr)}
+              className="p-0.5 rounded hover:bg-black/30"
               title={language === 'zh' ? '复制' : 'Copy'}
             >
-              {isCopied ? (
-                <Check className="w-3 h-3" style={{ color: '#0ECB81' }} />
-              ) : (
-                <Copy className="w-3 h-3" style={{ color: '#848E9C' }} />
-              )}
+              {isCopied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
             </button>
           </div>
-        )}
-        {/* Status */}
-        <div className="text-center">
-          <div
-            className={`px-2 md:px-3 py-1 rounded text-xs font-bold ${trader.is_running
-              ? 'bg-green-100 text-green-800'
-              : 'bg-red-100 text-red-800'
-              }`}
-            style={
-              trader.is_running
-                ? {
-                  background: 'rgba(14, 203, 129, 0.1)',
-                  color: '#0ECB81',
-                }
-                : {
-                  background: 'rgba(246, 70, 93, 0.1)',
-                  color: '#F6465D',
-                }
-            }
-          >
-            {trader.is_running
-              ? t('running', language)
-              : t('stopped', language)}
-          </div>
         </div>
+      )}
 
-        {/* Actions */}
-        <div className="flex gap-1.5 md:gap-2 flex-nowrap overflow-x-auto items-center">
-          <button
-            onClick={() => {
-              if (onTraderSelect) {
-                onTraderSelect(trader.trader_id)
-              } else {
-                const slug = `${trader.trader_name}-${trader.trader_id.slice(0, 4)}`
-                onNavigate(`/dashboard?trader=${encodeURIComponent(slug)}`)
-              }
-            }}
-            className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 flex items-center gap-1 whitespace-nowrap"
-            style={{
-              background: 'rgba(99, 102, 241, 0.1)',
-              color: '#6366F1',
-            }}
-          >
-            <BarChart3 className="w-3 h-3 md:w-4 md:h-4" />
-            {t('view', language)}
-          </button>
+      {/* 底部 3 主按钮 */}
+      <div className="grid grid-cols-3">
+        <button
+          onClick={() =>
+            onToggleTrader(trader.trader_id, trader.is_running || false)
+          }
+          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors"
+          style={
+            trader.is_running
+              ? { color: '#F6465D' }
+              : { color: '#0ECB81' }
+          }
+        >
+          <Power className="w-3.5 h-3.5" />
+          {trader.is_running ? t('stop', language) : t('start', language)}
+        </button>
 
-          <button
-            onClick={() => onEditTrader(trader.trader_id)}
-            disabled={trader.is_running}
-            className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center gap-1"
-            style={{
-              background: trader.is_running
-                ? 'rgba(132, 142, 156, 0.1)'
-                : 'rgba(255, 193, 7, 0.1)',
-              color: trader.is_running ? '#848E9C' : '#FFC107',
-            }}
-          >
-            <Pencil className="w-3 h-3 md:w-4 md:h-4" />
-            {t('edit', language)}
-          </button>
+        <button
+          onClick={() => onEditTrader(trader.trader_id)}
+          disabled={trader.is_running}
+          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ color: trader.is_running ? '#848E9C' : '#FFC107' }}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+          {t('edit', language)}
+        </button>
 
-          <button
-            onClick={() =>
-              onToggleTrader(
-                trader.trader_id,
-                trader.is_running || false
-              )
-            }
-            className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 whitespace-nowrap"
-            style={
-              trader.is_running
-                ? {
-                  background: 'rgba(246, 70, 93, 0.1)',
-                  color: '#F6465D',
-                }
-                : {
-                  background: 'rgba(14, 203, 129, 0.1)',
-                  color: '#0ECB81',
-                }
-            }
-          >
-            {trader.is_running
-              ? t('stop', language)
-              : t('start', language)}
-          </button>
-
-          <button
-            onClick={() => onToggleCompetition(trader.trader_id, trader.show_in_competition ?? true)}
-            className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105 whitespace-nowrap flex items-center gap-1"
-            style={
-              trader.show_in_competition !== false
-                ? {
-                  background: 'rgba(14, 203, 129, 0.1)',
-                  color: '#0ECB81',
-                }
-                : {
-                  background: 'rgba(132, 142, 156, 0.1)',
-                  color: '#848E9C',
-                }
-            }
-            title={trader.show_in_competition !== false ? '在竞技场显示' : '在竞技场隐藏'}
-          >
-            {trader.show_in_competition !== false ? (
-              <Eye className="w-3 h-3 md:w-4 md:h-4" />
-            ) : (
-              <EyeOff className="w-3 h-3 md:w-4 md:h-4" />
-            )}
-          </button>
-
-          <button
-            onClick={() => onDeleteTrader(trader.trader_id)}
-            className="px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm font-semibold transition-all hover:scale-105"
-            style={{
-              background: 'rgba(246, 70, 93, 0.1)',
-              color: '#F6465D',
-            }}
-          >
-            <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
-          </button>
-        </div>
+        <button
+          onClick={handleViewClick}
+          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors"
+          style={{ color: '#6366F1' }}
+        >
+          <BarChart3 className="w-3.5 h-3.5" />
+          {t('view', language)}
+        </button>
       </div>
     </div>
   )

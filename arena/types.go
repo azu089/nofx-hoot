@@ -105,6 +105,9 @@ type ArenaState struct {
 	Signal        string `json:"signal"`     // BUY/OVERWEIGHT/HOLD/UNDERWEIGHT/SELL
 	Confidence    int    `json:"confidence"` // 0-100
 
+	// 历史交易统计（由 Runner 通过 TradeStatsProvider 注入；Trader 角色 prompt 使用）
+	TradeStats string `json:"trade_stats"`
+
 	// 开发者信息（累加每个 Agent 的 prompt + 响应，供前端展示）
 	SystemPrompt     string `json:"system_prompt"`
 	UserPrompt       string `json:"user_prompt"`

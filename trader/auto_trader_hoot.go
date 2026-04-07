@@ -17,6 +17,8 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/store"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -524,4 +526,110 @@ func (at *AutoTrader) recordTradeOutcome(symbol string, isWin bool) {
 		ClosedAt: time.Now(),
 		Source:   "ai",
 	})
+}
+
+// ─── Position Reconciler (DB ↔ Exchange truth) ──────────────────────────────
+//
+// reconcileDBPositions forces DB trader_positions to match exchange reality.
+// For every DB OPEN position without a matching live position, mark it CLOSED.
+// This captures manual closes (via nofx UI or exchange native UI) and any drift
+// that position_builder.ProcessTrade missed (e.g., ghost partial closes).
+//
+// PnL is intentionally left at the position's accumulated RealizedPnL (from any
+// prior partial closes). Fresh OrderSync runs may later backfill more accurate
+// PnL via the fills table. The core goal here is to ensure the position record
+// surfaces in history and no longer pollutes AI stats/recent-trades prompts.
+//
+// Rollback: set env NOFX_RECONCILE_DISABLED=1 to bypass at runtime.
+func (at *AutoTrader) reconcileDBPositions(livePositions []map[string]interface{}) {
+	if os.Getenv("NOFX_RECONCILE_DISABLED") == "1" {
+		return
+	}
+	if at.store == nil {
+		return
+	}
+
+	// 1. Build exchange truth set: symbol+SIDE (uppercase to match DB convention)
+	liveSet := make(map[string]bool, len(livePositions))
+	for _, p := range livePositions {
+		sym, _ := p["symbol"].(string)
+		side, _ := p["side"].(string)
+		qty, _ := p["positionAmt"].(float64)
+		if qty < 0 {
+			qty = -qty
+		}
+		if sym == "" || side == "" || qty == 0 {
+			continue
+		}
+		liveSet[sym+"_"+strings.ToUpper(side)] = true
+	}
+
+	// 2. Scan all DB OPEN positions; close those absent from exchange
+	dbOpens, err := at.store.Position().GetOpenPositions(at.id)
+	if err != nil {
+		logger.Warnf("⚠️ [%s] Reconcile: failed to fetch open positions: %v", at.name, err)
+		return
+	}
+
+	nowMs := time.Now().UTC().UnixMilli()
+	closed := 0
+	for _, dp := range dbOpens {
+		key := dp.Symbol + "_" + strings.ToUpper(dp.Side)
+		if liveSet[key] {
+			continue
+		}
+
+		// Exchange has no matching position → force close.
+		// Use EntryPrice as exit fallback when ExitPrice wasn't set by prior partial closes.
+		exitPrice := dp.ExitPrice
+		if exitPrice == 0 {
+			exitPrice = dp.EntryPrice
+		}
+		if err := at.store.Position().ClosePositionFully(
+			dp.ID,
+			exitPrice,
+			dp.ExitOrderID,
+			nowMs,
+			dp.RealizedPnL,
+			dp.Fee,
+			"reconcile",
+		); err != nil {
+			logger.Warnf("⚠️ [%s] Reconcile: failed to close position id=%d: %v", at.name, dp.ID, err)
+			continue
+		}
+		closed++
+		logger.Infof("🧹 [%s] Reconcile: closed ghost position %s %s (id=%d, qty=%.6f, entry=%.4f)",
+			at.name, dp.Symbol, dp.Side, dp.ID, dp.Quantity, dp.EntryPrice)
+	}
+
+	if closed > 0 {
+		logger.Infof("🧹 [%s] Reconcile summary: %d ghost positions closed", at.name, closed)
+	}
+}
+
+// TriggerReconcileNow runs reconcileDBPositions immediately, fetching live
+// positions from the exchange. Used by manual-close handlers so users see the
+// closed position appear in history without waiting for the next runCycle.
+// Safe to call concurrently with runCycle (the underlying store ops are
+// per-row updates with WHERE status='OPEN').
+//
+// Rollback: env NOFX_RECONCILE_DISABLED=1 short-circuits reconcileDBPositions.
+func (at *AutoTrader) TriggerReconcileNow() {
+	if at.trader == nil {
+		return
+	}
+
+	// Grid strategy: run syncGridState which contains the filled-layer reverse check
+	if at.IsGridStrategy() {
+		at.syncGridState()
+		return
+	}
+
+	// AI / other strategies: reconcile DB positions
+	livePositions, err := at.trader.GetPositions()
+	if err != nil {
+		logger.Warnf("⚠️ [%s] TriggerReconcileNow: failed to fetch positions: %v", at.name, err)
+		return
+	}
+	at.reconcileDBPositions(livePositions)
 }
