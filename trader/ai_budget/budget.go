@@ -25,9 +25,9 @@ import (
 
 // state 单个策略的运行时状态
 type state struct {
-	lastCallAt    time.Time
-	callsToday    int
-	dayStartedAt  time.Time
+	lastCallAt   time.Time
+	callsToday   int
+	dayStartedAt time.Time
 }
 
 var (

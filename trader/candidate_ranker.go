@@ -1,7 +1,8 @@
 // trader/candidate_ranker.go — v1.1 P4-1 候选决策排序器
 //
 // 目的: 当 AI 返回的 open 候选数量 > maxPositions 时，按质量排序选最优 K 个，
-//       而非按 AI 返回顺序盲取前 K。
+//
+//	而非按 AI 返回顺序盲取前 K。
 //
 // 设计原则:
 //   - 仅排序 open_long/open_short，其他 action（close/hold/wait/reduce/scale）原样保留
@@ -35,19 +36,19 @@ import (
 
 // 得分权重（可通过 strategy config 后期覆盖）
 const (
-	weightConfidence  = 0.5
-	weightRiskReward  = 0.3
-	weightRecentPerf  = 0.2
+	weightConfidence = 0.5
+	weightRiskReward = 0.3
+	weightRecentPerf = 0.2
 )
 
 // rankedCandidate 内部打分条目
 type rankedCandidate struct {
-	Index       int     // 在原数组中的索引
-	Decision    kernel.Decision
-	Score       float64
-	Confidence  float64
-	RiskReward  float64
-	RecentPerf  float64
+	Index      int // 在原数组中的索引
+	Decision   kernel.Decision
+	Score      float64
+	Confidence float64
+	RiskReward float64
+	RecentPerf float64
 }
 
 // applyCandidateRanker 过滤 open 类决策到 maxOpenSlots 个最优候选

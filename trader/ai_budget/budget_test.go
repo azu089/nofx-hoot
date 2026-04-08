@@ -27,7 +27,7 @@ func TestCheck_DisabledPolicyAlwaysAllow(t *testing.T) {
 func TestCheck_PositionsHeldAlwaysAllow(t *testing.T) {
 	Reset()
 	p := &store.AIBudgetPolicyConfig{Enabled: true, SkipWhenIdle: true, CooldownSeconds: 3600}
-	Record("s1") // 立即记录调用，cooldown 进行中
+	Record("s1")                 // 立即记录调用，cooldown 进行中
 	skip, _ := Check("s1", p, 1) // 但有持仓
 	if skip {
 		t.Error("有持仓时应永远不跳过")

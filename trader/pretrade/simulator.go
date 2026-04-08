@@ -58,8 +58,8 @@ type PreTradeSimulator interface {
 //  3. 杠杆有效: 1 ≤ leverage ≤ maxLeverage（默认 125）
 //  4. price/qty 非零
 type DefaultSimulator struct {
-	MinOrderUSD float64 // 默认 5
-	MaxLeverage int     // 默认 125
+	MinOrderUSD  float64 // 默认 5
+	MaxLeverage  int     // 默认 125
 	MarginBuffer float64 // 默认 0.95（保留 5% 缓冲防滑点）
 }
 

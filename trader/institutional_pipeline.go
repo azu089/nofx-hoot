@@ -80,9 +80,9 @@ func (at *AutoTrader) ApplyInstitutionalPipeline(aiDecisions, pmDecisions []kern
 	mode := at.resolvePMMode()
 
 	audit.Snapshot(at.id, at.strategyID, "pm_authority_mode", map[string]any{
-		"mode":           mode,
-		"ai_decisions":   len(aiDecisions),
-		"pm_decisions":   len(pmDecisions),
+		"mode":         mode,
+		"ai_decisions": len(aiDecisions),
+		"pm_decisions": len(pmDecisions),
 	})
 
 	switch mode {
@@ -132,11 +132,11 @@ func (at *AutoTrader) applyPartialMode(aiDecisions, pmDecisions []kernel.Decisio
 		if isCloseAction(ai.Action) {
 			if pm, exists := pmBySymbol[ai.Symbol]; exists {
 				audit.Snapshot(at.id, at.strategyID, "pm_override_ai_close", map[string]any{
-					"symbol":     ai.Symbol,
-					"ai_action":  ai.Action,
-					"pm_action":  pm.Action,
-					"ai_reason":  ai.Reasoning,
-					"pm_reason":  pm.Reasoning,
+					"symbol":    ai.Symbol,
+					"ai_action": ai.Action,
+					"pm_action": pm.Action,
+					"ai_reason": ai.Reasoning,
+					"pm_reason": pm.Reasoning,
 				})
 				logger.Infof("🏛️ [%s] PM partial override: AI %s %s → PM %s",
 					at.name, ai.Symbol, ai.Action, pm.Action)
