@@ -291,12 +291,15 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// [HOOT] Step E: PositionManager — evaluate existing positions
+	// v1.1 P3-2: 通过 InstitutionalPipeline 灰度合并 AI + PM 决策
+	// 默认 mode=off → 行为完全等同于原版（PM append 到 AI 末尾）
+	// shadow / partial / full 通过 strategy config 或 feature flag 灰度启用
 	if len(ctx.Positions) > 0 {
 		pmDecisions := at.runPositionManagement(ctx)
 		if len(pmDecisions) > 0 {
 			logger.Infof("📊 [%s] PositionManager generated %d actions", at.name, len(pmDecisions))
-			aiDecision.Decisions = append(aiDecision.Decisions, pmDecisions...)
 		}
+		aiDecision.Decisions = at.ApplyInstitutionalPipeline(aiDecision.Decisions, pmDecisions)
 	}
 
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)

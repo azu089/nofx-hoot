@@ -37,8 +37,14 @@ func isOpenAction(action string) bool {
 	return action == "open_long" || action == "open_short"
 }
 
+// isCloseAction 判定是否为 close 系列 action
+// v1.1 P2-4: 包含 sized adjust 的 reduce_long/short
 func isCloseAction(action string) bool {
-	return action == "close_long" || action == "close_short"
+	switch action {
+	case "close_long", "close_short", "reduce_long", "reduce_short":
+		return true
+	}
+	return false
 }
 
 // ─── Market Regime Detection ────────────────────────────────────────────────
