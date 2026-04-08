@@ -17,6 +17,7 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/store"
+	"nofx/trader/audit"
 	"os"
 	"strings"
 	"time"
@@ -94,6 +95,10 @@ func (at *AutoTrader) detectPrimaryRegime(ctx *kernel.Context) market.MarketRegi
 
 // injectEventSignals populates ctx.EventSignals and ctx.EventRiskMode.
 // Uses the getEventSignals function if set (injected to avoid circular deps).
+//
+// v1.1 P1-5: 高 severity (≥4) 事件通过 audit pipeline 推送结构化快照，
+// 携带 category / scope / affected_symbols / direction 等元数据，
+// 供下游 Sink（Telegram bot / Sentry / BullMQ worker）消费。
 func (at *AutoTrader) injectEventSignals(ctx *kernel.Context) {
 	if at.getEventSignals == nil {
 		return
@@ -109,6 +114,27 @@ func (at *AutoTrader) injectEventSignals(ctx *kernel.Context) {
 	ctx.EventRiskMode = kernel.DeriveEventRiskMode(signals, 4) // default severity threshold = 4
 	if ctx.EventRiskMode != "normal" {
 		logger.Infof("📰 [%s] Event risk mode: %s (%d active events)", at.name, ctx.EventRiskMode, len(signals))
+	}
+
+	// [HOOT v1.1 P1-5] 推送高 severity 事件到 audit pipeline
+	// 仅对 severity ≥ 3 的事件触发，避免 spam
+	now := time.Now()
+	for _, ev := range signals {
+		if !ev.IsActive(now) || ev.Severity < 3 {
+			continue
+		}
+		audit.Snapshot(at.id, at.strategyID, "event_signal_active", map[string]any{
+			"event_id":         ev.ID,
+			"category":         ev.Category,
+			"severity":         ev.Severity,
+			"direction":        ev.Direction,
+			"scope":            ev.Scope,
+			"affected_symbols": ev.AffectedSymbols,
+			"confidence":       ev.Confidence,
+			"source":           ev.SourceName,
+			"summary":          ev.Summary,
+			"risk_mode":        ctx.EventRiskMode,
+		})
 	}
 }
 
