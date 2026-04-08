@@ -11,6 +11,11 @@ import (
 
 // executeDecisionWithRecord executes AI decision and records detailed information
 func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	// v1.1 P2-4: 优先派发 sized adjust action（reduce/scale long/short）
+	if IsSizedAdjustAction(decision.Action) {
+		return at.executeSizedAdjustAction(decision, actionRecord)
+	}
+
 	switch decision.Action {
 	case "open_long":
 		return at.executeOpenLongWithRecord(decision, actionRecord)
