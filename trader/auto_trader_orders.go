@@ -62,6 +62,13 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		}
 	}
 
+	// [HOOT v1.1 P3-4] PreTradeSimulator 灰度检查
+	// 通过 feature_flag 'pretrade_sim' 启用 (默认 disabled)
+	// 失败时阻止下单 + 写 audit
+	if err := at.runPreTradeSimulation(decision); err != nil {
+		return err
+	}
+
 	// ⚠️ Get current positions for multiple checks
 	positions, err := at.trader.GetPositions()
 	if err != nil {
@@ -200,6 +207,13 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		if allowed, reason := at.openGate.AllowOpenSided(at.id, decision.Symbol, side, rc); !allowed {
 			return fmt.Errorf("❌ Open gate blocked: %s", reason)
 		}
+	}
+
+	// [HOOT v1.1 P3-4] PreTradeSimulator 灰度检查
+	// 通过 feature_flag 'pretrade_sim' 启用 (默认 disabled)
+	// 失败时阻止下单 + 写 audit
+	if err := at.runPreTradeSimulation(decision); err != nil {
+		return err
 	}
 
 	// ⚠️ Get current positions for multiple checks
