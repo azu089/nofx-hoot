@@ -312,6 +312,7 @@ After your narrative above, append a fenced JSON block summarizing your final ju
   "stop_loss": 0,
   "take_profit": 0,
   "leverage": 0,
+  "position_size_usd": 0,
   "reasoning": "one short sentence"
 }
 ` + "```" + `
@@ -330,6 +331,11 @@ Rules for confidence (aligned with AI Smart Trading strategy):
     The execution layer will REJECT any open action with missing/zero values.
 - If rating is Hold: ` + "`entry_price`" + `, ` + "`stop_loss`" + `, ` + "`take_profit`" + `, ` + "`leverage`" + ` MUST all be 0.
 - Do NOT output "Sell with leverage=0" or "Buy with entry_price=0" — such decisions will be discarded.
+- position_size_usd: Calculate from risk_constraints (max position) × your confidence tier ratio.
+  Example: max=$1000, your conf=75 (Medium 70-84) → use 50-80% of $1000 = $500-$800.
+  Example: max=$1000, your conf=90 (High 85+) → use 80-100% of $1000 = $800-$1000.
+- For Hold rating: position_size_usd MUST be 0.
+- For open actions: position_size_usd MUST be > 0 and align with your confidence tier.
 
 {account_context}
 {risk_constraints}`

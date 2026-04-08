@@ -138,7 +138,7 @@ function TradersEmptyState({
       style={{ color: '#848E9C' }}
     >
       <Bot className="w-16 h-16 md:w-24 md:h-24 mx-auto mb-3 md:mb-4 opacity-50" />
-      <div className="text-base md:text-lg font-semibold mb-2">
+      <div className="text-base md:text-lg font-medium mb-2">
         {t('noTraders', language)}
       </div>
       <div className="text-xs md:text-sm mb-3 md:mb-4">
@@ -224,19 +224,19 @@ function TraderRow({
         <PunkAvatar
           seed={getTraderAvatar(trader.trader_id, trader.trader_name)}
           size={40}
-          className="rounded-lg flex-shrink-0"
+          className="rounded-full flex-shrink-0 ring-1 ring-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-sm font-semibold text-zinc-100 truncate">
+            <span className="text-sm font-medium text-white truncate">
               {trader.trader_name}
             </span>
             <span
-              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
+              className="text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 border"
               style={
                 trader.is_running
-                  ? { background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81' }
-                  : { background: 'rgba(132, 142, 156, 0.15)', color: '#848E9C' }
+                  ? { background: 'rgba(43, 232, 158, 0.15)', color: '#5FF3BB', borderColor: 'rgba(43, 232, 158, 0.35)' }
+                  : { background: 'rgba(132, 142, 156, 0.10)', color: '#848E9C', borderColor: 'rgba(132, 142, 156, 0.25)' }
               }
             >
               ● {trader.is_running ? t('running', language) : t('stopped', language)}
@@ -324,11 +324,11 @@ function TraderRow({
           onClick={() =>
             onToggleTrader(trader.trader_id, trader.is_running || false)
           }
-          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors"
+          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-white/5 rounded-lg"
           style={
             trader.is_running
               ? { color: '#F6465D' }
-              : { color: '#0ECB81' }
+              : { color: '#5FF3BB' }
           }
         >
           <Power className="w-3.5 h-3.5" />
@@ -338,8 +338,8 @@ function TraderRow({
         <button
           onClick={() => onEditTrader(trader.trader_id)}
           disabled={trader.is_running}
-          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ color: trader.is_running ? '#848E9C' : '#FFC107' }}
+          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-white/5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          style={{ color: trader.is_running ? '#848E9C' : '#E2E8F0' }}
         >
           <Pencil className="w-3.5 h-3.5" />
           {t('edit', language)}
@@ -347,8 +347,8 @@ function TraderRow({
 
         <button
           onClick={handleViewClick}
-          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors"
-          style={{ color: '#6366F1' }}
+          className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-white/5 rounded-lg"
+          style={{ color: '#5FF3BB' }}
         >
           <BarChart3 className="w-3.5 h-3.5" />
           {t('view', language)}

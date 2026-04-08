@@ -5,6 +5,7 @@ import { t } from '../../i18n/translations'
 import { toast } from 'sonner'
 import { Pencil, Plus, X as IconX, Sparkles, ExternalLink, UserPlus } from 'lucide-react'
 import { httpClient } from '../../lib/httpClient'
+import { NexoraSelect } from '../common/NexoraSelect'
 
 // 提取下划线后面的名称部分
 function getShortName(fullName: string): string {
@@ -190,34 +191,34 @@ export function TraderConfigModal({
   const selectedStrategy = strategies.find(s => s.id === formData.strategy_id)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="nexora-modal-backdrop">
       <div
-        className="bg-[#1E2329] border border-[#2B3139] rounded-xl shadow-2xl max-w-2xl w-full my-8"
+        className="bubble-card max-w-2xl w-full my-8 overflow-hidden"
         style={{ maxHeight: 'calc(100vh - 4rem)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#2B3139] bg-gradient-to-r from-[#1E2329] to-[#252B35] sticky top-0 z-10 rounded-t-xl">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#F0B90B] to-[#E1A706] flex items-center justify-center text-black">
+            <div className="w-10 h-10 rounded-full bg-emerald-400/15 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shadow-[0_0_16px_rgba(43,232,158,0.2)]">
               {isEditMode ? (
-                <Pencil className="w-5 h-5" />
+                <Pencil className="w-4 h-4" />
               ) : (
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4 h-4" />
               )}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-[#EAECEF]">
+              <h2 className="text-lg font-medium text-white">
                 {isEditMode ? t('editTrader', language) : t('createTrader', language)}
               </h2>
-              <p className="text-sm text-[#848E9C] mt-1">
+              <p className="text-xs text-zinc-500 mt-0.5">
                 {isEditMode ? t('editTraderConfig', language) : t('selectStrategyAndConfigParams', language)}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg text-[#848E9C] hover:text-[#EAECEF] hover:bg-[#2B3139] transition-colors flex items-center justify-center"
+            className="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <IconX className="w-4 h-4" />
           </button>
@@ -229,13 +230,13 @@ export function TraderConfigModal({
           style={{ maxHeight: 'calc(100vh - 16rem)' }}
         >
           {/* Basic Info */}
-          <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-5 flex items-center gap-2">
-              <span className="text-[#F0B90B]">1</span> {t('basicConfig', language)}
+          <div className="bubble-card p-5">
+            <h3 className="text-base font-medium text-white mb-5 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-emerald-400/15 border border-emerald-400/30 text-emerald-300 text-xs font-medium flex items-center justify-center">1</span> {t('basicConfig', language)}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-[#EAECEF] block mb-2">
+                <label className="text-xs text-white block mb-2">
                   {t('traderNameRequired', language)}
                 </label>
                 <input
@@ -244,47 +245,38 @@ export function TraderConfigModal({
                   onChange={(e) =>
                     handleInputChange('trader_name', e.target.value)
                   }
-                  className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                  className="nexora-input"
                    placeholder={t('enterTraderNamePlaceholder', language)}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-xs text-white block mb-2">
                   {t('aiModelRequired', language)}
                   </label>
-                  <select
+                  <NexoraSelect
                     value={formData.ai_model}
-                    onChange={(e) =>
-                      handleInputChange('ai_model', e.target.value)
-                    }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
-                  >
-                    {availableModels.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {getShortName(model.name || model.id).toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => handleInputChange('ai_model', v)}
+                    options={availableModels.map((model) => ({
+                      value: model.id,
+                      label: getShortName(model.name || model.id),
+                    }))}
+                  />
                 </div>
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-xs text-white block mb-2">
                   {t('exchangeRequired', language)}
                   </label>
-                  <select
+                  <NexoraSelect
                     value={formData.exchange_id}
-                    onChange={(e) =>
-                      handleInputChange('exchange_id', e.target.value)
-                    }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
-                  >
-                    {availableExchanges.map((exchange) => (
-                      <option key={exchange.id} value={exchange.id}>
-                        {getShortName(exchange.name || exchange.exchange_type || exchange.id).toUpperCase()}
-                        {exchange.account_name ? ` - ${exchange.account_name}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => handleInputChange('exchange_id', v)}
+                    options={availableExchanges.map((exchange) => ({
+                      value: exchange.id,
+                      label:
+                        getShortName(exchange.name || exchange.exchange_type || exchange.id) +
+                        (exchange.account_name ? ` - ${exchange.account_name}` : ''),
+                    }))}
+                  />
                   {/* Exchange Registration Link */}
                   {formData.exchange_id && (() => {
                     // Find the selected exchange to get its type
@@ -297,12 +289,12 @@ export function TraderConfigModal({
                         href={regLink.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1.5 text-xs text-[#848E9C] hover:text-[#F0B90B] transition-colors"
+                        className="mt-2 inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-emerald-300 transition-colors"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         <span>{t('noExchangeAccount', language)}</span>
                         {regLink.hasReferral && (
-                          <span className="px-1.5 py-0.5 bg-[#F0B90B]/10 text-[#F0B90B] rounded text-[10px]">
+                          <span className="px-1.5 py-0.5 bg-emerald-400/10 text-emerald-300 rounded text-[10px]">
                             {t('discount', language)}
                           </span>
                         )}
@@ -316,56 +308,55 @@ export function TraderConfigModal({
           </div>
 
           {/* Strategy Selection */}
-          <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-5 flex items-center gap-2">
-              <span className="text-[#F0B90B]">2</span> {t('selectTradingStrategy', language)}
-              <Sparkles className="w-4 h-4 text-[#F0B90B]" />
+          <div className="bubble-card p-5">
+            <h3 className="text-base font-medium text-white mb-5 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-emerald-400/15 border border-emerald-400/30 text-emerald-300 text-xs font-medium flex items-center justify-center">2</span> {t('selectTradingStrategy', language)}
+              <Sparkles className="w-4 h-4 text-zinc-500" />
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-[#EAECEF] block mb-2">
+                <label className="text-xs text-white block mb-2">
                   {t('useStrategy', language)}
                 </label>
-                <select
+                <NexoraSelect
                   value={formData.strategy_id}
-                  onChange={(e) =>
-                    handleInputChange('strategy_id', e.target.value)
-                  }
-                  className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
-                >
-                  <option value="">{t('noStrategyManual', language)}</option>
-                  {strategies.map((strategy) => (
-                    <option key={strategy.id} value={strategy.id}>
-                      {strategy.name}
-                      {strategy.is_active ? t('strategyActive', language) : ''}
-                      {strategy.is_default ? t('strategyDefault', language) : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => handleInputChange('strategy_id', v)}
+                  placeholder={t('noStrategyManual', language)}
+                  options={[
+                    { value: '', label: t('noStrategyManual', language) },
+                    ...strategies.map((strategy) => ({
+                      value: strategy.id,
+                      label:
+                        strategy.name +
+                        (strategy.is_active ? t('strategyActive', language) : '') +
+                        (strategy.is_default ? t('strategyDefault', language) : ''),
+                    })),
+                  ]}
+                />
                 {strategies.length === 0 && (
-                    <p className="text-xs text-[#848E9C] mt-2">
+                    <p className="text-[10px] text-zinc-500 mt-2">
                       {t('noStrategyHint', language)}
                   </p>
                 )}
               </div>
 
-              {/* Strategy Preview */}
+              {/* Strategy Preview — 悬空，无嵌套方框 */}
               {selectedStrategy && (
-                <div className="mt-3 p-4 bg-[#1E2329] border border-[#2B3139] rounded-lg">
+                <div className="mt-3 px-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[#F0B90B] text-sm font-medium">
+                    <span className="text-zinc-300 text-xs font-medium">
                       {t('strategyDetails', language)}
                     </span>
                     {selectedStrategy.is_active && (
-                      <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
+                      <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-300 text-[10px] rounded-full border border-emerald-500/30">
                         {t('activating', language)}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-[#848E9C] mb-2">
+                  <p className="text-xs text-zinc-500 mb-2">
                     {selectedStrategy.description || (language === 'zh' ? '无描述' : 'No description')}
                   </p>
-                  <div className="grid grid-cols-2 gap-2 text-xs text-[#848E9C]">
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-zinc-500">
                     <div>
                       {t('coinSource', language)}: {selectedStrategy.config.coin_source.source_type === 'static' ? '固定币种' :
                         selectedStrategy.config.coin_source.source_type === 'ai500' ? 'AI500' :
@@ -381,24 +372,24 @@ export function TraderConfigModal({
           </div>
 
           {/* Trading Parameters */}
-          <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-5 flex items-center gap-2">
-              <span className="text-[#F0B90B]">3</span> {t('tradingParams', language)}
+          <div className="bubble-card p-5">
+            <h3 className="text-base font-medium text-white mb-5 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-emerald-400/15 border border-emerald-400/30 text-emerald-300 text-xs font-medium flex items-center justify-center">3</span> {t('tradingParams', language)}
             </h3>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 items-start">
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-xs text-white block mb-2 h-4 whitespace-nowrap overflow-hidden text-ellipsis">
                     {t('marginMode', language)}
                   </label>
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={() => handleInputChange('is_cross_margin', true)}
-                      className={`flex-1 px-3 py-2 rounded text-sm ${
+                      className={`flex-1 px-3 py-2.5 rounded-full text-xs ${
                         formData.is_cross_margin
-                          ? 'bg-[#F0B90B] text-black'
-                          : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
+                          ? 'bg-emerald-400 text-black shadow-[0_0_16px_rgba(43,232,158,0.3)]'
+                          : 'bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10'
                       }`}
                     >
                       {t('crossMargin', language)}
@@ -408,10 +399,10 @@ export function TraderConfigModal({
                       onClick={() =>
                         handleInputChange('is_cross_margin', false)
                       }
-                      className={`flex-1 px-3 py-2 rounded text-sm ${
+                      className={`flex-1 px-3 py-2.5 rounded-full text-xs ${
                         !formData.is_cross_margin
-                          ? 'bg-[#F0B90B] text-black'
-                          : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
+                          ? 'bg-emerald-400 text-black shadow-[0_0_16px_rgba(43,232,158,0.3)]'
+                          : 'bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10'
                       }`}
                     >
                       {t('isolatedMargin', language)}
@@ -419,7 +410,7 @@ export function TraderConfigModal({
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-[#EAECEF] block mb-2">
+                  <label className="text-xs text-white block mb-2 h-4 whitespace-nowrap overflow-hidden text-ellipsis" title={t('aiScanInterval', language)}>
                     {t('aiScanInterval', language)}
                   </label>
                   <input
@@ -432,12 +423,12 @@ export function TraderConfigModal({
                         : 3
                       handleInputChange('scan_interval_minutes', safeValue)
                     }}
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                    className="nexora-input"
                     min="3"
                     max="60"
                     step="1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-[10px] text-zinc-500 mt-1.5">
                     {t('scanIntervalRecommend', language)}
                   </p>
                 </div>
@@ -445,17 +436,17 @@ export function TraderConfigModal({
 
               {/* Competition visibility */}
               <div>
-                <label className="text-sm text-[#EAECEF] block mb-2">
+                <label className="text-xs text-white block mb-2">
                   {t('competitionDisplay', language)}
                 </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => handleInputChange('show_in_competition', true)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${
+                    className={`flex-1 px-3 py-2.5 rounded-full text-xs ${
                       formData.show_in_competition
-                        ? 'bg-[#F0B90B] text-black'
-                        : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
+                        ? 'bg-emerald-400 text-black shadow-[0_0_16px_rgba(43,232,158,0.3)]'
+                        : 'bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10'
                     }`}
                   >
                     {t('show', language)}
@@ -463,16 +454,16 @@ export function TraderConfigModal({
                   <button
                     type="button"
                     onClick={() => handleInputChange('show_in_competition', false)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${
+                    className={`flex-1 px-3 py-2.5 rounded-full text-xs ${
                       !formData.show_in_competition
-                        ? 'bg-[#F0B90B] text-black'
-                        : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
+                        ? 'bg-emerald-400 text-black shadow-[0_0_16px_rgba(43,232,158,0.3)]'
+                        : 'bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10'
                     }`}
                   >
                     {t('hide', language)}
                   </button>
                 </div>
-                  <p className="text-xs text-[#848E9C] mt-1">
+                  <p className="text-[10px] text-zinc-500 mt-1">
                     {t('hiddenInCompetition', language)}
                 </p>
               </div>
@@ -481,14 +472,14 @@ export function TraderConfigModal({
               {isEditMode && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm text-[#EAECEF]">
+                    <label className="text-xs text-white">
                       {t('initialBalanceLabel', language)}
                     </label>
                     <button
                       type="button"
                       onClick={handleFetchCurrentBalance}
                       disabled={isFetchingBalance}
-                      className="px-3 py-1 text-xs bg-[#F0B90B] text-black rounded hover:bg-[#E1A706] transition-colors disabled:bg-[#848E9C] disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-xs bg-emerald-400/15 text-emerald-300 rounded-full border border-emerald-400/30 hover:bg-emerald-400/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {isFetchingBalance ? t('fetching', language) : t('fetchCurrentBalance', language)}
                     </button>
@@ -502,11 +493,11 @@ export function TraderConfigModal({
                         Number(e.target.value)
                       )
                     }
-                    className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
+                    className="nexora-input"
                     min="100"
                     step="0.01"
                   />
-                    <p className="text-xs text-[#848E9C] mt-1">
+                    <p className="text-[10px] text-zinc-500 mt-1">
                       {t('balanceUpdateHint', language)}
                   </p>
                   {balanceFetchError && (
@@ -517,12 +508,12 @@ export function TraderConfigModal({
                 </div>
               )}
 
-              {/* Create mode info */}
+              {/* Create mode info — 悬空无方框 */}
               {!isEditMode && (
-                <div className="p-3 bg-[#1E2329] border border-[#2B3139] rounded flex items-center gap-2">
+                <div className="flex items-center gap-2 px-1 pt-1">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4 text-[#F0B90B]"
+                    className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -534,7 +525,7 @@ export function TraderConfigModal({
                     <line x1="12" x2="12" y1="8" y2="12" />
                     <line x1="12" x2="12.01" y1="16" y2="16" />
                   </svg>
-                  <span className="text-sm text-[#848E9C]">
+                  <span className="text-[11px] text-zinc-500">
                     {t('autoFetchBalanceInfo', language)}
                   </span>
                 </div>
@@ -545,10 +536,10 @@ export function TraderConfigModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-[#2B3139] bg-gradient-to-r from-[#1E2329] to-[#252B35] sticky bottom-0 z-10 rounded-b-xl">
+        <div className="flex justify-end gap-3 px-6 py-4 sticky bottom-0 z-10">
           <button
             onClick={onClose}
-            className="px-6 py-3 bg-[#2B3139] text-[#EAECEF] rounded-lg hover:bg-[#404750] transition-all duration-200 border border-[#404750]"
+            className="px-6 py-3 rounded-full text-sm font-medium bg-white/5 text-zinc-300 border border-white/10 hover:bg-white/10 transition-all"
           >
             {t('cancel', language)}
           </button>
@@ -561,7 +552,7 @@ export function TraderConfigModal({
                 !formData.ai_model ||
                 !formData.exchange_id
               }
-              className="px-8 py-3 bg-gradient-to-r from-[#F0B90B] to-[#E1A706] text-black rounded-lg hover:from-[#E1A706] hover:to-[#D4951E] transition-all duration-200 disabled:bg-[#848E9C] disabled:cursor-not-allowed font-medium shadow-lg"
+              className="btn-emerald px-8 py-3 rounded-full text-sm"
             >
               {isSaving ? t('saving', language) : isEditMode ? t('editTrader', language) : t('createTraderButton', language)}
             </button>

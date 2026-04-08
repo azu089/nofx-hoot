@@ -15,43 +15,34 @@ export function ModelCard({ model, selected, onClick, configured }: ModelCardPro
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-2 p-4 rounded-xl transition-all hover:scale-105"
-      style={{
-        background: selected ? 'rgba(139, 92, 246, 0.15)' : '#0B0E11',
-        border: selected ? '2px solid #8B5CF6' : '2px solid #2B3139',
-      }}
+      className="group flex flex-col items-center gap-2 p-2 rounded-xl transition-all hover:bg-white/[0.04]"
     >
       <div className="relative">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-black border border-white/10">
+        <div
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+            selected
+              ? 'ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(43,232,158,0.4)]'
+              : 'ring-1 ring-white/10 group-hover:ring-white/20'
+          }`}
+          style={{ background: 'rgba(0, 0, 0, 0.3)' }}
+        >
           {getModelIcon(model.provider || model.id, { width: 32, height: 32 }) || (
-            <span className="text-lg font-bold" style={{ color: '#A78BFA' }}>{model.name[0]}</span>
+            <span className="text-lg font-medium text-zinc-300">{model.name[0]}</span>
           )}
         </div>
         {selected && (
-          <div
-            className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
-            style={{ background: '#0ECB81' }}
-          >
-            <Check className="w-3 h-3 text-black" />
+          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center bg-emerald-400 shadow-[0_0_10px_rgba(43,232,158,0.6)]">
+            <Check className="w-3 h-3 text-black" strokeWidth={3} />
           </div>
         )}
         {configured && !selected && (
-          <div
-            className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
-            style={{ background: '#F0B90B' }}
-          >
-            <Check className="w-2.5 h-2.5 text-black" />
+          <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center bg-emerald-500/80">
+            <Check className="w-2.5 h-2.5 text-black" strokeWidth={3} />
           </div>
         )}
       </div>
-      <span className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
+      <span className={`text-xs font-medium text-center leading-tight ${selected ? 'text-white' : 'text-zinc-300'}`}>
         {getShortName(model.name)}
-      </span>
-      <span
-        className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide"
-        style={{ background: 'rgba(139, 92, 246, 0.2)', color: '#A78BFA' }}
-      >
-        {model.provider}
       </span>
     </button>
   )

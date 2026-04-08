@@ -20,8 +20,8 @@ import (
 //   OpenLong/OpenShort 的 quantity 参数 = **合约数量**（如 0.01 BTC），不是 USD notional
 //   runner 调用前必须用当前价做 USD → 数量的换算
 type TraderInterface interface {
-	OpenLong(symbol string, quantity float64) error
-	OpenShort(symbol string, quantity float64) error
+	OpenLong(symbol string, quantity float64, leverage int) error
+	OpenShort(symbol string, quantity float64, leverage int) error
 	CloseLong(symbol string, quantity float64) error
 	CloseShort(symbol string, quantity float64) error
 	// GetAccountInfo 返回完整账户状态（推荐使用）
@@ -520,9 +520,9 @@ func (r *ArenaRunner) executeSignal(symbol string, signal *ArenaSignal, marketDa
 	var apiErr error
 	switch action {
 	case "open_long":
-		apiErr = r.trader.OpenLong(symbol, qty)
+		apiErr = r.trader.OpenLong(symbol, qty, lev)
 	case "open_short":
-		apiErr = r.trader.OpenShort(symbol, qty)
+		apiErr = r.trader.OpenShort(symbol, qty, lev)
 	case "close_long":
 		apiErr = r.trader.CloseLong(symbol, currentPos.Quantity)
 	case "close_short":
@@ -624,21 +624,31 @@ func findPosition(positions []PositionInfo, symbol string) *PositionInfo {
 //   2. marketData.CurrentPrice — 最近一次市场数据
 //   3. 返回 0 → executeSignal 会跳过下单
 func (r *ArenaRunner) calculateQuantity(symbol string, signal *ArenaSignal, marketData *market.Data) float64 {
-	// 基础 USD 金额
-	baseUSD := r.engine.Config.PositionSizeUSD
-	if baseUSD <= 0 {
-		baseUSD = 1000
+	// 优先用 LLM 自报的 position_size_usd（已隐含 confidence tier 缩放）
+	// LLM 没给或为 0 时，fallback 到 config.PositionSizeUSD（全额）
+	sizeUSD := signal.PositionSizeUSD
+	if sizeUSD <= 0 {
+		sizeUSD = r.engine.Config.PositionSizeUSD
+		log.Printf("[ArenaRunner] %s: LLM did not provide position_size_usd, fallback to config %.2f USD",
+			symbol, sizeUSD)
 	}
 
-	// 按置信度调整: 信心 50% → 0.75x, 信心 85% → 0.925x, 信心 100% → 1.0x
-	confidenceMultiplier := 0.5 + float64(signal.Confidence)/200.0
-	if confidenceMultiplier > 1.0 {
-		confidenceMultiplier = 1.0
+	// 防御：如果 config 也是 0，硬 fallback
+	if sizeUSD <= 0 {
+		sizeUSD = 100.0
+		log.Printf("[ArenaRunner] %s: WARN both signal and config position_size are 0, using default $100", symbol)
 	}
-	adjustedUSD := baseUSD * confidenceMultiplier
 
-	// 回写到 signal 供历史记录持久化（BUG-9）
-	signal.PositionSizeUSD = adjustedUSD
+	// Cap 到 config 上限（防止 LLM 报超出）
+	if r.engine.Config.PositionSizeUSD > 0 && sizeUSD > r.engine.Config.PositionSizeUSD {
+		log.Printf("[ArenaRunner] %s: LLM size %.2f exceeds config max %.2f, capping",
+			symbol, sizeUSD, r.engine.Config.PositionSizeUSD)
+		sizeUSD = r.engine.Config.PositionSizeUSD
+	}
+
+	// 回写到 signal 供历史记录持久化
+	signal.PositionSizeUSD = sizeUSD
+	adjustedUSD := sizeUSD
 
 	// 确定价格
 	var price float64

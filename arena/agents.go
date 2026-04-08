@@ -18,8 +18,9 @@ type ExtractedDecision struct {
 	EntryPrice float64 `json:"entry_price"`
 	StopLoss   float64 `json:"stop_loss"`
 	TakeProfit float64 `json:"take_profit"`
-	Leverage   int     `json:"leverage"`
-	Reasoning  string  `json:"reasoning"`
+	Leverage        int     `json:"leverage"`
+	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
+	Reasoning       string  `json:"reasoning"`
 }
 
 // appendAgentTrace 累加 system prompt / user prompt / response 到 state

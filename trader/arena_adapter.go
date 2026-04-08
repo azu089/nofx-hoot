@@ -59,14 +59,13 @@ func (a *ArenaTraderAdapter) GetExchangeType() string {
 	return a.exchangeType
 }
 
-func (a *ArenaTraderAdapter) OpenLong(symbol string, quantity float64) error {
-	// leverage=0 → 底层 trader 会使用上次 SetLeverage 的值，或交易所默认值
-	_, err := a.trader.OpenLong(symbol, quantity, 0)
+func (a *ArenaTraderAdapter) OpenLong(symbol string, quantity float64, leverage int) error {
+	_, err := a.trader.OpenLong(symbol, quantity, leverage)
 	return err
 }
 
-func (a *ArenaTraderAdapter) OpenShort(symbol string, quantity float64) error {
-	_, err := a.trader.OpenShort(symbol, quantity, 0)
+func (a *ArenaTraderAdapter) OpenShort(symbol string, quantity float64, leverage int) error {
+	_, err := a.trader.OpenShort(symbol, quantity, leverage)
 	return err
 }
 

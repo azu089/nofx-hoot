@@ -279,6 +279,7 @@ func (e *ArenaEngine) RunFullDebate(
 		StopLoss:        stopLoss,
 		TakeProfit:      takeProfit,
 		Leverage:        leverage,
+		PositionSizeUSD: extracted.PositionSizeUSD,
 		RiskRewardRatio: rrr,
 
 		MarketReport:       state.MarketReport,

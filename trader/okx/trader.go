@@ -41,6 +41,9 @@ type OKXTrader struct {
 	secretKey  string
 	passphrase string
 
+	// Demo trading (simulated) flag — sets x-simulated-trading: 1 header
+	simulated bool
+
 	// Margin mode setting
 	isCrossMargin bool
 
@@ -108,8 +111,15 @@ func genOkxClOrdID() string {
 	return orderID
 }
 
-// NewOKXTrader creates OKX trader
-func NewOKXTrader(apiKey, secretKey, passphrase string) *OKXTrader {
+// NewOKXTrader creates OKX trader.
+//
+// IMPORTANT: This build hard-codes OKX to demo trading (x-simulated-trading: 1)
+// regardless of the testnet argument. The argument is kept for API compatibility
+// with the other exchange constructors. To enable OKX production trading later,
+// remove the forced simulated=true assignment below.
+func NewOKXTrader(apiKey, secretKey, passphrase string, testnet bool) *OKXTrader {
+	_ = testnet // intentionally ignored — OKX is forced to demo trading
+
 	// Use default transport which respects system proxy settings
 	// OKX requires proxy in China due to DNS pollution
 	httpClient := &http.Client{
@@ -121,10 +131,12 @@ func NewOKXTrader(apiKey, secretKey, passphrase string) *OKXTrader {
 		apiKey:           apiKey,
 		secretKey:        secretKey,
 		passphrase:       passphrase,
+		simulated:        true, // hard-coded: OKX always runs in demo mode
 		httpClient:       httpClient,
 		cacheDuration:    15 * time.Second,
 		instrumentsCache: make(map[string]*OKXInstrument),
 	}
+	fmt.Println("🧪 OKX Demo Trading (simulated) mode enabled [hard-coded]")
 
 	// Get current position mode first
 	if err := trader.detectPositionMode(); err != nil {
@@ -219,8 +231,12 @@ func (t *OKXTrader) doRequest(method, path string, body interface{}) ([]byte, er
 	req.Header.Set("OK-ACCESS-TIMESTAMP", timestamp)
 	req.Header.Set("OK-ACCESS-PASSPHRASE", t.passphrase)
 	req.Header.Set("Content-Type", "application/json")
-	// Set request header
-	req.Header.Set("x-simulated-trading", "0")
+	// Demo trading toggle: "1" = simulated, "0" = production
+	if t.simulated {
+		req.Header.Set("x-simulated-trading", "1")
+	} else {
+		req.Header.Set("x-simulated-trading", "0")
+	}
 
 	resp, err := t.httpClient.Do(req)
 	if err != nil {

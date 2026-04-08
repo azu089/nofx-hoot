@@ -110,19 +110,19 @@ export function ConfigStatusGrid({
             return (
               <div
                 key={model.id}
-                className={`row-divider group flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg transition-all ${inUse ? 'opacity-80' : 'hover:bg-white/5 cursor-pointer'
+                className={`row-divider group flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg transition-all ${inUse ? 'opacity-80' : 'hover:bg-emerald-400/5 cursor-pointer'
                   }`}
                 onClick={() => onModelClick(model.id)}
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center bg-black border border-white/10 flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/40 border border-white/10 flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                     {getModelIcon(model.provider || model.id, { width: 18, height: 18 }) || (
-                      <span className="text-xs font-bold text-indigo-400">{getShortName(model.name)[0]}</span>
+                      <span className="text-xs font-medium text-zinc-300">{getShortName(model.name)[0]}</span>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-zinc-100 truncate">
+                    <div className="text-sm font-medium text-white truncate">
                       {getShortName(model.name)}
                     </div>
                     <div className="text-[10px] text-zinc-500 truncate">
@@ -133,9 +133,9 @@ export function ConfigStatusGrid({
 
                 <div className="flex-shrink-0">
                   {usageInfo.totalCount > 0 ? (
-                    <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${usageInfo.runningCount > 0
-                      ? 'bg-green-500/15 text-green-400'
-                      : 'bg-yellow-500/15 text-yellow-400'
+                    <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${usageInfo.runningCount > 0
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
                       }`}>
                       {usageInfo.runningCount}/{usageInfo.totalCount} {language === 'zh' ? '运行' : 'ACTIVE'}
                     </span>
@@ -169,17 +169,17 @@ export function ConfigStatusGrid({
             return (
               <div
                 key={exchange.id}
-                className={`row-divider group flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg transition-all ${inUse ? 'opacity-80' : 'hover:bg-white/5 cursor-pointer'
+                className={`row-divider group flex items-center justify-between gap-3 px-2 py-2.5 rounded-lg transition-all ${inUse ? 'opacity-80' : 'hover:bg-emerald-400/5 cursor-pointer'
                   }`}
                 onClick={() => onExchangeClick(exchange.id)}
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center bg-black border border-white/10 flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/40 border border-white/10 flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                     {getExchangeIcon(exchange.exchange_type || exchange.id, { width: 18, height: 18 })}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-zinc-100 truncate flex items-center gap-1.5">
+                    <div className="text-sm font-medium text-white truncate flex items-center gap-1.5">
                       <span>{exchange.exchange_type?.toUpperCase() || getShortName(exchange.name)}</span>
                       <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded bg-white/5 font-normal">
                         {exchange.account_name || (exchange.type?.toUpperCase() || 'CEX')}
@@ -225,9 +225,9 @@ export function ConfigStatusGrid({
                   })()}
 
                   {usageInfo.totalCount > 0 ? (
-                    <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${usageInfo.runningCount > 0
-                      ? 'bg-green-500/15 text-green-400'
-                      : 'bg-yellow-500/15 text-yellow-400'
+                    <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${usageInfo.runningCount > 0
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
                       }`}>
                       {usageInfo.runningCount}/{usageInfo.totalCount} {language === 'zh' ? '运行' : 'ACTIVE'}
                     </span>

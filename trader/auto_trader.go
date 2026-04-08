@@ -46,6 +46,7 @@ type AutoTraderConfig struct {
 	OKXAPIKey     string
 	OKXSecretKey  string
 	OKXPassphrase string
+	OKXTestnet    bool // Demo Trading mode (sets x-simulated-trading: 1 header)
 
 	// Bitget API configuration
 	BitgetAPIKey     string
@@ -241,7 +242,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		trader = bybit.NewBybitTrader(config.BybitAPIKey, config.BybitSecretKey)
 	case "okx":
 		logger.Infof("🏦 [%s] Using OKX Futures trading", config.Name)
-		trader = okx.NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase)
+		trader = okx.NewOKXTrader(config.OKXAPIKey, config.OKXSecretKey, config.OKXPassphrase, config.OKXTestnet)
 	case "bitget":
 		logger.Infof("🏦 [%s] Using Bitget Futures trading", config.Name)
 		trader = bitget.NewBitgetTrader(config.BitgetAPIKey, config.BitgetSecretKey, config.BitgetPassphrase)

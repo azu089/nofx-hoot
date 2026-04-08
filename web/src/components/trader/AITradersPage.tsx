@@ -870,13 +870,13 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const canCreateTrader = configuredModels.length > 0 && configuredExchanges.length > 0
 
   return (
-    <DeepVoidBackground className="py-4 md:py-8" disableAnimation>
+    <DeepVoidBackground className="py-4 md:py-8 nexora-page" disableAnimation>
       <div className="w-full max-w-full px-3 md:px-8 space-y-5 md:space-y-6 animate-fade-in overflow-x-hidden">
         {/* 顶部 segmented control —— 3 创建按钮连体 */}
         <div className="bubble-card grid grid-cols-3 p-1 !rounded-full">
           <button
             onClick={handleAddModel}
-            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-emerald-400/10 transition-all"
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="whitespace-nowrap">{language === 'zh' ? 'AI 模型' : 'AI Model'}</span>
@@ -884,7 +884,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
           <button
             onClick={handleAddExchange}
-            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-emerald-400/10 transition-all"
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="whitespace-nowrap">{language === 'zh' ? '交易所' : 'Exchange'}</span>
@@ -893,7 +893,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           <button
             onClick={() => setShowCreateModal(true)}
             disabled={configuredModels.length === 0 || configuredExchanges.length === 0}
-            className="flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-nofx-gold text-black hover:bg-yellow-400 shadow-[0_0_20px_rgba(240,185,11,0.25)]"
+            className="btn-emerald flex items-center justify-center gap-1.5 py-2 rounded-full text-xs"
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="whitespace-nowrap">{language === 'zh' ? '交易员' : 'Trader'}</span>

@@ -62,33 +62,33 @@ interface ExchangeConfigModalProps {
 function StepIndicator({ currentStep, labels }: { currentStep: number; labels: string[] }) {
   return (
     <div className="flex items-center justify-center gap-2 mb-6">
-      {labels.map((label, index) => (
-        <React.Fragment key={index}>
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all"
-              style={{
-                background: index < currentStep ? '#0ECB81' : index === currentStep ? '#F0B90B' : '#2B3139',
-                color: index <= currentStep ? '#000' : '#848E9C',
-              }}
-            >
-              {index < currentStep ? <Check className="w-4 h-4" /> : index + 1}
+      {labels.map((label, index) => {
+        const isDone = index < currentStep
+        const isActive = index === currentStep
+        return (
+          <React.Fragment key={index}>
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                  isDone || isActive
+                    ? 'bg-emerald-400 text-black shadow-[0_0_16px_rgba(43,232,158,0.4)]'
+                    : 'bg-white/5 text-zinc-500 border border-white/10'
+                }`}
+              >
+                {isDone ? <Check className="w-4 h-4" strokeWidth={3} /> : index + 1}
+              </div>
+              <span
+                className={`text-xs font-medium hidden sm:block ${isActive ? 'text-white' : 'text-zinc-500'}`}
+              >
+                {label}
+              </span>
             </div>
-            <span
-              className="text-xs font-medium hidden sm:block"
-              style={{ color: index === currentStep ? '#EAECEF' : '#848E9C' }}
-            >
-              {label}
-            </span>
-          </div>
-          {index < labels.length - 1 && (
-            <div
-              className="w-8 h-0.5 mx-1"
-              style={{ background: index < currentStep ? '#0ECB81' : '#2B3139' }}
-            />
-          )}
-        </React.Fragment>
-      ))}
+            {index < labels.length - 1 && (
+              <div className={`w-8 h-0.5 mx-1 ${isDone ? 'bg-emerald-400' : 'bg-white/10'}`} />
+            )}
+          </React.Fragment>
+        )
+      })}
     </div>
   )
 }
@@ -110,34 +110,27 @@ function ExchangeCard({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex flex-col items-center gap-2 p-4 rounded-xl transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-      style={{
-        background: selected ? 'rgba(240, 185, 11, 0.15)' : '#0B0E11',
-        border: selected ? '2px solid #F0B90B' : '2px solid #2B3139',
-      }}
+      className="group flex flex-col items-center gap-2 p-2 rounded-xl transition-all hover:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed"
     >
       <div className="relative">
-        {getExchangeIcon(template.exchange_type, { width: 48, height: 48 })}
+        <div
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+            selected
+              ? 'ring-2 ring-emerald-400 shadow-[0_0_20px_rgba(43,232,158,0.4)]'
+              : 'ring-1 ring-white/10 group-hover:ring-white/20'
+          }`}
+          style={{ background: 'rgba(0, 0, 0, 0.3)' }}
+        >
+          {getExchangeIcon(template.exchange_type, { width: 32, height: 32 })}
+        </div>
         {selected && (
-          <div
-            className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
-            style={{ background: '#0ECB81' }}
-          >
-            <Check className="w-3 h-3 text-black" />
+          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center bg-emerald-400 shadow-[0_0_10px_rgba(43,232,158,0.6)]">
+            <Check className="w-3 h-3 text-black" strokeWidth={3} />
           </div>
         )}
       </div>
-      <span className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
+      <span className={`text-xs font-medium text-center leading-tight ${selected ? 'text-white' : 'text-zinc-300'}`}>
         {getShortName(template.name)}
-      </span>
-      <span
-        className="text-xs px-2 py-0.5 rounded-full"
-        style={{
-          background: template.type === 'cex' ? 'rgba(240, 185, 11, 0.2)' : 'rgba(139, 92, 246, 0.2)',
-          color: template.type === 'cex' ? '#F0B90B' : '#A78BFA',
-        }}
-      >
-        {template.type.toUpperCase()}
       </span>
     </button>
   )
@@ -343,32 +336,31 @@ export function ExchangeConfigModal({
   const dexExchanges = SUPPORTED_EXCHANGE_TEMPLATES.filter(t => t.type === 'dex')
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto backdrop-blur-sm">
+    <div className="nexora-modal-backdrop">
       <div
-        className="rounded-2xl w-full max-w-2xl relative my-8 shadow-2xl"
-        style={{ background: 'linear-gradient(180deg, #1E2329 0%, #181A20 100%)', maxHeight: 'calc(100vh - 4rem)' }}
+        className="bubble-card w-full max-w-2xl relative my-8 overflow-hidden"
+        style={{ maxHeight: 'calc(100vh - 4rem)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-2">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <div className="flex items-center gap-3">
             {currentStep > 0 && !editingExchangeId && (
-              <button type="button" onClick={handleBack} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                <ChevronLeft className="w-5 h-5" style={{ color: '#848E9C' }} />
+              <button type="button" onClick={handleBack} className="p-1.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors">
+                <ChevronLeft className="w-5 h-5" />
               </button>
             )}
-            <h3 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+            <h3 className="text-lg font-medium text-white">
               {editingExchangeId ? t('editExchange', language) : t('addExchange', language)}
             </h3>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {currentExchangeType === 'binance' && currentStep === 1 && (
               <button
                 type="button"
                 onClick={() => setShowGuide(true)}
-                className="px-3 py-2 rounded-lg text-sm font-semibold transition-all hover:scale-105 flex items-center gap-2"
-                style={{ background: 'rgba(240, 185, 11, 0.1)', color: '#F0B90B' }}
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition-all bg-emerald-400/10 text-emerald-300 border border-emerald-400/20 hover:bg-emerald-400/15 flex items-center gap-1.5"
               >
-                <BookOpen className="w-4 h-4" />
+                <BookOpen className="w-3.5 h-3.5" />
                 {t('viewGuide', language)}
               </button>
             )}
@@ -376,13 +368,12 @@ export function ExchangeConfigModal({
               <button
                 type="button"
                 onClick={() => onDelete(editingExchangeId)}
-                className="p-2 rounded-lg hover:bg-red-500/20 transition-colors"
-                style={{ color: '#F6465D' }}
+                className="p-1.5 rounded-full hover:bg-red-500/15 text-red-400 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
-            <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 transition-colors" style={{ color: '#848E9C' }}>
+            <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors">
               ✕
             </button>
           </div>
@@ -402,7 +393,7 @@ export function ExchangeConfigModal({
             <div className="space-y-6">
               {/* WebCrypto Check */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide" style={{ color: '#848E9C' }}>
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide" style={{ color: '#848E9C' }}>
                   <Shield className="w-4 h-4" />
                   {t('environmentSteps.checkTitle', language)}
                 </div>
@@ -410,17 +401,17 @@ export function ExchangeConfigModal({
               </div>
 
               {/* Exchange Grid */}
-              <div className="space-y-4">
-                <div className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
+              <div className="space-y-5">
+                <div className="text-sm font-medium text-white">
                   {language === 'zh' ? '选择您的交易所' : 'Choose Your Exchange'}
                 </div>
 
                 {/* CEX */}
                 <div className="space-y-3">
-                  <div className="text-xs font-medium uppercase tracking-wide" style={{ color: '#F0B90B' }}>
-                    {language === 'zh' ? '中心化交易所 (CEX)' : 'Centralized Exchanges'}
+                  <div className="text-xs font-medium text-zinc-500">
+                    {language === 'zh' ? '中心化交易所 (CEX)' : 'Centralized Exchanges (CEX)'}
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                     {cexExchanges.map((template) => (
                       <ExchangeCard
                         key={template.exchange_type}
@@ -435,10 +426,10 @@ export function ExchangeConfigModal({
 
                 {/* DEX */}
                 <div className="space-y-3">
-                  <div className="text-xs font-medium uppercase tracking-wide" style={{ color: '#A78BFA' }}>
-                    {language === 'zh' ? '去中心化交易所 (DEX)' : 'Decentralized Exchanges'}
+                  <div className="text-xs font-medium text-zinc-500">
+                    {language === 'zh' ? '去中心化交易所 (DEX)' : 'Decentralized Exchanges (DEX)'}
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                     {dexExchanges.map((template) => (
                       <ExchangeCard
                         key={template.exchange_type}
@@ -458,29 +449,30 @@ export function ExchangeConfigModal({
           {(currentStep === 1 || editingExchangeId) && selectedTemplate && (
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Selected Exchange Header */}
-              <div className="p-4 rounded-xl flex items-center gap-4" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-                {getExchangeIcon(selectedTemplate.exchange_type, { width: 48, height: 48 })}
-                <div className="flex-1">
-                  <div className="font-semibold text-lg" style={{ color: '#EAECEF' }}>
+              <div className="bubble-card p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center bg-black/40 ring-1 ring-white/10 flex-shrink-0">
+                  {getExchangeIcon(selectedTemplate.exchange_type, { width: 32, height: 32 })}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-base font-medium text-white">
                     {getShortName(selectedTemplate.name)}
                   </div>
-                  <div className="text-xs" style={{ color: '#848E9C' }}>
-                    {selectedTemplate.type.toUpperCase()} • {selectedTemplate.exchange_type}
+                  <div className="text-[10px] text-zinc-500">
+                    {selectedTemplate.type.toUpperCase()} · {selectedTemplate.exchange_type}
                   </div>
                 </div>
                 <a
                   href={exchangeRegistrationLinks[currentExchangeType || '']?.url || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all hover:scale-105"
-                  style={{ background: 'rgba(240, 185, 11, 0.1)', border: '1px solid rgba(240, 185, 11, 0.3)' }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all bg-emerald-400/10 border border-emerald-400/30 text-emerald-300 hover:bg-emerald-400/15 flex-shrink-0"
                 >
-                  <UserPlus className="w-4 h-4" style={{ color: '#F0B90B' }} />
-                  <span className="text-sm font-medium" style={{ color: '#F0B90B' }}>
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span className="font-medium">
                     {language === 'zh' ? '注册' : 'Register'}
                   </span>
                   {exchangeRegistrationLinks[currentExchangeType || '']?.hasReferral && (
-                    <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(14, 203, 129, 0.2)', color: '#0ECB81' }}>
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-400/20 text-emerald-200">
                       {language === 'zh' ? '优惠' : 'Bonus'}
                     </span>
                   )}
@@ -489,17 +481,16 @@ export function ExchangeConfigModal({
 
               {/* Account Name */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
-                  <Key className="w-4 h-4" style={{ color: '#F0B90B' }} />
-                  {language === 'zh' ? '账户名称' : 'Account Name'} *
+                <label className="flex items-center gap-2 text-xs font-medium text-zinc-300">
+                  <Key className="w-3.5 h-3.5 text-zinc-500" />
+                  {language === 'zh' ? '账户名称' : 'Account Name'} <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
-                  placeholder={language === 'zh' ? '例如：主账户、套利账户' : 'e.g., Main Account'}
-                  className="w-full px-4 py-3 rounded-xl text-base"
-                  style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                  placeholder={language === 'zh' ? '例如:主账户、套利账户' : 'e.g., Main Account'}
+                  className="nexora-input"
                   required
                 />
               </div>
@@ -509,27 +500,25 @@ export function ExchangeConfigModal({
                 <>
                   {currentExchangeType === 'binance' && (
                     <div
-                      className="p-4 rounded-xl cursor-pointer transition-colors"
-                      style={{ background: '#1a3a52', border: '1px solid #2b5278' }}
+                      className="bubble-card p-3 cursor-pointer"
                       onClick={() => setShowBinanceGuide(!showBinanceGuide)}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span style={{ color: '#58a6ff' }}>ℹ️</span>
-                          <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-zinc-400 text-sm">ℹ</span>
+                          <span className="text-xs font-medium text-white truncate">
                             {language === 'zh' ? '币安用户必读：使用「现货与合约交易」API' : 'Use "Spot & Futures Trading" API'}
                           </span>
                         </div>
-                        <span style={{ color: '#8b949e' }}>{showBinanceGuide ? '▲' : '▼'}</span>
+                        <span className="text-zinc-500 text-xs flex-shrink-0">{showBinanceGuide ? '▲' : '▼'}</span>
                       </div>
                       {showBinanceGuide && (
-                        <div className="mt-3 pt-3 text-sm" style={{ borderTop: '1px solid #2b5278', color: '#c9d1d9' }}>
+                        <div className="mt-2 pt-2 text-xs border-t border-white/5">
                           <a
                             href="https://www.binance.com/zh-CN/support/faq/how-to-create-api-keys-on-binance-360002502072"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 hover:underline"
-                            style={{ color: '#58a6ff' }}
+                            className="inline-flex items-center gap-1 hover:underline text-zinc-400 hover:text-emerald-300"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {language === 'zh' ? '查看官方教程' : 'View Tutorial'} <ExternalLink className="w-3 h-3" />
@@ -540,8 +529,8 @@ export function ExchangeConfigModal({
                   )}
 
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
-                      <Key className="w-4 h-4" style={{ color: '#F0B90B' }} />
+                    <label className="flex items-center gap-2 text-xs font-medium text-zinc-300">
+                      <Key className="w-3.5 h-3.5 text-zinc-500" />
                       {t('apiKey', language)}
                     </label>
                     <input
@@ -549,15 +538,14 @@ export function ExchangeConfigModal({
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder={t('enterAPIKey', language)}
-                      className="w-full px-4 py-3 rounded-xl"
-                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="nexora-input"
                       required
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
-                      <Shield className="w-4 h-4" style={{ color: '#F0B90B' }} />
+                    <label className="flex items-center gap-2 text-xs font-medium text-zinc-300">
+                      <Shield className="w-3.5 h-3.5 text-zinc-500" />
                       {t('secretKey', language)}
                     </label>
                     <input
@@ -565,15 +553,14 @@ export function ExchangeConfigModal({
                       value={secretKey}
                       onChange={(e) => setSecretKey(e.target.value)}
                       placeholder={t('enterSecretKey', language)}
-                      className="w-full px-4 py-3 rounded-xl"
-                      style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      className="nexora-input"
                       required
                     />
                   </div>
 
                   {(currentExchangeType === 'okx' || currentExchangeType === 'bitget' || currentExchangeType === 'kucoin') && (
                     <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                      <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#EAECEF' }}>
                         <Key className="w-4 h-4" style={{ color: '#F0B90B' }} />
                         {t('passphrase', language)}
                       </label>
@@ -582,31 +569,29 @@ export function ExchangeConfigModal({
                         value={passphrase}
                         onChange={(e) => setPassphrase(e.target.value)}
                         placeholder={t('enterPassphrase', language)}
-                        className="w-full px-4 py-3 rounded-xl"
-                        style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }}
+                        className="nexora-input"
                         required
                       />
                     </div>
                   )}
 
                   {currentExchangeType === 'binance' && (
-                    <div className="p-4 rounded-xl" style={{ background: 'rgba(240, 185, 11, 0.1)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
-                      <div className="text-sm font-semibold mb-2" style={{ color: '#F0B90B' }}>
+                    <div className="bubble-card p-4">
+                      <div className="text-xs font-medium mb-1.5 text-white">
                         {t('whitelistIP', language)}
                       </div>
-                      <div className="text-xs mb-3" style={{ color: '#848E9C' }}>
+                      <div className="text-[10px] mb-3 text-zinc-500">
                         {t('whitelistIPDesc', language)}
                       </div>
                       {loadingIP ? (
-                        <div className="text-xs" style={{ color: '#848E9C' }}>{t('loadingServerIP', language)}</div>
+                        <div className="text-xs text-zinc-500">{t('loadingServerIP', language)}</div>
                       ) : serverIP?.public_ip ? (
-                        <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#0B0E11' }}>
-                          <code className="flex-1 text-sm font-mono" style={{ color: '#F0B90B' }}>{serverIP.public_ip}</code>
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/40">
+                          <code className="flex-1 text-sm font-mono text-white">{serverIP.public_ip}</code>
                           <button
                             type="button"
                             onClick={() => handleCopyIP(serverIP.public_ip)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105"
-                            style={{ background: 'rgba(240, 185, 11, 0.2)', color: '#F0B90B' }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/20"
                           >
                             <Copy className="w-3 h-3" />
                             {copiedIP ? t('ipCopied', language) : t('copyIP', language)}
@@ -625,37 +610,37 @@ export function ExchangeConfigModal({
                     <div className="flex items-start gap-2">
                       <span style={{ fontSize: '16px' }}>🔐</span>
                       <div>
-                        <div className="text-sm font-semibold mb-1" style={{ color: '#A78BFA' }}>{t('asterApiProTitle', language)}</div>
+                        <div className="text-sm font-medium mb-1" style={{ color: '#A78BFA' }}>{t('asterApiProTitle', language)}</div>
                         <div className="text-xs" style={{ color: '#848E9C' }}>{t('asterApiProDesc', language)}</div>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#EAECEF' }}>
                       {t('asterUserLabel', language)}
                       <Tooltip content={t('asterUserDesc', language)}>
                         <HelpCircle className="w-4 h-4 cursor-help" style={{ color: '#A78BFA' }} />
                       </Tooltip>
                     </label>
-                    <input type="text" value={asterUser} onChange={(e) => setAsterUser(e.target.value)} placeholder={t('enterAsterUser', language)} className="w-full px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} required />
+                    <input type="text" value={asterUser} onChange={(e) => setAsterUser(e.target.value)} placeholder={t('enterAsterUser', language)} className="nexora-input" required />
                   </div>
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#EAECEF' }}>
                       {t('asterSignerLabel', language)}
                       <Tooltip content={t('asterSignerDesc', language)}>
                         <HelpCircle className="w-4 h-4 cursor-help" style={{ color: '#A78BFA' }} />
                       </Tooltip>
                     </label>
-                    <input type="text" value={asterSigner} onChange={(e) => setAsterSigner(e.target.value)} placeholder={t('enterAsterSigner', language)} className="w-full px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} required />
+                    <input type="text" value={asterSigner} onChange={(e) => setAsterSigner(e.target.value)} placeholder={t('enterAsterSigner', language)} className="nexora-input" required />
                   </div>
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#EAECEF' }}>
                       {t('asterPrivateKeyLabel', language)}
                       <Tooltip content={t('asterPrivateKeyDesc', language)}>
                         <HelpCircle className="w-4 h-4 cursor-help" style={{ color: '#A78BFA' }} />
                       </Tooltip>
                     </label>
-                    <input type="password" value={asterPrivateKey} onChange={(e) => setAsterPrivateKey(e.target.value)} placeholder={t('enterAsterPrivateKey', language)} className="w-full px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} required />
+                    <input type="password" value={asterPrivateKey} onChange={(e) => setAsterPrivateKey(e.target.value)} placeholder={t('enterAsterPrivateKey', language)} className="nexora-input" required />
                   </div>
                 </>
               )}
@@ -667,23 +652,23 @@ export function ExchangeConfigModal({
                     <div className="flex items-start gap-2">
                       <span style={{ fontSize: '16px' }}>🔐</span>
                       <div>
-                        <div className="text-sm font-semibold mb-1" style={{ color: '#7FE7CC' }}>{t('hyperliquidAgentWalletTitle', language)}</div>
+                        <div className="text-sm font-medium mb-1" style={{ color: '#7FE7CC' }}>{t('hyperliquidAgentWalletTitle', language)}</div>
                         <div className="text-xs" style={{ color: '#848E9C' }}>{t('hyperliquidAgentWalletDesc', language)}</div>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold" style={{ color: '#EAECEF' }}>{t('hyperliquidAgentPrivateKey', language)}</label>
+                    <label className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('hyperliquidAgentPrivateKey', language)}</label>
                     <div className="flex gap-2">
-                      <input type="text" value={maskSecret(apiKey)} readOnly placeholder={t('enterHyperliquidAgentPrivateKey', language)} className="flex-1 px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} />
-                      <button type="button" onClick={() => setSecureInputTarget('hyperliquid')} className="px-4 py-3 rounded-xl text-sm font-semibold transition-all hover:scale-105" style={{ background: '#7FE7CC', color: '#000' }}>
+                      <input type="text" value={maskSecret(apiKey)} readOnly placeholder={t('enterHyperliquidAgentPrivateKey', language)} className="nexora-input flex-1" />
+                      <button type="button" onClick={() => setSecureInputTarget('hyperliquid')} className="px-4 py-3 rounded-xl text-sm font-medium transition-all hover:scale-105" style={{ background: '#7FE7CC', color: '#000' }}>
                         {apiKey ? t('secureInputReenter', language) : t('secureInputButton', language)}
                       </button>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold" style={{ color: '#EAECEF' }}>{t('hyperliquidMainWalletAddress', language)}</label>
-                    <input type="text" value={hyperliquidWalletAddr} onChange={(e) => setHyperliquidWalletAddr(e.target.value)} placeholder={t('enterHyperliquidMainWalletAddress', language)} className="w-full px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} required />
+                    <label className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('hyperliquidMainWalletAddress', language)}</label>
+                    <input type="text" value={hyperliquidWalletAddr} onChange={(e) => setHyperliquidWalletAddr(e.target.value)} placeholder={t('enterHyperliquidMainWalletAddress', language)} className="nexora-input" required />
                   </div>
                 </>
               )}
@@ -695,7 +680,7 @@ export function ExchangeConfigModal({
                     <div className="flex items-start gap-2">
                       <span style={{ fontSize: '16px' }}>🔐</span>
                       <div>
-                        <div className="text-sm font-semibold mb-1" style={{ color: '#3B82F6' }}>
+                        <div className="text-sm font-medium mb-1" style={{ color: '#3B82F6' }}>
                           {language === 'zh' ? 'Lighter API Key 配置' : 'Lighter API Key Setup'}
                         </div>
                         <div className="text-xs" style={{ color: '#848E9C' }}>
@@ -705,38 +690,37 @@ export function ExchangeConfigModal({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold" style={{ color: '#EAECEF' }}>{t('lighterWalletAddress', language)} *</label>
-                    <input type="text" value={lighterWalletAddr} onChange={(e) => setLighterWalletAddr(e.target.value)} placeholder={t('enterLighterWalletAddress', language)} className="w-full px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} required />
+                    <label className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('lighterWalletAddress', language)} *</label>
+                    <input type="text" value={lighterWalletAddr} onChange={(e) => setLighterWalletAddr(e.target.value)} placeholder={t('enterLighterWalletAddress', language)} className="nexora-input" required />
                   </div>
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#EAECEF' }}>
                       {t('lighterApiKeyPrivateKey', language)} *
                       <button type="button" onClick={() => setSecureInputTarget('lighter')} className="text-xs underline" style={{ color: '#3B82F6' }}>{t('secureInputButton', language)}</button>
                     </label>
-                    <input type="password" value={lighterApiKeyPrivateKey} onChange={(e) => setLighterApiKeyPrivateKey(e.target.value)} placeholder={t('enterLighterApiKeyPrivateKey', language)} className="w-full px-4 py-3 rounded-xl font-mono" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} required />
+                    <input type="password" value={lighterApiKeyPrivateKey} onChange={(e) => setLighterApiKeyPrivateKey(e.target.value)} placeholder={t('enterLighterApiKeyPrivateKey', language)} className="nexora-input font-mono" required />
                   </div>
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium" style={{ color: '#EAECEF' }}>
                       {language === 'zh' ? 'API Key 索引' : 'API Key Index'}
                       <Tooltip content={language === 'zh' ? 'API Key 索引从0开始' : 'API Key index starts from 0'}>
                         <HelpCircle className="w-4 h-4 cursor-help" style={{ color: '#3B82F6' }} />
                       </Tooltip>
                     </label>
-                    <input type="number" min={0} max={255} value={lighterApiKeyIndex} onChange={(e) => setLighterApiKeyIndex(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 rounded-xl" style={{ background: '#0B0E11', border: '1px solid #2B3139', color: '#EAECEF' }} />
+                    <input type="number" min={0} max={255} value={lighterApiKeyIndex} onChange={(e) => setLighterApiKeyIndex(parseInt(e.target.value) || 0)} className="nexora-input" />
                   </div>
                 </>
               )}
 
               {/* Buttons */}
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={handleBack} className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold transition-all hover:bg-white/5" style={{ background: '#2B3139', color: '#848E9C' }}>
+                <button type="button" onClick={handleBack} className="flex-1 py-3 rounded-full text-sm font-medium bg-white/5 text-zinc-300 border border-white/10 hover:bg-white/10 transition-all">
                   {editingExchangeId ? t('cancel', language) : (language === 'zh' ? '返回' : 'Back')}
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving || !accountName.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: '#F0B90B', color: '#000' }}
+                  className="btn-emerald flex-1 flex items-center justify-center gap-2 py-3 rounded-full text-sm"
                 >
                   {isSaving ? (t('saving', language) || '保存中...') : (
                     <>{t('saveConfig', language)} <ArrowRight className="w-4 h-4" /></>
@@ -753,11 +737,11 @@ export function ExchangeConfigModal({
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4" onClick={() => setShowGuide(false)}>
           <div className="rounded-2xl p-6 w-full max-w-4xl" style={{ background: '#1E2329' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: '#EAECEF' }}>
+              <h3 className="text-xl font-medium flex items-center gap-2" style={{ color: '#EAECEF' }}>
                 <BookOpen className="w-6 h-6" style={{ color: '#F0B90B' }} />
                 {t('binanceSetupGuide', language)}
               </h3>
-              <button onClick={() => setShowGuide(false)} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#2B3139', color: '#848E9C' }}>
+              <button onClick={() => setShowGuide(false)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: '#2B3139', color: '#848E9C' }}>
                 {t('closeGuide', language)}
               </button>
             </div>
