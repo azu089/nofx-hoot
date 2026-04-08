@@ -8,7 +8,6 @@ import (
 )
 
 // TestPreTradeSim_DisabledByDefaultPasses 验证默认 disabled 时不阻塞
-// 任务: P3-4 PHASE_B 灰度接入 (HOOT nofx 升级 2026-04)
 func TestPreTradeSim_DisabledByDefaultPasses(t *testing.T) {
 	feature_flag.Reset()
 	defer feature_flag.Reset()

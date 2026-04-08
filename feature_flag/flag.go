@@ -1,4 +1,4 @@
-// Package feature_flag 提供 HOOT nofx 通用功能开关框架
+// Package feature_flag 提供通用功能开关框架
 //
 // 设计目标:
 //   - 支持 per-strategy / per-trader / 百分比灰度 / 全局开关
@@ -18,8 +18,6 @@
 //	"strategies:s1,s2"      仅指定策略打开
 //	"traders:t1,t2"         仅指定 trader 打开
 //	"shadow"                自定义字符串模式（调用方自行解析 Mode()）
-//
-// 任务: P0.1 Feature Flag 框架 (HOOT nofx 升级 2026-04)
 package feature_flag
 
 import (

@@ -251,7 +251,7 @@ func GateAll(candidates []CandidateDecision, signals *MarketSignals, mdMap map[s
 // GateExitAction validates close/hold/wait actions.
 // Blocks premature exits when the trend is still healthy.
 //
-// v1.1 审计修复 (2026-04-08, 对齐 nofx改版):
+// 特殊规则:
 //   - sync 来源豁免: 交易所服务端触发的关单（SL/TP 命中）不拦
 //   - EXIT_G1 加价格同向: 要求 OI 扩张 + 价格同向才判定"趋势完好"
 func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Data, cfg GatekeeperConfig) GatekeeperResult {
@@ -262,7 +262,7 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 
 	sym := c.Symbol
 
-	// v1.1 审计修复: sync 来源豁免所有 EXIT_G 规则
+	// sync 来源豁免所有 EXIT_G 规则
 	// "sync" 是交易所服务端触发的关单（SL/TP 命中 / 流动性事件），
 	// 不应被 gatekeeper 拦截——拦了也没用且会造成记录混乱
 	if strings.EqualFold(c.Source, "sync") {
@@ -295,7 +295,7 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 	}
 
 	// EXIT_G1 — OI still expanding + price direction confirms trend → block close
-	// v1.1 审计修复 (对齐 nofx改版): 要求 OI 扩张 + 价格同向才算"趋势完好"
+	// 要求 OI 扩张 + 价格同向才算"趋势完好"
 	// 避免"OI 扩但价跌"的分歧场景下误拦 close_long
 	oiTrend := signals.OITrend[sym]
 	priceChange1h := md.PriceChange1h / 100.0 // 百分比 → 小数

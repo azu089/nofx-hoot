@@ -1,9 +1,9 @@
 // Package ai_budget 提供策略级 AI 调用预算控制
 //
-// 与原版 trader.CostGuard 的差异:
-//   - 策略级（按 strategy_id 隔离），不是 trader 级
-//   - 配置来自 StrategyConfig.AIBudgetPolicy（用户可配），不是 env 全局开关
-//   - 支持每日上限（MaxCallsPerDay），原版只有 cooldown
+// 特性:
+//   - 策略级（按 strategy_id 隔离）
+//   - 配置来自 StrategyConfig.AIBudgetPolicy（用户可配）
+//   - 支持 cooldown + 每日上限（MaxCallsPerDay）
 //   - 与 CostGuard 串联使用：任一拒绝即跳过 AI 调用
 //
 // 设计:
@@ -11,8 +11,6 @@
 //   - policy 每次传入，运行时配置变更无缝
 //   - 默认 disabled（policy=nil 或 Enabled=false → 直接放行）
 //   - 持仓时强制放行（持仓必须由 AI 管理，不能跳过）
-//
-// 任务: P1-1 StrategyAIBudget (HOOT nofx 升级 2026-04)
 package ai_budget
 
 import (

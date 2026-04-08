@@ -8,7 +8,6 @@ import (
 )
 
 // TestAllowOpenSided_LongShortIsolation 验证 long/short cooldown 完全隔离
-// 任务: P1-4 PositionGateKey 细化 (HOOT nofx 升级 2026-04)
 func TestAllowOpenSided_LongShortIsolation(t *testing.T) {
 	g := NewOpenGate()
 	rc := store.RiskControlConfig{

@@ -117,7 +117,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("3. Write chain of thought first, then output structured JSON\n\n")
 	}
 
-	// 6.5 [HOOT v1.1 P2-3] Exit philosophy template
+	// 6.5 Exit philosophy template
 	// 仅在 cfg.ExitPhilosophy 非 nil 且非 "mechanical" 时追加，确保默认零行为变更
 	if e.config.ExitPhilosophy != nil {
 		philosophy := *e.config.ExitPhilosophy
@@ -151,7 +151,7 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("## Field Description\n\n")
-	// v1.1 P2-5: 根据 EnableSizedActions 决定是否暴露 sized actions 给 AI
+	// 根据 EnableSizedActions 决定是否暴露 sized actions 给 AI
 	if e.config.EnableSizedActions != nil && *e.config.EnableSizedActions {
 		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | reduce_long | reduce_short | scale_long | scale_short | hold | wait\n")
 		sb.WriteString("- `partial_pct` (REQUIRED for reduce_*/scale_*): 0..1.0 ratio\n")

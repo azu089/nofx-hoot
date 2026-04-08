@@ -5,13 +5,12 @@ import (
 	"testing"
 )
 
-// TestStrategyConfigBackwardsCompat 验证 v1.1 升级新增字段不破坏旧 JSON 反序列化
-// 相关任务: P0.2 StrategyConfig 字段扩展 (2026-04-08)
+// TestStrategyConfigBackwardsCompat 验证扩展字段不破坏旧 JSON 反序列化
 //
-// 原则: 所有 v1.1 新字段必须为指针 + omitempty，nil 表示沿用原版行为
-// 旧策略 JSON 不包含这些字段时，反序列化应成功且新字段全部为 nil
+// 原则: 所有扩展字段必须为指针 + omitempty
+// 旧策略 JSON 不包含这些字段时，反序列化应成功且字段全部为 nil
 func TestStrategyConfigBackwardsCompat(t *testing.T) {
-	// 模拟一段 v1.0 时期保存的旧 JSON（不含任何 v1.1 字段）
+	// 模拟一段旧 JSON（不含任何扩展字段）
 	legacyJSON := `{
 		"strategy_type": "ai_trading",
 		"language": "zh",
@@ -34,7 +33,7 @@ func TestStrategyConfigBackwardsCompat(t *testing.T) {
 		t.Errorf("MinHoldSeconds 期望 720, 实际 %d", cfg.MinHoldSeconds)
 	}
 
-	// 验证所有 v1.1 新字段全为 nil（= 沿用原版行为）
+	// 验证所有扩展字段全为 nil
 	if cfg.AIBudgetPolicy != nil {
 		t.Errorf("AIBudgetPolicy 应为 nil, 实际 %+v", cfg.AIBudgetPolicy)
 	}
@@ -52,8 +51,8 @@ func TestStrategyConfigBackwardsCompat(t *testing.T) {
 	}
 }
 
-// TestStrategyConfigV11FieldsRoundTrip 验证 v1.1 字段填值后能正确序列化/反序列化
-func TestStrategyConfigV11FieldsRoundTrip(t *testing.T) {
+// TestStrategyConfigExtFieldsRoundTrip 验证扩展字段填值后能正确序列化/反序列化
+func TestStrategyConfigExtFieldsRoundTrip(t *testing.T) {
 	exitMode := "hybrid"
 	histDepth := 50
 	pmMode := "shadow"

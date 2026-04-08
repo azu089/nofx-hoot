@@ -6,7 +6,7 @@ import (
 	"nofx/store"
 )
 
-// TestResolveMinPositionUSD_DefaultsAndOverride 验证 P1-6 配置化的解析
+// TestResolveMinPositionUSD_DefaultsAndOverride 验证最小仓位配置解析
 func TestResolveMinPositionUSD_DefaultsAndOverride(t *testing.T) {
 	// 1. nil config → 默认值
 	at := &AutoTrader{}

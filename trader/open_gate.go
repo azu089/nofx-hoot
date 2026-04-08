@@ -13,7 +13,7 @@ import (
 // Hard gates (A): cooldown after close, min interval, hourly limit, consecutive loss cooldown.
 // Soft gates (B): intent counting — does not block, used for position sizing weight.
 //
-// v1.1 (P1-4): 新增 sided 维度的 cooldown / min-hold 跟踪。
+// 新增 sided 维度的 cooldown / min-hold 跟踪。
 // 原 lastOpenAt / lastCloseAt 按 trader|symbol 索引（与 side 无关）；
 // 新增 lastOpenAtSided / lastCloseAtSided 按 trader|symbol|side 索引，
 // 通过 AllowOpenSided / MarkCloseSided 使用，长仓和空仓的 cooldown 互不影响。
@@ -26,7 +26,7 @@ type OpenGate struct {
 	lastOpenAt  map[string]time.Time   // traderKey|symbol → last open time
 	lastCloseAt map[string]time.Time   // traderKey|symbol → last close time
 
-	// v1.1 P1-4: side-aware state
+	// side-aware state
 	lastOpenAtSided  map[string]time.Time // traderKey|symbol|side → last open time
 	lastCloseAtSided map[string]time.Time // traderKey|symbol|side → last close time
 
@@ -41,7 +41,7 @@ type OpenGate struct {
 
 // NewOpenGate creates a new frequency gate.
 func NewOpenGate() *OpenGate {
-	logger.Info("[OPEN_GATE] Initialized (with sided cooldown support v1.1)")
+	logger.Info("[OPEN_GATE] Initialized")
 	return &OpenGate{
 		openHistory:       make(map[string][]time.Time),
 		lastOpenAt:        make(map[string]time.Time),
@@ -59,7 +59,7 @@ func (g *OpenGate) key(traderKey, symbol string) string {
 	return traderKey + "|" + symbol
 }
 
-// keySided 三元组 key (v1.1 P1-4) — 长仓和空仓 cooldown 隔离
+// keySided 三元组 key — 长仓和空仓 cooldown 隔离
 func (g *OpenGate) keySided(traderKey, symbol, side string) string {
 	return traderKey + "|" + symbol + "|" + side
 }
@@ -78,7 +78,7 @@ func (g *OpenGate) MarkClose(traderKey, symbol string) {
 	g.lastCloseAt[g.key(traderKey, symbol)] = time.Now()
 }
 
-// MarkCloseSided 记录方向相关的平仓事件 (v1.1 P1-4)
+// MarkCloseSided 记录方向相关的平仓事件
 // side 应为 "long" 或 "short"
 func (g *OpenGate) MarkCloseSided(traderKey, symbol, side string) {
 	g.mu.Lock()
@@ -222,7 +222,7 @@ func (g *OpenGate) ResetConfirmCount(traderKey, symbol, side string) {
 	delete(g.confirmLastAt, key)
 }
 
-// AllowOpenSided 方向感知的硬门禁 (v1.1 P1-4)
+// AllowOpenSided 方向感知的硬门禁
 // 与 AllowOpen 唯一差异：cooldown / min-hold 检查使用 sided key，
 // 长仓 cooldown 不阻塞空仓开仓，反之亦然。其他门禁（loss lockout / hourly limit）保持全局。
 // side 应为 "long" 或 "short"

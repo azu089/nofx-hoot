@@ -15,7 +15,7 @@ import (
 // PromptBuilder builds AI prompts in the configured language
 type PromptBuilder struct {
 	lang       Language
-	philosophy string // v1.1 P2-3: "mechanical" | "signal_driven" | "hybrid" (空 = mechanical 默认)
+	philosophy string // "mechanical" | "signal_driven" | "hybrid" (空 = mechanical 默认)
 }
 
 // NewPromptBuilder creates a new prompt builder for the given language
@@ -23,10 +23,10 @@ func NewPromptBuilder(lang Language) *PromptBuilder {
 	return &PromptBuilder{lang: lang}
 }
 
-// WithPhilosophy 设置退出哲学模板（v1.1 P2-3）
+// WithPhilosophy 设置退出哲学模板
 //
 // 支持值:
-//   - "mechanical" 或 "" : 原版机械止损 + 30% peak 回撤 + 三条件平仓
+//   - "mechanical" 或 "" : 机械止损 + 30% peak 回撤 + 三条件平仓（默认）
 //   - "signal_driven"    : 禁止固定百分比平仓，仅信号驱动 + 趋势持有
 //   - "hybrid"           : 硬止损底线 + 信号驱动触发（推荐）
 //
@@ -51,10 +51,9 @@ func (pb *PromptBuilder) effectivePhilosophy() string {
 
 // BuildSystemPrompt builds the system prompt
 //
-// v1.1 P2-3: 退出哲学模板装配
-// 模板内嵌占位符 __EXIT_GUIDANCE_ZH__ / __EXIT_GUIDANCE_EN__，
+// 退出哲学模板装配: 模板内嵌占位符 __EXIT_GUIDANCE_ZH__ / __EXIT_GUIDANCE_EN__，
 // 在装配阶段替换为对应 philosophy 的指引文本。
-// 默认 mechanical → 文本与原版完全一致，零行为变更。
+// 默认 mechanical 保持零行为变更。
 func (pb *PromptBuilder) BuildSystemPrompt() string {
 	var raw string
 	if pb.lang == LangChinese {

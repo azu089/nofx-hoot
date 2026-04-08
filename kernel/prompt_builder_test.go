@@ -32,8 +32,6 @@ func TestPromptBuilder(t *testing.T) {
 		}
 
 		// 验证包含关键内容
-		// 注：原版的 "跟踪止盈" 文案在重构中被移除，由 "信号驱动平仓" 段落取代
-		// （v1.1 P2-3 之前已有此变化，本次只更新过时断言）
 		mustContain := []string{
 			"量化交易AI助手",
 			"分析账户状态",
@@ -74,8 +72,6 @@ func TestPromptBuilder(t *testing.T) {
 		}
 
 		// 验证包含关键内容
-		// 注：原版 "Trailing Take-Profit" 文案在重构中被移除，
-		// 由 "Signal-Driven Exit" 段落取代（v1.1 P2-3 之前已有此变化）
 		mustContain := []string{
 			"quantitative trading AI",
 			"Analyze Account Status",

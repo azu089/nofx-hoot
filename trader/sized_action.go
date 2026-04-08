@@ -1,18 +1,16 @@
-// trader/sized_action.go — v1.1 P2-4 细粒度仓位调整 action
+// trader/sized_action.go — 细粒度仓位调整 action
 //
-// 引入 4 个新 action（基于现有 close/open 路径，加 partial_pct 缩放）:
+// 4 个 sized action（基于现有 close/open 路径 + partial_pct 缩放）:
 //   - reduce_long  : 部分平多头  (qty *= partial_pct)
 //   - reduce_short : 部分平空头
 //   - scale_long   : 加多头     (按当前持仓 × partial_pct)
 //   - scale_short  : 加空头
 //
-// 与现有 close_long/open_long 的关系:
+// 与 close_long/open_long 的关系:
 //   - reduce_long ≡ close_long(qty=current*pct)
-//   - scale_long  ≡ open_long(size=current*pct)
+//   - scale_long  ≡ 在已有持仓上追加 pct 比例的仓位
 //   - 默认 pct=0.5（半仓）
 //   - pct ≥ 1.0 时退化为 close_long / open_long 等效行为
-//
-// 任务: P2-4 Sized Adjust Actions (HOOT nofx 升级 2026-04)
 package trader
 
 import (
@@ -40,7 +38,7 @@ func resolvePartialPct(p float64) float64 {
 	return p
 }
 
-// IsSizedAdjustAction 判定是否为 P2-4 新增 sized action
+// IsSizedAdjustAction 判定是否为 sized adjust action
 func IsSizedAdjustAction(action string) bool {
 	switch action {
 	case "reduce_long", "reduce_short", "scale_long", "scale_short":
@@ -110,7 +108,7 @@ func (at *AutoTrader) executeReduceShort(decision *kernel.Decision, _ *store.Dec
 	return nil
 }
 
-// executeScaleLong 加仓多头 (v1.1 P2-4, 审计修复 Bug #5)
+// executeScaleLong 加仓多头
 //
 // 独立执行路径，不调用 executeOpenLongWithRecord (会被"已有同向持仓"检查拒绝)
 // 仍保留核心风控：
@@ -138,7 +136,7 @@ func (at *AutoTrader) executeScaleLong(decision *kernel.Decision, actionRecord *
 	return at.executeScaleInCore(decision, actionRecord, addUSD, "long")
 }
 
-// executeScaleShort 加仓空头 (v1.1 P2-4, 审计修复 Bug #5)
+// executeScaleShort 加仓空头
 func (at *AutoTrader) executeScaleShort(decision *kernel.Decision, actionRecord *store.DecisionAction, pct float64) error {
 	logger.Infof("  📉 Scale short: %s (pct=%.2f)", decision.Symbol, pct)
 	currentValue := at.getCurrentPositionValueUSD(decision.Symbol, "short")

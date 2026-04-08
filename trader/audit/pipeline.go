@@ -5,13 +5,8 @@
 //     调用 Snapshot(phase, payload) 记录审计事件
 //   - 默认 sink 输出到 logger（保留可读性）
 //   - 可注入自定义 sink: Telegram、BullMQ worker、Sentry 等
-//
-// 与改版差异:
-//   - 改版直接 append 到 ExecutionLog 字符串数组
-//   - HOOT 做成事件管道 + 结构化字段 + 可插拔 sink
+//   - 事件管道 + 结构化字段 + 可插拔 sink
 //   - 不与 DecisionRecord 耦合：审计事件独立于决策记录
-//
-// 任务: P1-3 Runtime Audit Pipeline (HOOT nofx 升级 2026-04)
 package audit
 
 import (

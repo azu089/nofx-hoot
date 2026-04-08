@@ -11,7 +11,7 @@ import (
 
 // executeDecisionWithRecord executes AI decision and records detailed information
 func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
-	// v1.1 P2-4: 优先派发 sized adjust action（reduce/scale long/short）
+	// 优先派发 sized adjust action（reduce/scale long/short）
 	if IsSizedAdjustAction(decision.Action) {
 		return at.executeSizedAdjustAction(decision, actionRecord)
 	}
@@ -35,7 +35,7 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 
 // executeOpenLongWithRecord executes open long position and records detailed information
 // executeOpenLongWithRecord 执行开多头
-// v1.1 P1-4: open gate 使用 AllowOpenSided 以隔离多/空 cooldown
+// open gate 使用 AllowOpenSided 以隔离多/空 cooldown
 func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📈 Open long: %s", decision.Symbol)
 
@@ -48,7 +48,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		}
 	}
 
-	// [HOOT v1.1 P1-4] Open gate: sided frequency control
+	// Open gate: sided frequency control
 	// Side 由 caller 函数 (executeOpenLong/executeOpenShortWithRecord) 决定
 	// 通过 decision.Action 推断更稳健（避免依赖函数嵌套位置）
 	if at.openGate != nil {
@@ -62,7 +62,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		}
 	}
 
-	// [HOOT v1.1 P3-4] PreTradeSimulator 灰度检查
+	// PreTradeSimulator 灰度检查
 	// 通过 feature_flag 'pretrade_sim' 启用 (默认 disabled)
 	// 失败时阻止下单 + 写 audit
 	if err := at.runPreTradeSimulation(decision); err != nil {
@@ -195,7 +195,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		}
 	}
 
-	// [HOOT v1.1 P1-4] Open gate: sided frequency control
+	// Open gate: sided frequency control
 	// Side 由 caller 函数 (executeOpenLong/executeOpenShortWithRecord) 决定
 	// 通过 decision.Action 推断更稳健（避免依赖函数嵌套位置）
 	if at.openGate != nil {
@@ -209,7 +209,7 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		}
 	}
 
-	// [HOOT v1.1 P3-4] PreTradeSimulator 灰度检查
+	// PreTradeSimulator 灰度检查
 	// 通过 feature_flag 'pretrade_sim' 启用 (默认 disabled)
 	// 失败时阻止下单 + 写 audit
 	if err := at.runPreTradeSimulation(decision); err != nil {

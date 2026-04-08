@@ -7,7 +7,7 @@ import (
 	"nofx/store"
 )
 
-// TestSortDecisionsByPriority_WithSizedActions 审计修复 Bug #4 回归
+// TestSortDecisionsByPriority_WithSizedActions
 // 确认 reduce_* 与 close_* 同优先级，scale_* 与 open_* 同优先级
 func TestSortDecisionsByPriority_WithSizedActions(t *testing.T) {
 	input := []kernel.Decision{
@@ -57,7 +57,7 @@ func TestSortDecisionsByPriority_ReduceBeforeOpen(t *testing.T) {
 	}
 }
 
-// TestSideFromAction 审计修复 Bug #3 回归
+// TestSideFromAction 验证 action → LONG/SHORT 映射
 func TestSideFromAction(t *testing.T) {
 	cases := map[string]string{
 		"open_long":    "LONG",
@@ -78,8 +78,7 @@ func TestSideFromAction(t *testing.T) {
 	}
 }
 
-// TestIsFullCloseAction 审计修复 Bug #2 回归
-// 只有完全平仓才能 Unregister lifecycle
+// TestIsFullCloseAction 只有完全平仓才能 Unregister lifecycle
 func TestIsFullCloseAction(t *testing.T) {
 	yes := []string{"close_long", "close_short"}
 	no := []string{"reduce_long", "reduce_short", "open_long", "scale_long", "hold", "wait", ""}
@@ -96,7 +95,7 @@ func TestIsFullCloseAction(t *testing.T) {
 	}
 }
 
-// TestIsScaleAction 审计修复 Bug #1 回归
+// TestIsScaleAction 验证 scale 系列 action 识别
 func TestIsScaleAction(t *testing.T) {
 	yes := []string{"scale_long", "scale_short"}
 	no := []string{"open_long", "open_short", "close_long", "reduce_long", "hold", ""}
@@ -113,8 +112,7 @@ func TestIsScaleAction(t *testing.T) {
 	}
 }
 
-// TestSafeModeFilter_BlocksScale 审计修复 Bug #1 集成回归
-// 模拟 safeMode 过滤逻辑，确认 scale_* 被拦截
+// TestSafeModeFilter_BlocksScale 模拟 safeMode 过滤逻辑，确认 scale_* 被拦截
 func TestSafeModeFilter_BlocksScale(t *testing.T) {
 	// 直接测试过滤条件等价逻辑
 	decisions := []kernel.Decision{
@@ -146,8 +144,7 @@ func TestSafeModeFilter_BlocksScale(t *testing.T) {
 	}
 }
 
-// TestApplyPartialMode_HedgeScenario 审计修复 #7 回归
-// 同 symbol 的 long + short 不应相互覆盖
+// TestApplyPartialMode_HedgeScenario 同 symbol 的 long + short 不应相互覆盖
 func TestApplyPartialMode_HedgeScenario(t *testing.T) {
 	mode := "partial"
 	at := &AutoTrader{

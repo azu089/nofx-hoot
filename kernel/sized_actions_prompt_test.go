@@ -8,7 +8,6 @@ import (
 )
 
 // TestSystemPrompt_DefaultExcludesSizedActions 验证默认 prompt 不暴露 sized actions
-// 任务: P2-5 System Prompt 重构 (HOOT nofx 升级 2026-04)
 //
 // 关键回归：旧策略不能因为 schema 扩展而 prompt 变化
 func TestSystemPrompt_DefaultExcludesSizedActions(t *testing.T) {

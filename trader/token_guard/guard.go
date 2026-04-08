@@ -1,18 +1,15 @@
 // Package token_guard 在 AI 调用前对 prompt 预算做运行时拦截
 //
-// 与原版的差异:
-//   - 原版只有 store.StrategyConfig.EstimateTokens() 静态分析（API 暴露给前端）
-//   - 本包将其转化为运行时拦截器：每轮 AI 调用前自动评估
+// 行为:
+//   - 复用 store.StrategyConfig.EstimateTokens() 静态分析
+//   - 每轮 AI 调用前自动评估 token 占用
 //   - 超过软阈值（默认 80%）记录 warn
 //   - 超过硬阈值（默认 100%）阻止本轮调用，避免 API 422 / 截断
 //
 // 设计:
 //   - 纯函数 Evaluate(cfg, provider) → Verdict
 //   - 不持有状态，调用方决定如何 react
-//   - 默认 disabled by config（StrategyConfig 暂未带 token_guard 字段时走默认）
-//   - 软/硬阈值未来可做成 strategy config 字段，本期用常量
-//
-// 任务: P1-2 Token Budget Middleware (HOOT nofx 升级 2026-04)
+//   - 软/硬阈值暂用常量，未来可做成 strategy config 字段
 package token_guard
 
 import (

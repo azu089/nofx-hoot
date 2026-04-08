@@ -59,7 +59,7 @@ func (at *AutoTrader) runCycle() error {
 	if err != nil {
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("Failed to build trading context: %v", err)
-		// [HOOT v1.1 P1-3] 审计：context 构建失败
+		// 审计：context 构建失败
 		audit.Snapshot(at.id, at.strategyID, "context_build_failed", map[string]any{
 			"cycle": at.callCount,
 			"error": err.Error(),
@@ -68,7 +68,7 @@ func (at *AutoTrader) runCycle() error {
 		return fmt.Errorf("failed to build trading context: %w", err)
 	}
 
-	// [HOOT v1.1 P1-3] 审计：context 构建完成
+	// 审计：context 构建完成
 	audit.Snapshot(at.id, at.strategyID, "context_built", map[string]any{
 		"cycle":      at.callCount,
 		"positions":  len(ctx.Positions),
@@ -82,7 +82,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// [HOOT] Inject enhanced data into context
 	ctx.TraderID = at.id
-	ctx.StrategyConfig = at.config.StrategyConfig // v1.1 P2-2: 让 formatter 读取动态阈值配置
+	ctx.StrategyConfig = at.config.StrategyConfig // 让 formatter 读取动态阈值配置
 	at.injectMarketRegime(ctx)                    // B1: Market regime detection per symbol
 	at.injectEventSignals(ctx)                    // B3: Event signal injection
 	at.syncPositionLifecycles(ctx)                // Lifecycle: register/advance positions
@@ -121,7 +121,7 @@ func (at *AutoTrader) runCycle() error {
 		return nil
 	}
 
-	// [HOOT v1.1 P1-1] Strategy AI Budget: per-strategy cooldown / daily limit
+	// Strategy AI Budget: per-strategy cooldown / daily limit
 	// Configured via StrategyConfig.AIBudgetPolicy. Skipped if policy nil or disabled.
 	// Positions held → always allowed (must manage existing positions).
 	if at.config.StrategyConfig != nil {
@@ -134,7 +134,7 @@ func (at *AutoTrader) runCycle() error {
 		}
 	}
 
-	// [HOOT v1.1 P1-2] Token Budget Guard: 运行时 prompt 预算评估
+	// Token Budget Guard: 运行时 prompt 预算评估
 	// 评估当前策略配置在目标 provider 下的 token 占用，超硬阈值阻止本轮调用
 	// 不阻塞策略运行：仅跳过本轮 AI 调用，下轮重新评估（用户应缩减币种/周期/K线数）
 	if at.config.StrategyConfig != nil {
@@ -229,11 +229,11 @@ func (at *AutoTrader) runCycle() error {
 	if at.costGuard != nil {
 		at.costGuard.RecordAICall()
 	}
-	// [HOOT v1.1 P1-1] Record successful AI call for strategy budget
+	// Record successful AI call for strategy budget
 	if at.strategyID != "" && at.config.StrategyConfig != nil && at.config.StrategyConfig.AIBudgetPolicy != nil && at.config.StrategyConfig.AIBudgetPolicy.Enabled {
 		ai_budget.Record(at.strategyID)
 	}
-	// [HOOT v1.1 P1-3] 审计：AI 调用完成
+	// 审计：AI 调用完成
 	audit.Snapshot(at.id, at.strategyID, "ai_call_done", map[string]any{
 		"cycle":       at.callCount,
 		"duration_ms": record.AIRequestDurationMs,
@@ -291,7 +291,7 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// [HOOT] Step E: PositionManager — evaluate existing positions
-	// v1.1 P3-2: 通过 InstitutionalPipeline 灰度合并 AI + PM 决策
+	// 通过 InstitutionalPipeline 灰度合并 AI + PM 决策
 	// 默认 mode=off → 行为完全等同于原版（PM append 到 AI 末尾）
 	// shadow / partial / full 通过 strategy config 或 feature flag 灰度启用
 	if len(ctx.Positions) > 0 {
@@ -302,7 +302,7 @@ func (at *AutoTrader) runCycle() error {
 		aiDecision.Decisions = at.ApplyInstitutionalPipeline(aiDecision.Decisions, pmDecisions)
 	}
 
-	// [HOOT v1.1 P4-1] CandidateRanker: 当 open 候选超过可用 slot 时按质量排序裁剪
+	// CandidateRanker: 当 open 候选超过可用 slot 时按质量排序裁剪
 	// 默认 disabled via feature_flag 'candidate_ranker'，原样返回零行为变化
 	aiDecision.Decisions = at.applyCandidateRanker(aiDecision.Decisions, len(ctx.Positions))
 
@@ -325,7 +325,7 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// Safe mode: filter out new-risk actions, only allow close/reduce/hold
-	// v1.1 审计修复 Bug #1: scale_* 也引入新风险必须拦截
+	// scale_* 引入新风险必须拦截
 	if at.safeMode {
 		filtered := make([]kernel.Decision, 0)
 		for _, d := range sortedDecisions {
@@ -375,8 +375,8 @@ func (at *AutoTrader) runCycle() error {
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("✓ %s %s succeeded", d.Symbol, d.Action))
 
 			// [HOOT] Track close events for OpenGate
-			// v1.1 P1-4: sided cooldown 隔离
-			// v1.1 审计修复 Bug #3: 用 sideFromAction 正确识别 reduce_short / close_short
+			// sided cooldown 隔离
+			// 用 sideFromAction 正确识别 reduce_short / close_short
 			if isCloseAction(d.Action) {
 				side := sideFromAction(d.Action) // "LONG" | "SHORT"
 				sidedKey := "long"
@@ -386,7 +386,7 @@ func (at *AutoTrader) runCycle() error {
 				if at.openGate != nil {
 					at.openGate.MarkCloseSided(at.id, d.Symbol, sidedKey)
 				}
-				// v1.1 审计修复 Bug #2: 只在完全平仓时注销 lifecycle
+				// 只在完全平仓时注销 lifecycle
 				// reduce 是部分平仓，持仓仍在，lifecycle 必须保留
 				if isFullCloseAction(d.Action) {
 					kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
@@ -759,7 +759,7 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	}
 
 	// Define priority
-	// v1.1 审计修复 Bug #4: 补 reduce/scale 4 个新 action
+	// 补 reduce/scale 4 个新 action
 	// - reduce_*  → 1（与 close 同优先级，释放保证金）
 	// - scale_*   → 2（与 open 同优先级，追加风险）
 	getActionPriority := func(action string) int {

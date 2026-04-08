@@ -1,25 +1,19 @@
-// kernel/atr_threshold.go — v1.1 P2-2 ATR 自适应止盈阈值
+// kernel/atr_threshold.go — ATR 自适应止盈阈值
 //
 // 设计:
-//   - 替代原版硬编码的 30% peak 回撤阈值（formatter.go 中持仓提示）
 //   - 公式: threshold = clamp(Multiplier × (ATR/Price) × Leverage, Min, Max)
-//   - 配置: StrategyConfig.ATRAdaptive (P0.2 引入的字段)
+//   - 配置: StrategyConfig.ATRAdaptive
 //   - 默认: Multiplier=2.0 / Min=0.5% / Max=5%
-//   - nil/disabled 时返回 0 → 调用方应回退到原版固定阈值
+//   - nil/disabled 时返回 0 → 调用方回退到固定阈值
 //
-// 与改版差异:
-//   - 改版直接在 formatter.go 内嵌 computeATRThreshold
-//   - HOOT 抽出独立函数，支持 strategy 级 config，留 unit test 接口
-//   - HOOT 默认 disabled（用户主动开启后才生效），保证零行为变更
-//
-// 任务: P2-2 ATR Adaptive Take-Profit Threshold (HOOT nofx 升级 2026-04)
+// 抽出独立函数便于单元测试，默认 disabled 由策略配置开启。
 package kernel
 
 import (
 	"nofx/store"
 )
 
-// 默认 ATR 自适应参数（与改版兼容）
+// 默认 ATR 自适应参数
 const (
 	defaultATRMultiplier   = 2.0
 	defaultATRMinThreshold = 0.005 // 0.5%
@@ -83,7 +77,7 @@ func ComputeATRPullbackThreshold(cfg *store.StrategyConfig, atr14, markPrice flo
 // ResolveATRPullbackOrFixed 对 caller 友好的封装
 //
 // 当 ATR 自适应启用时返回动态阈值，否则返回固定 fallback。
-// fallback 通常是原版的 0.30（即 30% peak 回撤）。
+// fallback 通常是 0.30（即 30% peak 回撤）。
 //
 // 注意阈值语义不同：
 //   - ATR 自适应: 价格变动比例（如 0.025 = 2.5% 价格波动）

@@ -1,17 +1,14 @@
-// kernel/global_blacklist.go — v1.1 P3-3 全局共享黑名单
+// kernel/global_blacklist.go — 全局共享黑名单
 //
-// 与原版 AdaptiveState 的差异:
-//   - AdaptiveState 是 per-trader 实例，黑名单只影响单个 trader
-//   - GlobalBlacklist 是包级单例，所有 trader 共享
-//   - 用例: 管理员手动 ban / 紧急熔断 / 集中风控
+// AdaptiveState 是 per-trader 实例，黑名单只影响单个 trader；
+// GlobalBlacklist 是包级单例，所有 trader 共享。
+// 用例: 管理员手动 ban / 紧急熔断 / 集中风控
 //
 // 设计:
 //   - 包级 map + sync.RWMutex
 //   - 支持 ban/unban/list/check
 //   - 支持 per-strategy override（某些策略可豁免全局禁令）
 //   - 通过 feature_flag 启停: HOOT_FF_global_blacklist=on
-//
-// 任务: P3-3 Global Blacklist Layer (HOOT nofx 升级 2026-04)
 package kernel
 
 import (

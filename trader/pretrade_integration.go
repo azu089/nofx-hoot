@@ -1,12 +1,10 @@
-// trader/pretrade_integration.go — v1.1 P3-4 PreTradeSimulator 主循环接入
+// trader/pretrade_integration.go — PreTradeSimulator 主循环接入
 //
 // 设计:
 //   - 通过 feature_flag 'pretrade_sim' 灰度启用
-//   - 默认 disabled → 直接放行（零行为变化）
+//   - 默认 disabled → 直接放行
 //   - 启用时调用 pretrade.DefaultSimulator
 //   - 失败 → 错误返回 + audit 快照
-//
-// 任务: P3-4 PHASE_B 灰度接入 (HOOT nofx 升级 2026-04)
 package trader
 
 import (
@@ -43,7 +41,6 @@ func (at *AutoTrader) runPreTradeSimulation(decision *kernel.Decision) error {
 	}
 
 	// 取实时 mark price（优先从 market cache，fallback 到 TP/SL 估算）
-	// v1.1 审计修复 #6: 之前 markPrice 可能为 1（pathological fallback）
 	markPrice := 0.0
 	if md, err := market.GetWithExchange(decision.Symbol, at.exchange); err == nil && md != nil && md.CurrentPrice > 0 {
 		markPrice = md.CurrentPrice

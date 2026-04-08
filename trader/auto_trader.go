@@ -114,9 +114,8 @@ type AutoTraderConfig struct {
 	// Strategy configuration (use complete strategy config)
 	StrategyConfig *store.StrategyConfig // Strategy configuration (includes coin sources, indicators, risk control, prompts, etc.)
 
-	// StrategyID 策略主键（v1.1 升级新增）
-	// 用于策略级粒度的 AI 调用预算（ai_budget 包）等需要稳定策略身份的能力
-	// 空值时新能力会自动降级为 no-op，保持向后兼容
+	// StrategyID 策略主键，用于策略级能力（如 ai_budget）的身份标识
+	// 空值时相关能力自动降级为 no-op
 	StrategyID string
 }
 
@@ -157,7 +156,7 @@ type AutoTrader struct {
 	safeModeReason        string            // Why safe mode was activated
 	openGate              *OpenGate          // Open-position frequency gate
 	costGuard             *CostGuard         // AI call cost guard (skip when no positions)
-	strategyID            string             // v1.1: stable strategy primary key for ai_budget per-strategy isolation
+	strategyID            string             // stable strategy primary key for per-strategy isolation
 	adaptiveState         *kernel.AdaptiveState // Rolling win-rate adaptive thresholds
 	getEventSignals       func() []kernel.EventSignal // Injected event signal fetcher (avoids circular deps)
 	riskGuard             *RealtimeRiskGuard    // Real-time risk monitoring between cycles

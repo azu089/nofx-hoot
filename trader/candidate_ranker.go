@@ -1,8 +1,7 @@
-// trader/candidate_ranker.go — v1.1 P4-1 候选决策排序器
+// trader/candidate_ranker.go — 候选决策排序器
 //
 // 目的: 当 AI 返回的 open 候选数量 > maxPositions 时，按质量排序选最优 K 个，
-//
-//	而非按 AI 返回顺序盲取前 K。
+//       而非按 AI 返回顺序盲取前 K。
 //
 // 设计原则:
 //   - 仅排序 open_long/open_short，其他 action（close/hold/wait/reduce/scale）原样保留
@@ -11,18 +10,10 @@
 //   - 默认 disabled via feature_flag 'candidate_ranker'
 //   - 不修改 AdaptiveState，只读 per-symbol winrate
 //
-// 与 HOOT Arena 的关系:
+// 与 Arena 的关系:
 //   - Arena = 多 AI 前置共识（独立 strategy_type）
 //   - CandidateRanker = 单 AI 内的后置排序
 //   - 两者不互斥，Solo Trader 中此器为默认优化层
-//
-// 与改版 Gatekeeper.Vote() 的差异:
-//   - HOOT 命名: CandidateRanker（排序器）vs Vote（投票）避免与 Arena 混淆
-//   - 独立文件 vs 改版内嵌 engine.go
-//   - 权重可配 + feature flag 灰度 vs 改版硬编码
-//   - 条件触发（仅超限时）vs 改版每轮必跑
-//
-// 任务: P4-1 CandidateRanker (HOOT nofx 升级 2026-04)
 package trader
 
 import (

@@ -1,15 +1,13 @@
-// trader/institutional_pipeline.go — v1.1 P3-2 InstitutionalPipeline + PM 授权
+// trader/institutional_pipeline.go — InstitutionalPipeline + PM 授权
 //
 // 通过统一的灰度模式控制 AI 与 PositionManager 的协作方式：
-//   - "off"     : 原版顺序模式（PM 决策直接 append 到 AI 决策末尾）
+//   - "off"     : 顺序模式（PM 决策直接 append 到 AI 决策末尾）（默认）
 //   - "shadow"  : PM 决策不执行，仅记录到 audit（用于对比观察）
 //   - "partial" : PM 决策覆盖同 symbol 的 AI close 提案
 //   - "full"    : PM 决策对所有 close 拥有最终权威
 //
-// 灰度通过 P0.1 feature_flag 框架控制：HOOT_FF_pm_authority=mode_string
+// 灰度通过 feature_flag 框架控制：HOOT_FF_pm_authority=mode_string
 // 也可通过 strategy 级配置 PMAuthorityMode 覆盖
-//
-// 任务: P3-2 InstitutionalPipeline (HOOT nofx 升级 2026-04)
 package trader
 
 import (
@@ -32,7 +30,7 @@ const (
 // 优先级:
 //  1. strategy config 中的 PMAuthorityMode（per-strategy 覆盖）
 //  2. feature_flag mode（per-trader 灰度）
-//  3. 默认 "off"（沿用原版顺序模式）
+//  3. 默认 "off"（顺序模式）
 func (at *AutoTrader) resolvePMMode() string {
 	// 1. strategy config
 	if at.config.StrategyConfig != nil && at.config.StrategyConfig.PMAuthorityMode != nil {
@@ -72,7 +70,7 @@ func isValidPMMode(s string) bool {
 // 输出: 合并后的最终决策列表（待 sortDecisionsByPriority 排序）
 //
 // 行为矩阵:
-//   - off:     return append(aiDecisions, pmDecisions...) 与原版完全一致
+//   - off:     return append(aiDecisions, pmDecisions...)（默认顺序模式）
 //   - shadow:  return aiDecisions; pmDecisions 仅写 audit 不执行
 //   - partial: PM 决策覆盖同 symbol AI close 提案；其他 AI 决策保留
 //   - full:    PM 决策完全权威；移除所有 AI close 提案，仅保留 AI open
@@ -93,7 +91,7 @@ func (at *AutoTrader) ApplyInstitutionalPipeline(aiDecisions, pmDecisions []kern
 	case PMModeFull:
 		return at.applyFullMode(aiDecisions, pmDecisions)
 	default:
-		// off / unknown → 原版顺序模式：PM append 到 AI 末尾
+		// off / unknown → 顺序模式：PM append 到 AI 末尾
 		if len(pmDecisions) == 0 {
 			return aiDecisions
 		}
@@ -115,7 +113,7 @@ func (at *AutoTrader) applyShadowMode(aiDecisions, pmDecisions []kernel.Decision
 }
 
 // applyPartialMode partial: PM 决策覆盖同 symbol+side AI close 提案
-// v1.1 审计修复 #7: dedup key 加 side，支持对冲策略（同 symbol 同时多空）
+// dedup key 含 side，支持对冲策略（同 symbol 同时多空）
 func (at *AutoTrader) applyPartialMode(aiDecisions, pmDecisions []kernel.Decision) []kernel.Decision {
 	if len(pmDecisions) == 0 {
 		return aiDecisions

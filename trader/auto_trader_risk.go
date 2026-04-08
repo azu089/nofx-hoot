@@ -222,14 +222,14 @@ func (at *AutoTrader) enforcePositionValueRatio(positionSizeUSD float64, equity 
 	return positionSizeUSD, false
 }
 
-// 默认值常量 (v1.1 P1-6: 提取常量 + 单点维护)
+// 默认值常量
 const (
 	defaultMinPositionUSD = 12.0
 	defaultMaxPositions   = 3
 )
 
 // resolveMinPositionUSD 单点解析最小仓位 USD（含 nil 安全 + 默认兜底）
-// v1.1 P1-6: 集中配置解析逻辑，便于未来扩展（如权益增长动态放大）
+// 集中配置解析逻辑，便于未来扩展（如权益增长动态放大）
 func (at *AutoTrader) resolveMinPositionUSD() float64 {
 	if at.config.StrategyConfig == nil {
 		return defaultMinPositionUSD

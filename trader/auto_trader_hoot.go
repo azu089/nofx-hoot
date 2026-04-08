@@ -38,7 +38,7 @@ func isOpenAction(action string) bool {
 }
 
 // isCloseAction 判定是否为 close 系列 action（含部分平仓 reduce_*）
-// v1.1 P2-4: 用于 OpenGate cooldown 标记 / institutional_pipeline 覆盖逻辑
+// 用于 OpenGate cooldown 标记 / institutional_pipeline 覆盖逻辑
 func isCloseAction(action string) bool {
 	switch action {
 	case "close_long", "close_short", "reduce_long", "reduce_short":
@@ -48,20 +48,20 @@ func isCloseAction(action string) bool {
 }
 
 // isFullCloseAction 仅识别完全平仓（不含 reduce_*）
-// v1.1 审计修复 Bug #2: lifecycle unregister 只能用 full close，
+// lifecycle unregister 只能用 full close，
 // reduce 是部分平仓，持仓仍在，不能注销 lifecycle
 func isFullCloseAction(action string) bool {
 	return action == "close_long" || action == "close_short"
 }
 
 // isScaleAction 判定是否为 scale 加仓 action
-// v1.1 审计修复 Bug #1: safeMode 过滤需要拦截 scale 防止绕过
+// safeMode 过滤需要拦截 scale 防止绕过
 func isScaleAction(action string) bool {
 	return action == "scale_long" || action == "scale_short"
 }
 
 // sideFromAction 从 action 名推出 "LONG" / "SHORT"
-// v1.1 审计修复 Bug #3: reduce_short 之前被误判为 LONG
+// 完整映射所有 action 包含 reduce/scale 系列
 func sideFromAction(action string) string {
 	switch action {
 	case "open_short", "close_short", "reduce_short", "scale_short":
@@ -127,7 +127,7 @@ func (at *AutoTrader) detectPrimaryRegime(ctx *kernel.Context) market.MarketRegi
 // injectEventSignals populates ctx.EventSignals and ctx.EventRiskMode.
 // Uses the getEventSignals function if set (injected to avoid circular deps).
 //
-// v1.1 P1-5: 高 severity (≥4) 事件通过 audit pipeline 推送结构化快照，
+// 高 severity (≥4) 事件通过 audit pipeline 推送结构化快照，
 // 携带 category / scope / affected_symbols / direction 等元数据，
 // 供下游 Sink（Telegram bot / Sentry / BullMQ worker）消费。
 func (at *AutoTrader) injectEventSignals(ctx *kernel.Context) {
@@ -147,7 +147,7 @@ func (at *AutoTrader) injectEventSignals(ctx *kernel.Context) {
 		logger.Infof("📰 [%s] Event risk mode: %s (%d active events)", at.name, ctx.EventRiskMode, len(signals))
 	}
 
-	// [HOOT v1.1 P1-5] 推送高 severity 事件到 audit pipeline
+	// 推送高 severity 事件到 audit pipeline
 	// 仅对 severity ≥ 3 的事件触发，避免 spam
 	now := time.Now()
 	for _, ev := range signals {
@@ -483,7 +483,7 @@ func (at *AutoTrader) buildArenaGatekeeper() func(symbol, action string, confide
 		}
 
 		// 2. Open-position frequency gate (only for open actions)
-		// v1.1 P1-4: 使用 sided 版本，long/short cooldown 隔离
+		// 使用 sided 版本，long/short cooldown 隔离
 		if isOpenAction(action) && at.openGate != nil {
 			side := "long"
 			if action == "open_short" {

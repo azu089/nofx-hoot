@@ -6,13 +6,9 @@
 //   - 通过 feature_flag 灰度启用：HOOT_FF_pretrade_sim=on / strategies:s1,s2 / pct:50
 //   - 模拟失败 → 阻止下单 + 写入 audit
 //
-// 与改版差异:
-//   - 改版直接在 auto_trader.go 内嵌 ExecutionSimulationGate
-//   - HOOT 抽出 PreTradeSimulator interface + 默认实现 + 可拔插
-//   - 与 HOOT 的 RealtimeRiskGuard 共享风控上下文（未来扩展）
-//   - 灰度通过统一 feature_flag 框架（P0.1）
-//
-// 任务: P3-1 PreTradeSimulator (HOOT nofx 升级 2026-04)
+// 架构:
+//   - PreTradeSimulator interface + 默认实现，可拔插
+//   - 与 RealtimeRiskGuard 共享风控上下文（预留扩展）
 package pretrade
 
 import (

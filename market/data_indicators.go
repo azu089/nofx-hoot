@@ -116,7 +116,7 @@ func calculateATR(klines []Kline, period int) float64 {
 	return atr
 }
 
-// calculateATRSeries 计算 ATR 历史序列（v1.1 P2-1）
+// calculateATRSeries 计算 ATR 历史序列
 //
 // 使用 Wilder smoothing，序列长度 = len(klines) - period
 // 即从第 period+1 根 K 线开始有有效 ATR 值

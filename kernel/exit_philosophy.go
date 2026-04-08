@@ -1,18 +1,16 @@
-// kernel/exit_philosophy.go — v1.1 P2-3 退出哲学模板
+// kernel/exit_philosophy.go — 退出哲学模板
 //
 // 三种退出哲学:
-//   - mechanical: 原版风格，固定止损 + 30% peak 回撤 + 三条件平仓
+//   - mechanical: 固定止损 + 30% peak 回撤 + 三条件平仓（默认）
 //   - signal_driven: 禁止固定百分比平仓，仅信号驱动 + 趋势完好持有
-//   - hybrid: 硬止损底线 + 信号驱动触发（推荐默认）
+//   - hybrid: 硬止损底线 + 信号驱动触发
 //
 // 通过 PromptBuilder.WithPhilosophy(p) 设置，由 system prompt 装配
-//
-// 任务: P2-3 Exit Philosophy Templates (HOOT nofx 升级 2026-04)
 package kernel
 
 // ─── 中文模板 ────────────────────────────────────────────────────────────────
 
-// exitGuidanceMechanicalZH 原版风格（默认，零行为变更）
+// exitGuidanceMechanicalZH 机械风格（默认，零行为变更）
 func exitGuidanceMechanicalZH() string {
 	return `### 信号驱动平仓
 - 平仓需要同时满足以下三个条件：
@@ -23,7 +21,7 @@ func exitGuidanceMechanicalZH() string {
 - 如果只满足1-2个条件，考虑减仓而非全部平仓`
 }
 
-// exitGuidanceSignalDrivenZH 改版风格 — 禁止机械平仓
+// exitGuidanceSignalDrivenZH 严格信号驱动 — 禁止机械平仓
 func exitGuidanceSignalDrivenZH() string {
 	return `### 信号驱动平仓（严格）
 - **禁止**基于固定百分比回撤进行机械平仓
@@ -54,7 +52,6 @@ func exitGuidanceHybridZH() string {
 // ─── 英文模板 ────────────────────────────────────────────────────────────────
 
 func exitGuidanceMechanicalEN() string {
-	// 与原版 prompt_builder.go 文本逐字一致（零行为变更保证）
 	return `### Signal-Driven Exit
 - Exit requires ALL THREE conditions to be met simultaneously:
   1. EMA trend reversal (EMA20 crosses EMA50 in opposite direction)

@@ -124,38 +124,34 @@ type StrategyConfig struct {
 	ArenaConfig *ArenaStrategyConfig `json:"arena_config,omitempty"`
 
 	// =====================================================================
-	// v1.1 升级预留字段（HOOT nofx AI 智能交易升级 2026-04）
-	// 全部为指针类型；nil 表示未配置 = 沿用原版行为，旧策略零影响
+	// 扩展能力配置字段（全部为指针类型；nil 表示未配置 = 保持默认行为）
 	// =====================================================================
 
-	// AIBudgetPolicy 策略级 AI 调用预算控制（P1-1 StrategyAIBudget 用）
+	// AIBudgetPolicy 策略级 AI 调用预算控制
 	AIBudgetPolicy *AIBudgetPolicyConfig `json:"ai_budget_policy,omitempty"`
 
 	// ExitPhilosophy 退出哲学模板 "mechanical" | "signal_driven" | "hybrid"
-	// （P2-3 用，nil 或 "mechanical" = 沿用原版固定百分比平仓）
+	// nil 或 "mechanical" = 固定百分比平仓（默认）
 	ExitPhilosophy *string `json:"exit_philosophy,omitempty"`
 
-	// ATRAdaptive ATR 自适应止盈配置（P2-2 用，nil = 不启用）
+	// ATRAdaptive ATR 自适应止盈配置（nil = 不启用，使用固定 30% peak 阈值）
 	ATRAdaptive *ATRAdaptiveConfig `json:"atr_adaptive,omitempty"`
 
-	// IndicatorHistoryDepth 指标历史保留长度（P2-1 用，nil 或 0 = 不启用历史序列）
+	// IndicatorHistoryDepth 指标历史保留长度（nil 或 0 = 不启用）
 	IndicatorHistoryDepth *int `json:"indicator_history_depth,omitempty"`
 
-	// 注：P1-6 的 MinPositionUSD / MaxPositions 已删除
-	// 原版 RiskControl.MinPositionSize 和 RiskControl.MaxPositions 已支持配置化，无需重复字段
-
 	// PMAuthorityMode PM 授权模式 "off"|"shadow"|"partial"|"full"
-	// （P3-2 InstitutionalPipeline 用，nil 或 "off" = 沿用原版顺序模式）
+	// nil 或 "off" = 顺序模式（默认）
 	PMAuthorityMode *string `json:"pm_authority_mode,omitempty"`
 
-	// EnableSizedActions 启用细粒度 reduce/scale long/short action（v1.1 P2-4/P2-5）
-	// nil 或 false = system prompt 不告知 AI 这些 action，AI 不会发出 → 零行为变化
-	// true = system prompt 增加 sized action 说明 + JSON schema 字段说明
+	// EnableSizedActions 启用细粒度 reduce/scale long/short action
+	// nil 或 false = system prompt 不告知 AI 这些 action
+	// true = system prompt 增加 sized action 说明 + JSON schema 字段
 	EnableSizedActions *bool `json:"enable_sized_actions,omitempty"`
 }
 
-// AIBudgetPolicyConfig 策略级 AI 调用预算配置（v1.1 P1-1）
-// 用于按策略粒度控制 AI 调用频率，避免无效 token 消耗
+// AIBudgetPolicyConfig 策略级 AI 调用预算配置
+// 按策略粒度控制 AI 调用频率，避免无效 token 消耗
 type AIBudgetPolicyConfig struct {
 	// Enabled 总开关
 	Enabled bool `json:"enabled"`
@@ -167,7 +163,7 @@ type AIBudgetPolicyConfig struct {
 	SkipWhenIdle bool `json:"skip_when_idle,omitempty"`
 }
 
-// ATRAdaptiveConfig ATR 自适应止盈阈值配置（v1.1 P2-2）
+// ATRAdaptiveConfig ATR 自适应止盈阈值配置
 // 公式: threshold = clamp(Multiplier × ATR × leverage, MinThreshold, MaxThreshold)
 type ATRAdaptiveConfig struct {
 	// Enabled 总开关
