@@ -8,6 +8,7 @@ import (
 	"nofx/market"
 	"nofx/store"
 	"nofx/trader/ai_budget"
+	"nofx/trader/audit"
 	"nofx/trader/token_guard"
 	"strings"
 	"time"
@@ -58,9 +59,22 @@ func (at *AutoTrader) runCycle() error {
 	if err != nil {
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("Failed to build trading context: %v", err)
+		// [HOOT v1.1 P1-3] 审计：context 构建失败
+		audit.Snapshot(at.id, at.strategyID, "context_build_failed", map[string]any{
+			"cycle": at.callCount,
+			"error": err.Error(),
+		})
 		at.saveDecision(record)
 		return fmt.Errorf("failed to build trading context: %w", err)
 	}
+
+	// [HOOT v1.1 P1-3] 审计：context 构建完成
+	audit.Snapshot(at.id, at.strategyID, "context_built", map[string]any{
+		"cycle":      at.callCount,
+		"positions":  len(ctx.Positions),
+		"candidates": len(ctx.CandidateCoins),
+		"equity":     ctx.Account.TotalEquity,
+	})
 
 	// Save equity snapshot independently (decoupled from AI decision, used for drawing profit curve)
 	// NOTE: Must be called BEFORE candidate coins check to ensure equity is always recorded
@@ -218,6 +232,17 @@ func (at *AutoTrader) runCycle() error {
 	if at.strategyID != "" && at.config.StrategyConfig != nil && at.config.StrategyConfig.AIBudgetPolicy != nil && at.config.StrategyConfig.AIBudgetPolicy.Enabled {
 		ai_budget.Record(at.strategyID)
 	}
+	// [HOOT v1.1 P1-3] 审计：AI 调用完成
+	audit.Snapshot(at.id, at.strategyID, "ai_call_done", map[string]any{
+		"cycle":         at.callCount,
+		"duration_ms":   record.AIRequestDurationMs,
+		"decision_count": func() int {
+			if aiDecision != nil {
+				return len(aiDecision.Decisions)
+			}
+			return 0
+		}(),
+	})
 
 	// AI succeeded — reset failure counter and deactivate safe mode
 	if at.consecutiveAIFailures > 0 {
