@@ -147,6 +147,11 @@ type StrategyConfig struct {
 	// PMAuthorityMode PM 授权模式 "off"|"shadow"|"partial"|"full"
 	// （P3-2 InstitutionalPipeline 用，nil 或 "off" = 沿用原版顺序模式）
 	PMAuthorityMode *string `json:"pm_authority_mode,omitempty"`
+
+	// EnableSizedActions 启用细粒度 reduce/scale long/short action（v1.1 P2-4/P2-5）
+	// nil 或 false = system prompt 不告知 AI 这些 action，AI 不会发出 → 零行为变化
+	// true = system prompt 增加 sized action 说明 + JSON schema 字段说明
+	EnableSizedActions *bool `json:"enable_sized_actions,omitempty"`
 }
 
 // AIBudgetPolicyConfig 策略级 AI 调用预算配置（v1.1 P1-1）

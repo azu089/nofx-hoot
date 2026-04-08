@@ -151,7 +151,16 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("## Field Description\n\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	// v1.1 P2-5: 根据 EnableSizedActions 决定是否暴露 sized actions 给 AI
+	if e.config.EnableSizedActions != nil && *e.config.EnableSizedActions {
+		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | reduce_long | reduce_short | scale_long | scale_short | hold | wait\n")
+		sb.WriteString("- `partial_pct` (REQUIRED for reduce_*/scale_*): 0..1.0 ratio\n")
+		sb.WriteString("    - reduce_long/short: close `partial_pct` of current position (e.g. 0.5 = half close)\n")
+		sb.WriteString("    - scale_long/short:  add `partial_pct × current size` on top of existing position\n")
+		sb.WriteString("    - default 0.5 if unspecified\n")
+	} else {
+		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	}
 	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
