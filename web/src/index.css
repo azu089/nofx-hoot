@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
@@ -39,14 +39,14 @@ html {
 /* Bubble card — Nexora 玻璃气泡：雾蒙背景 + 渐变边框（光从左上角） */
 .bubble-card {
   position: relative;
-  background: rgba(8, 16, 12, 0.40);
+  background: rgba(180, 200, 220, 0.045);
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 1.25rem;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
 }
 /* 渐变边框：左上角 + 上方 + 左侧微亮，其它消融 */
+/* ::before — 沿气泡圆角边缘延伸的渐变亮线：左上角起点最亮，顺着边走一小段消融 */
 .bubble-card::before {
   content: '';
   position: absolute;
@@ -55,11 +55,12 @@ html {
   padding: 1px;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.22) 0%,
-    rgba(255, 255, 255, 0.12) 12%,
-    rgba(255, 255, 255, 0.06) 28%,
-    rgba(255, 255, 255, 0.02) 50%,
-    rgba(255, 255, 255, 0) 75%
+    rgba(255, 255, 255, 0.405) 0%,
+    rgba(255, 255, 255, 0.216) 4%,
+    rgba(255, 255, 255, 0.117) 12%,
+    rgba(255, 255, 255, 0.072) 35%,
+    rgba(255, 255, 255, 0.05) 70%,
+    rgba(255, 255, 255, 0) 100%
   );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
@@ -279,6 +280,7 @@ body {
   background-color: var(--background);
   background-image: radial-gradient(circle at 50% 0%, #151921 0%, #05070a 60%);
   background-attachment: fixed;
+  font-weight: 300; /* Nexora: 默认细体，font-medium / font-bold 仍生效作为强调 */
 }
 
 /* Premium Selection Styles */
@@ -418,10 +420,8 @@ body {
 
 /* Glass effect - Binance header style */
 .header-bar {
-  background: var(--header-bg);
-  border-bottom: 1px solid var(--glass-border);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: transparent;
+  border-bottom: none;
 }
 
 /* Sonner (toast) - Binance theme overrides */

@@ -17,8 +17,8 @@ export function DeepVoidBackground({ children, className = '', disableAnimation 
                         className="absolute inset-0 pointer-events-none z-0"
                         style={{
                             background: `
-                                radial-gradient(ellipse 70% 55% at -5% 50%, rgba(200, 220, 240, 0.05), transparent 55%),
-                                linear-gradient(180deg, #0C1320 0%, #070B12 100%)
+                                radial-gradient(ellipse 85% 70% at 105% 50%, rgba(200, 220, 240, 0.11), transparent 65%),
+                                linear-gradient(180deg, #0E141C 0%, #060A12 100%)
                             `,
                         }}
                     ></div>

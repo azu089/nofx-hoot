@@ -342,7 +342,13 @@ function App() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: '#0B0E11', color: '#EAECEF' }}
+      style={{
+        background: `
+          radial-gradient(ellipse 85% 70% at 105% 50%, rgba(200, 220, 240, 0.11), transparent 65%),
+          linear-gradient(180deg, #0E141C 0%, #060A12 100%)
+        `,
+        color: '#EAECEF',
+      }}
     >
       <HeaderBar
         isLoggedIn={!!user}
