@@ -617,7 +617,7 @@ func (s *Server) handleStrategyTestRun(c *gin.Context) {
 		QuantDataMap:     quantDataMap,
 		OIRankingData:    oiRankingData,
 		PriceRankingData: priceRankingData,
-		StrategyConfig:   &req.Config, // v1.1 审计修复 #8: 让管理后台测试页正确演示 ATR 自适应
+		StrategyConfig:   &req.Config, // 让管理后台测试页正确读取 ATR 自适应等动态阈值配置
 	}
 
 	// Build System Prompt
