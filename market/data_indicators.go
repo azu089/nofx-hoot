@@ -82,7 +82,7 @@ func calculateRSI(klines []Kline, period int) float64 {
 	return rsi
 }
 
-// calculateATR calculates ATR
+// calculateATR calculates ATR (latest single value, Wilder smoothing)
 func calculateATR(klines []Kline, period int) float64 {
 	if len(klines) <= period {
 		return 0
@@ -114,6 +114,53 @@ func calculateATR(klines []Kline, period int) float64 {
 	}
 
 	return atr
+}
+
+// calculateATRSeries 计算 ATR 历史序列（v1.1 P2-1）
+//
+// 使用 Wilder smoothing，序列长度 = len(klines) - period
+// 即从第 period+1 根 K 线开始有有效 ATR 值
+//
+// 序列对齐方式: result[i] 对应 klines[period+i] 的 ATR
+// 最后一个值 == calculateATR(klines, period)
+//
+// 返回 nil 当 K 线不足
+func calculateATRSeries(klines []Kline, period int) []float64 {
+	if len(klines) <= period {
+		return nil
+	}
+
+	// 计算 TR 序列
+	trs := make([]float64, len(klines))
+	for i := 1; i < len(klines); i++ {
+		high := klines[i].High
+		low := klines[i].Low
+		prevClose := klines[i-1].Close
+
+		tr1 := high - low
+		tr2 := math.Abs(high - prevClose)
+		tr3 := math.Abs(low - prevClose)
+
+		trs[i] = math.Max(tr1, math.Max(tr2, tr3))
+	}
+
+	// 初始 ATR (前 period 根 TR 的简单均值)
+	sum := 0.0
+	for i := 1; i <= period; i++ {
+		sum += trs[i]
+	}
+	atr := sum / float64(period)
+
+	// 序列：从 period+1 开始
+	result := make([]float64, 0, len(klines)-period)
+	result = append(result, atr) // klines[period] 对应的 ATR
+
+	for i := period + 1; i < len(klines); i++ {
+		atr = (atr*float64(period-1) + trs[i]) / float64(period)
+		result = append(result, atr)
+	}
+
+	return result
 }
 
 // calculateBOLL calculates Bollinger Bands (upper, middle, lower)
