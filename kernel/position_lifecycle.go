@@ -107,19 +107,33 @@ func lifecycleKey(traderID, symbol, side string) string {
 
 // Register adds a position to lifecycle tracking if not already present.
 // Safe to call on every tick — subsequent calls for the same key are no-ops.
+// 使用当前时间作为 RegisteredAt（进程启动后首次见到的时间）。
 func (m *PositionLifecycleManager) Register(traderID, symbol, side, signalTimeframe string) {
+	m.RegisterWithTime(traderID, symbol, side, signalTimeframe, time.Now())
+}
+
+// RegisterWithTime 按指定时间注册 lifecycle。
+//
+// 用于进程启动/重启时从 DB trader_positions.entry_time 恢复真实开仓时间，
+// 避免 EXIT_G3 min_hold 检查被重启瞬间重置。
+//
+// registeredAt 零值时退化为 time.Now()。
+// 重复 Register 同 key 是 no-op，以第一次 Register 的时间为准。
+func (m *PositionLifecycleManager) RegisterWithTime(traderID, symbol, side, signalTimeframe string, registeredAt time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := lifecycleKey(traderID, symbol, side)
 	if _, exists := m.positions[key]; !exists {
-		now := time.Now()
+		if registeredAt.IsZero() {
+			registeredAt = time.Now()
+		}
 		m.positions[key] = &PositionLifecycle{
 			TraderID:        strings.TrimSpace(traderID),
 			Symbol:          symbol,
 			Side:            normalizeLifecycleSide(side),
 			State:           StateNew,
-			RegisteredAt:    now,
-			LastTransition:  now,
+			RegisteredAt:    registeredAt,
+			LastTransition:  time.Now(), // 状态变更时间总是当下
 			SignalTimeframe: signalTimeframe,
 		}
 	}
@@ -151,6 +165,10 @@ func (m *PositionLifecycleManager) HasMinimumBarsElapsed(traderID, symbol, side 
 
 // SyncPositions reconciles tracked positions against the live position list.
 // Registers new positions and unregisters stale ones for the given trader.
+//
+// 对于新注册的 lifecycle，优先使用 PositionInfo.UpdateTime（来自 DB entry_time
+// 或交易所 createdTime）作为 RegisteredAt，使 EXIT_G3 的 hold 时间计算跨越
+// 进程重启仍然准确。UpdateTime 为 0 时退化为 time.Now()。
 func (m *PositionLifecycleManager) SyncPositions(traderID string, livePositions []PositionInfo, signalTimeframe string) {
 	live := make(map[string]bool, len(livePositions))
 	for _, p := range livePositions {
@@ -160,7 +178,12 @@ func (m *PositionLifecycleManager) SyncPositions(traderID string, livePositions 
 		}
 		key := lifecycleKey(traderID, p.Symbol, side)
 		live[key] = true
-		m.Register(traderID, p.Symbol, side, signalTimeframe)
+
+		var registeredAt time.Time
+		if p.UpdateTime > 0 {
+			registeredAt = time.UnixMilli(p.UpdateTime)
+		}
+		m.RegisterWithTime(traderID, p.Symbol, side, signalTimeframe, registeredAt)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
