@@ -47,12 +47,6 @@ func TestStrategyConfigBackwardsCompat(t *testing.T) {
 	if cfg.IndicatorHistoryDepth != nil {
 		t.Errorf("IndicatorHistoryDepth 应为 nil, 实际 %d", *cfg.IndicatorHistoryDepth)
 	}
-	if cfg.MinPositionUSD != nil {
-		t.Errorf("MinPositionUSD 应为 nil, 实际 %f", *cfg.MinPositionUSD)
-	}
-	if cfg.MaxPositions != nil {
-		t.Errorf("MaxPositions 应为 nil, 实际 %d", *cfg.MaxPositions)
-	}
 	if cfg.PMAuthorityMode != nil {
 		t.Errorf("PMAuthorityMode 应为 nil, 实际 %v", *cfg.PMAuthorityMode)
 	}
@@ -62,8 +56,6 @@ func TestStrategyConfigBackwardsCompat(t *testing.T) {
 func TestStrategyConfigV11FieldsRoundTrip(t *testing.T) {
 	exitMode := "hybrid"
 	histDepth := 50
-	minPos := 15.5
-	maxPos := 5
 	pmMode := "shadow"
 
 	original := StrategyConfig{
@@ -82,8 +74,6 @@ func TestStrategyConfigV11FieldsRoundTrip(t *testing.T) {
 			MaxThreshold: 0.05,
 		},
 		IndicatorHistoryDepth: &histDepth,
-		MinPositionUSD:        &minPos,
-		MaxPositions:          &maxPos,
 		PMAuthorityMode:       &pmMode,
 	}
 
@@ -111,12 +101,6 @@ func TestStrategyConfigV11FieldsRoundTrip(t *testing.T) {
 	}
 	if decoded.IndicatorHistoryDepth == nil || *decoded.IndicatorHistoryDepth != 50 {
 		t.Error("IndicatorHistoryDepth 未正确往返")
-	}
-	if decoded.MinPositionUSD == nil || *decoded.MinPositionUSD != 15.5 {
-		t.Error("MinPositionUSD 未正确往返")
-	}
-	if decoded.MaxPositions == nil || *decoded.MaxPositions != 5 {
-		t.Error("MaxPositions 未正确往返")
 	}
 	if decoded.PMAuthorityMode == nil || *decoded.PMAuthorityMode != "shadow" {
 		t.Error("PMAuthorityMode 未正确往返")

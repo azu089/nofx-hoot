@@ -141,11 +141,8 @@ type StrategyConfig struct {
 	// IndicatorHistoryDepth 指标历史保留长度（P2-1 用，nil 或 0 = 不启用历史序列）
 	IndicatorHistoryDepth *int `json:"indicator_history_depth,omitempty"`
 
-	// MinPositionUSD 最小仓位 USD（P1-6 用，nil = 沿用原版默认 12）
-	MinPositionUSD *float64 `json:"min_position_usd,omitempty"`
-
-	// MaxPositions 最大持仓数（P1-6 用，nil = 沿用原版默认 3）
-	MaxPositions *int `json:"max_positions,omitempty"`
+	// 注：P1-6 的 MinPositionUSD / MaxPositions 已删除
+	// 原版 RiskControl.MinPositionSize 和 RiskControl.MaxPositions 已支持配置化，无需重复字段
 
 	// PMAuthorityMode PM 授权模式 "off"|"shadow"|"partial"|"full"
 	// （P3-2 InstitutionalPipeline 用，nil 或 "off" = 沿用原版顺序模式）

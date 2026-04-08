@@ -222,17 +222,40 @@ func (at *AutoTrader) enforcePositionValueRatio(positionSizeUSD float64, equity 
 	return positionSizeUSD, false
 }
 
+// 默认值常量 (v1.1 P1-6: 提取常量 + 单点维护)
+const (
+	defaultMinPositionUSD = 12.0
+	defaultMaxPositions   = 3
+)
+
+// resolveMinPositionUSD 单点解析最小仓位 USD（含 nil 安全 + 默认兜底）
+// v1.1 P1-6: 集中配置解析逻辑，便于未来扩展（如权益增长动态放大）
+func (at *AutoTrader) resolveMinPositionUSD() float64 {
+	if at.config.StrategyConfig == nil {
+		return defaultMinPositionUSD
+	}
+	v := at.config.StrategyConfig.RiskControl.MinPositionSize
+	if v <= 0 {
+		return defaultMinPositionUSD
+	}
+	return v
+}
+
+// resolveMaxPositions 单点解析最大持仓数
+func (at *AutoTrader) resolveMaxPositions() int {
+	if at.config.StrategyConfig == nil {
+		return defaultMaxPositions
+	}
+	v := at.config.StrategyConfig.RiskControl.MaxPositions
+	if v <= 0 {
+		return defaultMaxPositions
+	}
+	return v
+}
+
 // enforceMinPositionSize checks minimum position size (CODE ENFORCED)
 func (at *AutoTrader) enforceMinPositionSize(positionSizeUSD float64) error {
-	if at.config.StrategyConfig == nil {
-		return nil
-	}
-
-	minSize := at.config.StrategyConfig.RiskControl.MinPositionSize
-	if minSize <= 0 {
-		minSize = 12 // Default: 12 USDT
-	}
-
+	minSize := at.resolveMinPositionUSD()
 	if positionSizeUSD < minSize {
 		return fmt.Errorf("❌ [RISK CONTROL] Position %.2f USDT below minimum (%.2f USDT)", positionSizeUSD, minSize)
 	}
@@ -241,15 +264,7 @@ func (at *AutoTrader) enforceMinPositionSize(positionSizeUSD float64) error {
 
 // enforceMaxPositions checks maximum positions count (CODE ENFORCED)
 func (at *AutoTrader) enforceMaxPositions(currentPositionCount int) error {
-	if at.config.StrategyConfig == nil {
-		return nil
-	}
-
-	maxPositions := at.config.StrategyConfig.RiskControl.MaxPositions
-	if maxPositions <= 0 {
-		maxPositions = 3 // Default: 3 positions
-	}
-
+	maxPositions := at.resolveMaxPositions()
 	if currentPositionCount >= maxPositions {
 		return fmt.Errorf("❌ [RISK CONTROL] Already at max positions (%d/%d)", currentPositionCount, maxPositions)
 	}
