@@ -92,11 +92,61 @@ nofx 是 HOOT 自家的 AI 自动交易产品（产品 B）的实现本体。改
 
 ## 守住的边界
 
-- **safeMode 连续失败保护**：原版独有，比改版 fallback 更安全
+- **safeMode 连续失败保护**：原版独有，比 fallback 更安全
 - **Arena 多 AI 辩论**：HOOT 核心竞争力
 - **中央引擎信号分发**：HOOT v6.0 架构基础
-- **模块化拆分**：拒绝改版单文件 3160 行的反面教材
+- **模块化拆分**：坚持多包拆分，避免单文件巨型化
 
 ## 进度追踪
 
 详见 git log + DEV_Log.md（按时间倒序）
+
+---
+
+## v1.2 候选任务（待调研后决策）
+
+### V1.2-1 PM Authority 默认模式升级 ⭐
+
+**背景**：2026-04-08 真实策略审计发现 Gatekeeper `EXIT_G2_HTF_ALIGNED` 过度保护导致亏损：
+- ETHUSDT LONG 案例：AI 连续 5 次 close_long 被 HTF EMA 顺势规则拦截
+- 最终交易所 sync 被动关闭，亏损 -35 USDT
+
+**重新对照改版的结论**：
+改版并没有修改 EXIT_G2 规则本身，而是**架构级解决**：
+- `kernel/engine.go` Layer 1c: PositionManager 是已持仓的**唯一决策权威**
+- AI 对 PM 管理 symbol 的 close 提案**全部丢弃** (`if pmSymbols[c.Symbol] && !c.IsOpenAction() { continue }`)
+- 只有 PM 输出的 close/reduce/scale 会进入后续流程
+- **PM 生成的候选不走 GateExitAction 的 EXIT_G1/G2/G3**（PM 是更高权威）
+- 等价于 HOOT P3-2 的 `partial`/`full` 模式
+
+**HOOT 当前状态**：
+- v1.1 的 P3-2 InstitutionalPipeline 已搭好 4 档授权模式
+- 但**默认是 `off`**（顺序追加模式），与原版行为一致
+- AI 的 close 仍走 Gatekeeper，无法绕过 EXIT_G2
+
+**V1.2-1 任务内容**：
+
+1. **调研 HOOT `runPositionManagement` 的决策质量**
+   - 读代码: `trader/auto_trader_hoot.go`
+   - 分析真实生产日志里 PM 曾经产出的决策 vs AI 决策的差异
+   - 评估 PM 是否足够智能以承担"已持仓 symbol 的唯一权威"
+
+2. **根据调研结论二选一**:
+   - 如果 PM 质量达标 → 把 `PMAuthorityMode` 默认从 `off` 改为 `partial`，灰度验证后升级 `full`
+   - 如果 PM 质量不够 → 先补强 PM（增加规则 / 接 Arena 二审 / 改进信号权重），再升级授权
+
+3. **不改 Gatekeeper 规则** — Layer 1 修复（sync 豁免 + G1 价格同向）已在 v1.1 完成并足够
+
+**风险**：
+- PM 授权升级后，原本被 EXIT_G2 "保护住"的盈利案例可能丢失
+- 需要 shadow mode 至少 1 周 + 真实 PnL 对比才能验证
+- 存在"修复一个亏损案例引入更多亏损"的可能
+
+**优先级**：🟠 中 — 证据不足，需要更多真实样本
+**前置**：至少 10 个独立的 EXIT_G2 误拦案例（目前只有 1 个 ETH 案例）
+
+### V1.2-2 其他候选
+
+- AI prompt 增强：让 AI 感知 HTF EMA 状态，避免 15m 决策 vs 1h Gatekeeper 判定的信息窗口不对称
+- Strategy config min_hold_seconds 调优：当前 1020s 是否合理？
+- 收集 EXIT_G 拦截后的事后 PnL 对比数据，建立统计证据
