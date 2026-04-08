@@ -12,19 +12,16 @@ export function DeepVoidBackground({ children, className = '', disableAnimation 
             {/* Background layers: use a much lighter static stack when animations are disabled */}
             {disableAnimation ? (
                 <>
-                    {/* Nexora 冷蓝灰基底 + 微光晕 */}
+                    {/* Nexora 青蓝黑基底 + 左侧中间白光晕 */}
                     <div
                         className="absolute inset-0 pointer-events-none z-0"
                         style={{
                             background: `
-                                radial-gradient(ellipse 60% 50% at 95% 5%, rgba(43, 232, 158, 0.10), transparent 55%),
-                                radial-gradient(ellipse 70% 55% at 0% 0%, rgba(96, 165, 250, 0.04), transparent 50%),
-                                radial-gradient(ellipse 65% 50% at 5% 100%, rgba(96, 165, 250, 0.035), transparent 55%),
-                                radial-gradient(ellipse 100% 100% at 50% 30%, #101820 0%, #060A0E 80%)
+                                radial-gradient(ellipse 70% 55% at -5% 50%, rgba(200, 220, 240, 0.05), transparent 55%),
+                                linear-gradient(180deg, #0C1320 0%, #070B12 100%)
                             `,
                         }}
                     ></div>
-                    <div className="absolute inset-0 pointer-events-none z-0 opacity-[0.025] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:36px_36px]"></div>
                 </>
             ) : (
                 <>
