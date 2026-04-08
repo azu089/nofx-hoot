@@ -82,6 +82,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// [HOOT] Inject enhanced data into context
 	ctx.TraderID = at.id
+	ctx.StrategyConfig = at.config.StrategyConfig // v1.1 P2-2: 让 formatter 读取动态阈值配置
 	at.injectMarketRegime(ctx)       // B1: Market regime detection per symbol
 	at.injectEventSignals(ctx)       // B3: Event signal injection
 	at.syncPositionLifecycles(ctx)   // Lifecycle: register/advance positions

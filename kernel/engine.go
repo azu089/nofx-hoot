@@ -114,6 +114,8 @@ type Context struct {
 	EventRiskMode      string                             `json:"-"` // "normal" | "threshold_raised" | "blocked_open"
 	TraderID           string                             `json:"-"` // Trader identifier for lifecycle tracking
 	RecentRiskEvents   []RiskEventInfo                    `json:"-"` // Real-time risk guard events from last cycle
+	// v1.1 P2-2: 策略配置引用，供 formatter 读取 ATR 自适应等动态阈值（nil = 沿用原版固定阈值）
+	StrategyConfig     *store.StrategyConfig              `json:"-"`
 }
 
 // Decision AI trading decision
