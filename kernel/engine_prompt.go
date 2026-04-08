@@ -117,6 +117,21 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("3. Write chain of thought first, then output structured JSON\n\n")
 	}
 
+	// 6.5 [HOOT v1.1 P2-3] Exit philosophy template
+	// 仅在 cfg.ExitPhilosophy 非 nil 且非 "mechanical" 时追加，确保默认零行为变更
+	if e.config.ExitPhilosophy != nil {
+		philosophy := *e.config.ExitPhilosophy
+		if philosophy != "" && philosophy != "mechanical" {
+			sb.WriteString("# 🚪 Exit Philosophy\n\n")
+			if e.GetLanguage() == LangChinese {
+				sb.WriteString(getExitGuidanceZH(philosophy))
+			} else {
+				sb.WriteString(getExitGuidanceEN(philosophy))
+			}
+			sb.WriteString("\n\n")
+		}
+	}
+
 	// 7. Output format
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	sb.WriteString("**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**\n\n")
