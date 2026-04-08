@@ -426,8 +426,13 @@ func (at *AutoTrader) buildArenaGatekeeper() func(symbol, action string, confide
 		}
 
 		// 2. Open-position frequency gate (only for open actions)
+		// v1.1 P1-4: 使用 sided 版本，long/short cooldown 隔离
 		if isOpenAction(action) && at.openGate != nil {
-			allowed, reason := at.openGate.AllowOpen(at.id, symbol, rc)
+			side := "long"
+			if action == "open_short" {
+				side = "short"
+			}
+			allowed, reason := at.openGate.AllowOpenSided(at.id, symbol, side, rc)
 			if !allowed {
 				return false, "arena gatekeeper: OpenGate blocked — " + reason
 			}

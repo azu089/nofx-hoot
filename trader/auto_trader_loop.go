@@ -367,12 +367,17 @@ func (at *AutoTrader) runCycle() error {
 
 			// [HOOT] Track close events for OpenGate + Lifecycle
 			if isCloseAction(d.Action) {
-				if at.openGate != nil {
-					at.openGate.MarkClose(at.id, d.Symbol)
-				}
 				side := "LONG"
 				if d.Action == "close_short" {
 					side = "SHORT"
+				}
+				if at.openGate != nil {
+					// v1.1 P1-4: 用 sided 版本，long/short cooldown 隔离
+					sidedKey := "long"
+					if side == "SHORT" {
+						sidedKey = "short"
+					}
+					at.openGate.MarkCloseSided(at.id, d.Symbol, sidedKey)
 				}
 				kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
 			}
