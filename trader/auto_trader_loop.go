@@ -8,6 +8,7 @@ import (
 	"nofx/market"
 	"nofx/store"
 	"nofx/trader/ai_budget"
+	"nofx/trader/token_guard"
 	"strings"
 	"time"
 )
@@ -113,6 +114,24 @@ func (at *AutoTrader) runCycle() error {
 			record.Success = true
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("AI Budget: skipped AI call (%s)", reason))
 			logger.Infof("💰 [%s] AI Budget skip: %s", at.name, reason)
+			at.saveDecision(record)
+			return nil
+		}
+	}
+
+	// [HOOT v1.1 P1-2] Token Budget Guard: 运行时 prompt 预算评估
+	// 评估当前策略配置在目标 provider 下的 token 占用，超硬阈值阻止本轮调用
+	// 不阻塞策略运行：仅跳过本轮 AI 调用，下轮重新评估（用户应缩减币种/周期/K线数）
+	if at.config.StrategyConfig != nil {
+		verdict := token_guard.Evaluate(at.config.StrategyConfig, at.aiModel)
+		switch verdict.Level {
+		case token_guard.LevelWarning:
+			logger.Warnf("⚠️ [%s] Token budget warning: %s", at.name, verdict.Reason)
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Token guard warn: %s", verdict.Reason))
+		case token_guard.LevelDanger:
+			logger.Errorf("🚨 [%s] Token budget DANGER (skipping AI this cycle): %s", at.name, verdict.Reason)
+			record.Success = true
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Token guard BLOCK: %s", verdict.Reason))
 			at.saveDecision(record)
 			return nil
 		}
