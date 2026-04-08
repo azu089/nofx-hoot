@@ -7,6 +7,7 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/store"
+	"nofx/trader/ai_budget"
 	"strings"
 	"time"
 )
@@ -96,12 +97,25 @@ func (at *AutoTrader) runCycle() error {
 	logger.Infof("📊 Account equity: %.2f USDT | Available: %.2f USDT | Positions: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
-	// [HOOT] Cost guard: skip AI call when no positions and in cooldown
+	// [HOOT] Cost guard: skip AI call when no positions and in cooldown (env-driven, trader-level legacy guard)
 	if at.costGuard != nil && at.costGuard.ShouldSkipAI(len(ctx.Positions)) {
 		record.Success = true
 		record.ExecutionLog = append(record.ExecutionLog, "Cost guard: skipped AI call (no positions, in cooldown)")
 		at.saveDecision(record)
 		return nil
+	}
+
+	// [HOOT v1.1 P1-1] Strategy AI Budget: per-strategy cooldown / daily limit
+	// Configured via StrategyConfig.AIBudgetPolicy. Skipped if policy nil or disabled.
+	// Positions held → always allowed (must manage existing positions).
+	if at.config.StrategyConfig != nil {
+		if skip, reason := ai_budget.Check(at.strategyID, at.config.StrategyConfig.AIBudgetPolicy, len(ctx.Positions)); skip {
+			record.Success = true
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("AI Budget: skipped AI call (%s)", reason))
+			logger.Infof("💰 [%s] AI Budget skip: %s", at.name, reason)
+			at.saveDecision(record)
+			return nil
+		}
 	}
 
 	// 5. Use strategy engine to call AI for decision
@@ -180,6 +194,10 @@ func (at *AutoTrader) runCycle() error {
 	// [HOOT] Record successful AI call for cost guard cooldown
 	if at.costGuard != nil {
 		at.costGuard.RecordAICall()
+	}
+	// [HOOT v1.1 P1-1] Record successful AI call for strategy budget
+	if at.strategyID != "" && at.config.StrategyConfig != nil && at.config.StrategyConfig.AIBudgetPolicy != nil && at.config.StrategyConfig.AIBudgetPolicy.Enabled {
+		ai_budget.Record(at.strategyID)
 	}
 
 	// AI succeeded — reset failure counter and deactivate safe mode
