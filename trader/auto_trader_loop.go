@@ -302,6 +302,10 @@ func (at *AutoTrader) runCycle() error {
 		aiDecision.Decisions = at.ApplyInstitutionalPipeline(aiDecision.Decisions, pmDecisions)
 	}
 
+	// [HOOT v1.1 P4-1] CandidateRanker: 当 open 候选超过可用 slot 时按质量排序裁剪
+	// 默认 disabled via feature_flag 'candidate_ranker'，原样返回零行为变化
+	aiDecision.Decisions = at.applyCandidateRanker(aiDecision.Decisions, len(ctx.Positions))
+
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
 	sortedDecisions := sortDecisionsByPriority(aiDecision.Decisions)
 
