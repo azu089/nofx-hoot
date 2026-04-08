@@ -870,7 +870,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const canCreateTrader = configuredModels.length > 0 && configuredExchanges.length > 0
 
   return (
-    <DeepVoidBackground className="py-4 md:py-8 nexora-page" disableAnimation>
+    <DeepVoidBackground className="py-4 md:py-8" disableAnimation>
       <div className="w-full max-w-full px-3 md:px-8 space-y-5 md:space-y-6 animate-fade-in overflow-x-hidden">
         {/* 顶部 segmented control —— 3 创建按钮连体 */}
         <div className="bubble-card grid grid-cols-3 p-1 !rounded-full">

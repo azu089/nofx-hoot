@@ -12,8 +12,19 @@ export function DeepVoidBackground({ children, className = '', disableAnimation 
             {/* Background layers: use a much lighter static stack when animations are disabled */}
             {disableAnimation ? (
                 <>
-                    <div className="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.08),transparent_38%),linear-gradient(180deg,rgba(12,14,20,0.98),rgba(8,10,15,1))]"></div>
-                    <div className="absolute inset-0 pointer-events-none z-0 opacity-[0.035] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:36px_36px]"></div>
+                    {/* Nexora 冷蓝灰基底 + 微光晕 */}
+                    <div
+                        className="absolute inset-0 pointer-events-none z-0"
+                        style={{
+                            background: `
+                                radial-gradient(ellipse 60% 50% at 95% 5%, rgba(43, 232, 158, 0.10), transparent 55%),
+                                radial-gradient(ellipse 70% 55% at 0% 0%, rgba(96, 165, 250, 0.04), transparent 50%),
+                                radial-gradient(ellipse 65% 50% at 5% 100%, rgba(96, 165, 250, 0.035), transparent 55%),
+                                radial-gradient(ellipse 100% 100% at 50% 30%, #101820 0%, #060A0E 80%)
+                            `,
+                        }}
+                    ></div>
+                    <div className="absolute inset-0 pointer-events-none z-0 opacity-[0.025] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:36px_36px]"></div>
                 </>
             ) : (
                 <>
