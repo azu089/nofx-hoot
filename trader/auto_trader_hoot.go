@@ -323,6 +323,16 @@ func (at *AutoTrader) gateFilterDecisions(decisions []kernel.Decision, ctx *kern
 	gateCfg.TraderID = at.id
 	gateCfg.MinHoldSeconds = at.strategyEngine.GetConfig().MinHoldSeconds
 
+	// PositionMap: lifecycle 丢失时的 held 时间 fallback 来源（重启场景）
+	if len(ctx.Positions) > 0 {
+		posMap := make(map[string]*kernel.PositionInfo, len(ctx.Positions))
+		for i := range ctx.Positions {
+			p := &ctx.Positions[i]
+			posMap[p.Symbol] = p
+		}
+		gateCfg.PositionMap = posMap
+	}
+
 	primaryTF := "1h"
 	if at.strategyEngine != nil {
 		cfg := at.strategyEngine.GetConfig()

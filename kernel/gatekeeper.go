@@ -68,6 +68,10 @@ type GatekeeperConfig struct {
 	TraderID        string
 	MinHoldSeconds  int
 	SignalTimeframe string
+	// PositionMap 当前交易所持仓快照，用于 lifecycle 丢失时的 fallback
+	// 进程重启后 GlobalLifecycleManager 内存状态丢失，EXIT_G3 会基于重启时间
+	// 错误计算 held 时间；PositionMap[symbol].UpdateTime 提供权威的开仓/最近更新时间戳
+	PositionMap map[string]*PositionInfo
 }
 
 // DefaultGatekeeperConfig returns sensible defaults.
@@ -270,20 +274,44 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 	}
 
 	// EXIT_G3 — Minimum hold time not elapsed
+	//
+	// held 时间来源优先级:
+	//  1. GlobalLifecycleManager (lifecycle 内存): 进程内生命周期跟踪
+	//  2. PositionMap.UpdateTime (交易所快照): lifecycle 丢失时的 fallback
+	//     防止进程重启后 lifecycle 重新注册导致 min_hold 被错误重置
+	//  3. 两者都没有 → 不拦截（无法判断，保守放行）
 	if cfg.MinHoldSeconds > 0 && cfg.TraderID != "" {
+		var (
+			holdDuration time.Duration
+			tracked      bool
+			trackingRef  string
+		)
+
 		lc := GlobalLifecycleManager().Get(cfg.TraderID, sym, exitSideFromAction(c.Action))
 		if lc != nil {
-			holdDuration := time.Since(lc.RegisteredAt)
+			holdDuration = time.Since(lc.RegisteredAt)
+			tracked = true
+			trackingRef = "lifecycle"
+		} else if cfg.PositionMap != nil {
+			if pos, ok := cfg.PositionMap[sym]; ok && pos != nil && pos.UpdateTime > 0 {
+				holdDuration = time.Since(time.UnixMilli(pos.UpdateTime))
+				tracked = true
+				trackingRef = "position_map"
+			}
+		}
+
+		if tracked {
 			minHold := time.Duration(cfg.MinHoldSeconds) * time.Second
 			if holdDuration < minHold {
 				remaining := minHold - holdDuration
 				return GatekeeperResult{
 					Allowed:      false,
-					RejectReason: fmt.Sprintf("EXIT_G3: min hold %ds not elapsed (held %ds, remaining %ds)", cfg.MinHoldSeconds, int(holdDuration.Seconds()), int(remaining.Seconds())),
+					RejectReason: fmt.Sprintf("EXIT_G3: min hold %ds not elapsed (held %ds, remaining %ds, via %s)", cfg.MinHoldSeconds, int(holdDuration.Seconds()), int(remaining.Seconds()), trackingRef),
 					RejectCode:   "EXIT_G3_MIN_HOLD",
 					RejectFeatures: map[string]interface{}{
 						"min_hold_seconds": cfg.MinHoldSeconds,
 						"held_seconds":     int(holdDuration.Seconds()),
+						"tracking_ref":     trackingRef,
 					},
 				}
 			}

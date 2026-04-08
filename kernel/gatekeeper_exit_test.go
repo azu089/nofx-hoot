@@ -3,6 +3,7 @@ package kernel
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"nofx/feature_flag"
 	"nofx/market"
@@ -23,6 +24,91 @@ func baseCfgWithTrader(traderID string) GatekeeperConfig {
 		TraderID:        traderID,
 		MinHoldSeconds:  0, // 禁用 G3 避免干扰其他测试
 		SignalTimeframe: "15m",
+	}
+}
+
+// TestGateExitAction_G3_PositionMapFallback 验证 lifecycle 丢失时
+// 使用 PositionMap.UpdateTime 作为 held 时间 fallback（重启恢复场景）
+func TestGateExitAction_G3_PositionMapFallback(t *testing.T) {
+	feature_flag.Reset()
+
+	cfg := baseCfgWithTrader("trader_restarted")
+	cfg.MinHoldSeconds = 600 // 10 分钟
+
+	// 模拟重启: lifecycle 里无数据，但交易所有持仓
+	// 持仓 UpdateTime 在 20 分钟前（已超过 min_hold）
+	now := time.Now()
+	cfg.PositionMap = map[string]*PositionInfo{
+		"BTCUSDT": {
+			Symbol:     "BTCUSDT",
+			Side:       "long",
+			UpdateTime: now.Add(-20 * time.Minute).UnixMilli(),
+		},
+	}
+
+	c := newCloseLongCandidate("BTCUSDT", "ai")
+	result := GateExitAction(c, nil, nil, cfg)
+	if !result.Allowed {
+		t.Errorf("PositionMap 显示已持仓 20 分钟 > 10 分钟 min_hold，应放行 close_long, 实际拒绝: %s", result.RejectReason)
+	}
+}
+
+// TestGateExitAction_G3_PositionMapBlocksWhenTooNew 验证 PositionMap fallback
+// 也会正确拦截持仓时间不足的情况
+func TestGateExitAction_G3_PositionMapBlocksWhenTooNew(t *testing.T) {
+	feature_flag.Reset()
+
+	cfg := baseCfgWithTrader("trader_fresh")
+	cfg.MinHoldSeconds = 600
+
+	// 持仓刚 2 分钟（小于 10 分钟 min_hold）
+	now := time.Now()
+	cfg.PositionMap = map[string]*PositionInfo{
+		"BTCUSDT": {
+			Symbol:     "BTCUSDT",
+			Side:       "long",
+			UpdateTime: now.Add(-2 * time.Minute).UnixMilli(),
+		},
+	}
+
+	c := newCloseLongCandidate("BTCUSDT", "ai")
+	result := GateExitAction(c, nil, nil, cfg)
+	if result.Allowed {
+		t.Error("PositionMap 显示只持仓 2 分钟，应拦截 close_long")
+	}
+	if result.RejectFeatures["tracking_ref"] != "position_map" {
+		t.Errorf("应标记 tracking_ref=position_map, 实际 %v", result.RejectFeatures["tracking_ref"])
+	}
+}
+
+// TestGateExitAction_G3_LifecycleTakesPriority 验证 lifecycle 优先级高于 PositionMap
+func TestGateExitAction_G3_LifecycleTakesPriority(t *testing.T) {
+	feature_flag.Reset()
+
+	cfg := baseCfgWithTrader("trader_both")
+	cfg.MinHoldSeconds = 600
+
+	// lifecycle: 刚注册（1 秒前）
+	GlobalLifecycleManager().Register("trader_both", "BTCUSDT", "LONG", "15m")
+	defer GlobalLifecycleManager().Unregister("trader_both", "BTCUSDT", "LONG")
+
+	// PositionMap: 声称持仓 20 分钟前
+	now := time.Now()
+	cfg.PositionMap = map[string]*PositionInfo{
+		"BTCUSDT": {
+			Symbol:     "BTCUSDT",
+			Side:       "long",
+			UpdateTime: now.Add(-20 * time.Minute).UnixMilli(),
+		},
+	}
+
+	c := newCloseLongCandidate("BTCUSDT", "ai")
+	result := GateExitAction(c, nil, nil, cfg)
+	if result.Allowed {
+		t.Error("lifecycle 优先（显示刚 1 秒），应拦截，即使 PositionMap 显示 20 分钟")
+	}
+	if result.RejectFeatures["tracking_ref"] != "lifecycle" {
+		t.Errorf("应标记 tracking_ref=lifecycle, 实际 %v", result.RejectFeatures["tracking_ref"])
 	}
 }
 
