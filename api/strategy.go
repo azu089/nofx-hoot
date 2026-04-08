@@ -473,12 +473,12 @@ func (s *Server) handlePreviewPrompt(c *gin.Context) {
 			"system_prompt":  systemPrompt,
 			"prompt_variant": req.PromptVariant,
 			"config_summary": gin.H{
-				"strategy_type":    "arena",
-				"symbols":          arenaCfg.Symbols,
-				"analysts":         len(arenaCfg.SelectedAnalysts),
-				"debate_rounds":    arenaCfg.MaxDebateRounds,
-				"risk_rounds":      arenaCfg.MaxRiskRounds,
-				"risk_preference":  arenaCfg.RiskPreference,
+				"strategy_type":   "arena",
+				"symbols":         arenaCfg.Symbols,
+				"analysts":        len(arenaCfg.SelectedAnalysts),
+				"debate_rounds":   arenaCfg.MaxDebateRounds,
+				"risk_rounds":     arenaCfg.MaxRiskRounds,
+				"risk_preference": arenaCfg.RiskPreference,
 			},
 		})
 		return
@@ -610,13 +610,14 @@ func (s *Server) handleStrategyTestRun(c *gin.Context) {
 			MarginUsedPct:    0,
 			PositionCount:    0,
 		},
-		Positions:          []kernel.PositionInfo{},
-		CandidateCoins:     candidates,
-		PromptVariant:      req.PromptVariant,
-		MarketDataMap:      marketDataMap,
-		QuantDataMap:       quantDataMap,
+		Positions:        []kernel.PositionInfo{},
+		CandidateCoins:   candidates,
+		PromptVariant:    req.PromptVariant,
+		MarketDataMap:    marketDataMap,
+		QuantDataMap:     quantDataMap,
 		OIRankingData:    oiRankingData,
 		PriceRankingData: priceRankingData,
+		StrategyConfig:   &req.Config, // v1.1 审计修复 #8: 让管理后台测试页正确演示 ATR 自适应
 	}
 
 	// Build System Prompt

@@ -15,6 +15,7 @@ import (
 	"nofx/feature_flag"
 	"nofx/kernel"
 	"nofx/logger"
+	"nofx/market"
 	"nofx/trader/audit"
 	"nofx/trader/pretrade"
 )
@@ -41,15 +42,30 @@ func (at *AutoTrader) runPreTradeSimulation(decision *kernel.Decision) error {
 		}
 	}
 
-	// 估算成交价
-	markPrice := decision.StopLoss // fallback
-	if markPrice == 0 {
-		markPrice = decision.TakeProfit
+	// 取实时 mark price（优先从 market cache，fallback 到 TP/SL 估算）
+	// v1.1 审计修复 #6: 之前 markPrice 可能为 1（pathological fallback）
+	markPrice := 0.0
+	if md, err := market.GetWithExchange(decision.Symbol, at.exchange); err == nil && md != nil && md.CurrentPrice > 0 {
+		markPrice = md.CurrentPrice
 	}
 	if markPrice == 0 {
-		// 如果没有 TP/SL，从市场快照拿 mark price
-		// 简化处理：用 PositionSizeUSD / 默认数量估算
-		markPrice = 1
+		// fallback: 用 TP 与 SL 中点做合理估算
+		if decision.StopLoss > 0 && decision.TakeProfit > 0 {
+			markPrice = (decision.StopLoss + decision.TakeProfit) / 2
+		} else if decision.StopLoss > 0 {
+			markPrice = decision.StopLoss
+		} else if decision.TakeProfit > 0 {
+			markPrice = decision.TakeProfit
+		}
+	}
+	if markPrice <= 0 {
+		// 彻底拿不到价格 → 审计记录后放行（不阻塞主流程）
+		audit.Snapshot(at.id, at.strategyID, "pretrade_sim_skipped", map[string]any{
+			"symbol": decision.Symbol,
+			"reason": "markPrice unavailable",
+		})
+		logger.Warnf("⚠️ [%s] PreTradeSim skipped (no markPrice for %s)", at.name, decision.Symbol)
+		return nil
 	}
 
 	side := "long"
@@ -57,14 +73,18 @@ func (at *AutoTrader) runPreTradeSimulation(decision *kernel.Decision) error {
 		side = "short"
 	}
 
-	// 根据 PositionSizeUSD 反推数量（简化）
 	leverage := decision.Leverage
 	if leverage <= 0 {
 		leverage = 1
 	}
 	quantity := decision.PositionSizeUSD / markPrice
 	if quantity <= 0 {
-		quantity = 0.001 // 占位
+		// PositionSizeUSD 未设 → 审计放行
+		audit.Snapshot(at.id, at.strategyID, "pretrade_sim_skipped", map[string]any{
+			"symbol": decision.Symbol,
+			"reason": "position size unset",
+		})
+		return nil
 	}
 
 	req := pretrade.SimRequest{

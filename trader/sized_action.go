@@ -20,6 +20,7 @@ import (
 
 	"nofx/kernel"
 	"nofx/logger"
+	"nofx/market"
 	"nofx/store"
 )
 
@@ -109,9 +110,21 @@ func (at *AutoTrader) executeReduceShort(decision *kernel.Decision, _ *store.Dec
 	return nil
 }
 
-// executeScaleLong 加仓多头
-// 调用 executeOpenLongWithRecord 同样的路径（OpenGate / 风控全部生效）
-// 仓位 USD 按当前持仓价值 × pct 计算
+// executeScaleLong 加仓多头 (v1.1 P2-4, 审计修复 Bug #5)
+//
+// 独立执行路径，不调用 executeOpenLongWithRecord (会被"已有同向持仓"检查拒绝)
+// 仍保留核心风控：
+//   - 保证金充足性检查（auto-adjust）
+//   - 最小仓位检查
+//   - 止损/止盈设置
+//
+// 明确跳过（scale 不是新开）：
+//   - OpenGate AllowOpen (scale 不受 cooldown 限制)
+//   - enforceMaxPositions (已占一个 slot)
+//   - "已有同向持仓" 拒绝
+//   - Geometry 检查（entry 已存在）
+//
+// safeMode 由主循环 loop 负责拦截，此处不重复判断
 func (at *AutoTrader) executeScaleLong(decision *kernel.Decision, actionRecord *store.DecisionAction, pct float64) error {
 	logger.Infof("  📈 Scale long: %s (pct=%.2f)", decision.Symbol, pct)
 	currentValue := at.getCurrentPositionValueUSD(decision.Symbol, "long")
@@ -119,17 +132,13 @@ func (at *AutoTrader) executeScaleLong(decision *kernel.Decision, actionRecord *
 		return fmt.Errorf("scale_long: no long position for %s", decision.Symbol)
 	}
 	addUSD := currentValue * pct
-
-	// 构造一个 open_long decision，PositionSizeUSD 替换为加仓金额
-	openDecision := *decision
-	openDecision.Action = "open_long"
-	openDecision.PositionSizeUSD = addUSD
-
 	logger.Infof("  ➕ Scale-in long %s: addUSD=%.2f (current=%.2f × %.0f%%)", decision.Symbol, addUSD, currentValue, pct*100)
-	return at.executeOpenLongWithRecord(&openDecision, actionRecord)
+
+	// 复用已有 scale-in 核心逻辑
+	return at.executeScaleInCore(decision, actionRecord, addUSD, "long")
 }
 
-// executeScaleShort 加仓空头
+// executeScaleShort 加仓空头 (v1.1 P2-4, 审计修复 Bug #5)
 func (at *AutoTrader) executeScaleShort(decision *kernel.Decision, actionRecord *store.DecisionAction, pct float64) error {
 	logger.Infof("  📉 Scale short: %s (pct=%.2f)", decision.Symbol, pct)
 	currentValue := at.getCurrentPositionValueUSD(decision.Symbol, "short")
@@ -137,13 +146,110 @@ func (at *AutoTrader) executeScaleShort(decision *kernel.Decision, actionRecord 
 		return fmt.Errorf("scale_short: no short position for %s", decision.Symbol)
 	}
 	addUSD := currentValue * pct
-
-	openDecision := *decision
-	openDecision.Action = "open_short"
-	openDecision.PositionSizeUSD = addUSD
-
 	logger.Infof("  ➕ Scale-in short %s: addUSD=%.2f (current=%.2f × %.0f%%)", decision.Symbol, addUSD, currentValue, pct*100)
-	return at.executeOpenShortWithRecord(&openDecision, actionRecord)
+
+	return at.executeScaleInCore(decision, actionRecord, addUSD, "short")
+}
+
+// executeScaleInCore scale 加仓的核心下单路径
+//
+// 参数 addUSD: 要追加的仓位价值 USD
+// 参数 side:   "long" | "short"
+//
+// 流程:
+//  1. 取市场价格 + 账户余额
+//  2. 保证金足够性检查 + auto-adjust
+//  3. 最小仓位检查
+//  4. 按当前持仓杠杆下单（OpenLong/OpenShort 相同接口，添加到现有仓位）
+//  5. 更新 actionRecord，不重置 positionFirstSeenTime（保持原仓位时间戳）
+func (at *AutoTrader) executeScaleInCore(decision *kernel.Decision, actionRecord *store.DecisionAction, addUSD float64, side string) error {
+	// 1. 市场价
+	marketData, err := market.GetWithExchange(decision.Symbol, at.exchange)
+	if err != nil {
+		return fmt.Errorf("scale %s: failed to get market data: %w", side, err)
+	}
+
+	// 2. 余额
+	balance, err := at.trader.GetBalance()
+	if err != nil {
+		return fmt.Errorf("scale %s: failed to get balance: %w", side, err)
+	}
+	availableBalance := 0.0
+	if avail, ok := balance["availableBalance"].(float64); ok {
+		availableBalance = avail
+	}
+
+	// 3. 保证金 auto-adjust（沿用 executeOpenLong 的公式）
+	leverage := decision.Leverage
+	if leverage < 1 {
+		leverage = 1
+	}
+	marginFactor := 1.01/float64(leverage) + 0.001
+	maxAffordable := availableBalance / marginFactor
+
+	actualAddUSD := addUSD
+	if actualAddUSD > maxAffordable {
+		adjusted := maxAffordable * 0.98
+		logger.Warnf("  ⚠️ Scale-in size %.2f exceeds max affordable %.2f, reducing to %.2f", actualAddUSD, maxAffordable, adjusted)
+		actualAddUSD = adjusted
+	}
+
+	// 4. 最小仓位
+	if err := at.enforceMinPositionSize(actualAddUSD); err != nil {
+		return fmt.Errorf("scale %s: %w", side, err)
+	}
+
+	// 5. 下单
+	quantity := actualAddUSD / marketData.CurrentPrice
+	actionRecord.Quantity = quantity
+	actionRecord.Price = marketData.CurrentPrice
+
+	var order map[string]interface{}
+	var orderErr error
+	switch side {
+	case "long":
+		order, orderErr = at.trader.OpenLong(decision.Symbol, quantity, leverage)
+	case "short":
+		order, orderErr = at.trader.OpenShort(decision.Symbol, quantity, leverage)
+	default:
+		return fmt.Errorf("scale: unknown side %q", side)
+	}
+	if orderErr != nil {
+		return fmt.Errorf("scale %s failed: %w", side, orderErr)
+	}
+
+	if orderID, ok := order["orderId"].(int64); ok {
+		actionRecord.OrderID = orderID
+	}
+
+	logger.Infof("  ✓ Scale-in %s succeeded: qty=%.4f, price=%.4f, addUSD=%.2f", side, quantity, marketData.CurrentPrice, actualAddUSD)
+
+	// 6. 记录订单到 DB（action 仍用 scale_* 以便区分）
+	action := "scale_" + side
+	at.recordAndConfirmOrder(order, decision.Symbol, action, quantity, marketData.CurrentPrice, leverage, 0)
+
+	// 7. scale-in 不重置 positionFirstSeenTime（保持原仓位的时间戳）
+	// 也不重设 SL/TP（由原仓位管理，除非 AI 明确给出新值）
+	if decision.StopLoss > 0 {
+		sideUpper := "LONG"
+		if side == "short" {
+			sideUpper = "SHORT"
+		}
+		if err := at.trader.SetStopLoss(decision.Symbol, sideUpper, quantity, decision.StopLoss); err != nil {
+			logger.Infof("  ⚠ Scale-in: failed to update stop loss: %v", err)
+		}
+	}
+	if decision.TakeProfit > 0 {
+		sideUpper := "LONG"
+		if side == "short" {
+			sideUpper = "SHORT"
+		}
+		if err := at.trader.SetTakeProfit(decision.Symbol, sideUpper, quantity, decision.TakeProfit); err != nil {
+			logger.Infof("  ⚠ Scale-in: failed to update take profit: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // getCurrentPositionQty 查询当前持仓数量（绝对值）

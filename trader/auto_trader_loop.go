@@ -83,10 +83,10 @@ func (at *AutoTrader) runCycle() error {
 	// [HOOT] Inject enhanced data into context
 	ctx.TraderID = at.id
 	ctx.StrategyConfig = at.config.StrategyConfig // v1.1 P2-2: 让 formatter 读取动态阈值配置
-	at.injectMarketRegime(ctx)       // B1: Market regime detection per symbol
-	at.injectEventSignals(ctx)       // B3: Event signal injection
-	at.syncPositionLifecycles(ctx)   // Lifecycle: register/advance positions
-	at.syncRiskGuardPositions(ctx)   // Sync positions to real-time risk guard
+	at.injectMarketRegime(ctx)                    // B1: Market regime detection per symbol
+	at.injectEventSignals(ctx)                    // B3: Event signal injection
+	at.syncPositionLifecycles(ctx)                // Lifecycle: register/advance positions
+	at.syncRiskGuardPositions(ctx)                // Sync positions to real-time risk guard
 	ctx.RecentRiskEvents = at.consumeRiskEvents() // Consume risk events for AI awareness
 
 	// If no candidate coins available, log but do not error
@@ -235,8 +235,8 @@ func (at *AutoTrader) runCycle() error {
 	}
 	// [HOOT v1.1 P1-3] 审计：AI 调用完成
 	audit.Snapshot(at.id, at.strategyID, "ai_call_done", map[string]any{
-		"cycle":         at.callCount,
-		"duration_ms":   record.AIRequestDurationMs,
+		"cycle":       at.callCount,
+		"duration_ms": record.AIRequestDurationMs,
 		"decision_count": func() int {
 			if aiDecision != nil {
 				return len(aiDecision.Decisions)
@@ -324,19 +324,20 @@ func (at *AutoTrader) runCycle() error {
 		return nil
 	}
 
-	// Safe mode: filter out open positions, only allow close/hold
+	// Safe mode: filter out new-risk actions, only allow close/reduce/hold
+	// v1.1 审计修复 Bug #1: scale_* 也引入新风险必须拦截
 	if at.safeMode {
 		filtered := make([]kernel.Decision, 0)
 		for _, d := range sortedDecisions {
-			if d.Action == "open_long" || d.Action == "open_short" {
-				logger.Warnf("🛡️ [%s] Safe mode: BLOCKED %s %s (no new positions allowed)", at.name, d.Action, d.Symbol)
+			if isOpenAction(d.Action) || isScaleAction(d.Action) {
+				logger.Warnf("🛡️ [%s] Safe mode: BLOCKED %s %s (no new risk allowed)", at.name, d.Action, d.Symbol)
 				continue
 			}
 			filtered = append(filtered, d)
 		}
 		sortedDecisions = filtered
 		if len(sortedDecisions) == 0 {
-			logger.Infof("🛡️ [%s] Safe mode: all decisions were open positions, nothing to execute", at.name)
+			logger.Infof("🛡️ [%s] Safe mode: all decisions were open/scale, nothing to execute", at.name)
 		}
 	}
 
@@ -373,21 +374,23 @@ func (at *AutoTrader) runCycle() error {
 			actionRecord.Success = true
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("✓ %s %s succeeded", d.Symbol, d.Action))
 
-			// [HOOT] Track close events for OpenGate + Lifecycle
+			// [HOOT] Track close events for OpenGate
+			// v1.1 P1-4: sided cooldown 隔离
+			// v1.1 审计修复 Bug #3: 用 sideFromAction 正确识别 reduce_short / close_short
 			if isCloseAction(d.Action) {
-				side := "LONG"
-				if d.Action == "close_short" {
-					side = "SHORT"
+				side := sideFromAction(d.Action) // "LONG" | "SHORT"
+				sidedKey := "long"
+				if side == "SHORT" {
+					sidedKey = "short"
 				}
 				if at.openGate != nil {
-					// v1.1 P1-4: 用 sided 版本，long/short cooldown 隔离
-					sidedKey := "long"
-					if side == "SHORT" {
-						sidedKey = "short"
-					}
 					at.openGate.MarkCloseSided(at.id, d.Symbol, sidedKey)
 				}
-				kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
+				// v1.1 审计修复 Bug #2: 只在完全平仓时注销 lifecycle
+				// reduce 是部分平仓，持仓仍在，lifecycle 必须保留
+				if isFullCloseAction(d.Action) {
+					kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
+				}
 			}
 
 			// Brief delay after successful execution
@@ -756,16 +759,19 @@ func sortDecisionsByPriority(decisions []kernel.Decision) []kernel.Decision {
 	}
 
 	// Define priority
+	// v1.1 审计修复 Bug #4: 补 reduce/scale 4 个新 action
+	// - reduce_*  → 1（与 close 同优先级，释放保证金）
+	// - scale_*   → 2（与 open 同优先级，追加风险）
 	getActionPriority := func(action string) int {
 		switch action {
-		case "close_long", "close_short":
-			return 1 // Highest priority: close positions first
-		case "open_long", "open_short":
-			return 2 // Second priority: open positions later
+		case "close_long", "close_short", "reduce_long", "reduce_short":
+			return 1 // 最高：释放保证金/平仓
+		case "open_long", "open_short", "scale_long", "scale_short":
+			return 2 // 次高：新开/加仓
 		case "hold", "wait":
-			return 3 // Lowest priority: wait
+			return 3 // 最低
 		default:
-			return 999 // Unknown actions at the end
+			return 999 // 未知 action 放最后
 		}
 	}
 

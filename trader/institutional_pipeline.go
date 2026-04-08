@@ -114,25 +114,35 @@ func (at *AutoTrader) applyShadowMode(aiDecisions, pmDecisions []kernel.Decision
 	return aiDecisions
 }
 
-// applyPartialMode partial: PM 决策覆盖同 symbol AI close 提案
+// applyPartialMode partial: PM 决策覆盖同 symbol+side AI close 提案
+// v1.1 审计修复 #7: dedup key 加 side，支持对冲策略（同 symbol 同时多空）
 func (at *AutoTrader) applyPartialMode(aiDecisions, pmDecisions []kernel.Decision) []kernel.Decision {
 	if len(pmDecisions) == 0 {
 		return aiDecisions
 	}
 
-	// 收集 PM 决策涉及的 symbol → action 映射
-	pmBySymbol := make(map[string]kernel.Decision, len(pmDecisions))
-	for _, pm := range pmDecisions {
-		pmBySymbol[pm.Symbol] = pm
+	// dedup key: symbol|side
+	keyFor := func(d kernel.Decision) string {
+		return d.Symbol + "|" + sideFromAction(d.Action)
 	}
 
-	// 过滤 AI 决策：同 symbol 的 close 被 PM 覆盖
+	// 收集 PM close 系列决策的 (symbol|side) → decision 映射
+	// 只对 PM 的 close/reduce 才构建 override 索引（PM 的 scale/open 不覆盖 AI）
+	pmCloseBySide := make(map[string]kernel.Decision, len(pmDecisions))
+	for _, pm := range pmDecisions {
+		if isCloseAction(pm.Action) {
+			pmCloseBySide[keyFor(pm)] = pm
+		}
+	}
+
+	// 过滤 AI 决策：同 (symbol|side) 的 close 被 PM 覆盖
 	merged := make([]kernel.Decision, 0, len(aiDecisions)+len(pmDecisions))
 	for _, ai := range aiDecisions {
 		if isCloseAction(ai.Action) {
-			if pm, exists := pmBySymbol[ai.Symbol]; exists {
+			if pm, exists := pmCloseBySide[keyFor(ai)]; exists {
 				audit.Snapshot(at.id, at.strategyID, "pm_override_ai_close", map[string]any{
 					"symbol":    ai.Symbol,
+					"side":      sideFromAction(ai.Action),
 					"ai_action": ai.Action,
 					"pm_action": pm.Action,
 					"ai_reason": ai.Reasoning,

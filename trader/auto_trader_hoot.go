@@ -37,14 +37,39 @@ func isOpenAction(action string) bool {
 	return action == "open_long" || action == "open_short"
 }
 
-// isCloseAction 判定是否为 close 系列 action
-// v1.1 P2-4: 包含 sized adjust 的 reduce_long/short
+// isCloseAction 判定是否为 close 系列 action（含部分平仓 reduce_*）
+// v1.1 P2-4: 用于 OpenGate cooldown 标记 / institutional_pipeline 覆盖逻辑
 func isCloseAction(action string) bool {
 	switch action {
 	case "close_long", "close_short", "reduce_long", "reduce_short":
 		return true
 	}
 	return false
+}
+
+// isFullCloseAction 仅识别完全平仓（不含 reduce_*）
+// v1.1 审计修复 Bug #2: lifecycle unregister 只能用 full close，
+// reduce 是部分平仓，持仓仍在，不能注销 lifecycle
+func isFullCloseAction(action string) bool {
+	return action == "close_long" || action == "close_short"
+}
+
+// isScaleAction 判定是否为 scale 加仓 action
+// v1.1 审计修复 Bug #1: safeMode 过滤需要拦截 scale 防止绕过
+func isScaleAction(action string) bool {
+	return action == "scale_long" || action == "scale_short"
+}
+
+// sideFromAction 从 action 名推出 "LONG" / "SHORT"
+// v1.1 审计修复 Bug #3: reduce_short 之前被误判为 LONG
+func sideFromAction(action string) string {
+	switch action {
+	case "open_short", "close_short", "reduce_short", "scale_short":
+		return "SHORT"
+	case "open_long", "close_long", "reduce_long", "scale_long":
+		return "LONG"
+	}
+	return "LONG"
 }
 
 // ─── Market Regime Detection ────────────────────────────────────────────────
