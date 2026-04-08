@@ -11,6 +11,11 @@ import (
 
 // executeDecisionWithRecord executes AI decision and records detailed information
 func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
+	// v1.1 P2-4: 优先派发 sized adjust action（reduce/scale long/short）
+	if IsSizedAdjustAction(decision.Action) {
+		return at.executeSizedAdjustAction(decision, actionRecord)
+	}
+
 	switch decision.Action {
 	case "open_long":
 		return at.executeOpenLongWithRecord(decision, actionRecord)
@@ -29,6 +34,8 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 }
 
 // executeOpenLongWithRecord executes open long position and records detailed information
+// executeOpenLongWithRecord 执行开多头
+// v1.1 P1-4: open gate 使用 AllowOpenSided 以隔离多/空 cooldown
 func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📈 Open long: %s", decision.Symbol)
 
@@ -41,12 +48,25 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 		}
 	}
 
-	// [HOOT] Open gate: frequency control
+	// [HOOT v1.1 P1-4] Open gate: sided frequency control
+	// Side 由 caller 函数 (executeOpenLong/executeOpenShortWithRecord) 决定
+	// 通过 decision.Action 推断更稳健（避免依赖函数嵌套位置）
 	if at.openGate != nil {
 		rc := at.strategyEngine.GetConfig().RiskControl
-		if allowed, reason := at.openGate.AllowOpen(at.id, decision.Symbol, rc); !allowed {
+		side := "long"
+		if decision.Action == "open_short" {
+			side = "short"
+		}
+		if allowed, reason := at.openGate.AllowOpenSided(at.id, decision.Symbol, side, rc); !allowed {
 			return fmt.Errorf("❌ Open gate blocked: %s", reason)
 		}
+	}
+
+	// [HOOT v1.1 P3-4] PreTradeSimulator 灰度检查
+	// 通过 feature_flag 'pretrade_sim' 启用 (默认 disabled)
+	// 失败时阻止下单 + 写 audit
+	if err := at.runPreTradeSimulation(decision); err != nil {
+		return err
 	}
 
 	// ⚠️ Get current positions for multiple checks
@@ -175,12 +195,25 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 		}
 	}
 
-	// [HOOT] Open gate: frequency control
+	// [HOOT v1.1 P1-4] Open gate: sided frequency control
+	// Side 由 caller 函数 (executeOpenLong/executeOpenShortWithRecord) 决定
+	// 通过 decision.Action 推断更稳健（避免依赖函数嵌套位置）
 	if at.openGate != nil {
 		rc := at.strategyEngine.GetConfig().RiskControl
-		if allowed, reason := at.openGate.AllowOpen(at.id, decision.Symbol, rc); !allowed {
+		side := "long"
+		if decision.Action == "open_short" {
+			side = "short"
+		}
+		if allowed, reason := at.openGate.AllowOpenSided(at.id, decision.Symbol, side, rc); !allowed {
 			return fmt.Errorf("❌ Open gate blocked: %s", reason)
 		}
+	}
+
+	// [HOOT v1.1 P3-4] PreTradeSimulator 灰度检查
+	// 通过 feature_flag 'pretrade_sim' 启用 (默认 disabled)
+	// 失败时阻止下单 + 写 audit
+	if err := at.runPreTradeSimulation(decision); err != nil {
+		return err
 	}
 
 	// ⚠️ Get current positions for multiple checks

@@ -7,6 +7,9 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/store"
+	"nofx/trader/ai_budget"
+	"nofx/trader/audit"
+	"nofx/trader/token_guard"
 	"strings"
 	"time"
 )
@@ -56,9 +59,22 @@ func (at *AutoTrader) runCycle() error {
 	if err != nil {
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("Failed to build trading context: %v", err)
+		// [HOOT v1.1 P1-3] 审计：context 构建失败
+		audit.Snapshot(at.id, at.strategyID, "context_build_failed", map[string]any{
+			"cycle": at.callCount,
+			"error": err.Error(),
+		})
 		at.saveDecision(record)
 		return fmt.Errorf("failed to build trading context: %w", err)
 	}
+
+	// [HOOT v1.1 P1-3] 审计：context 构建完成
+	audit.Snapshot(at.id, at.strategyID, "context_built", map[string]any{
+		"cycle":      at.callCount,
+		"positions":  len(ctx.Positions),
+		"candidates": len(ctx.CandidateCoins),
+		"equity":     ctx.Account.TotalEquity,
+	})
 
 	// Save equity snapshot independently (decoupled from AI decision, used for drawing profit curve)
 	// NOTE: Must be called BEFORE candidate coins check to ensure equity is always recorded
@@ -66,6 +82,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// [HOOT] Inject enhanced data into context
 	ctx.TraderID = at.id
+	ctx.StrategyConfig = at.config.StrategyConfig // v1.1 P2-2: 让 formatter 读取动态阈值配置
 	at.injectMarketRegime(ctx)       // B1: Market regime detection per symbol
 	at.injectEventSignals(ctx)       // B3: Event signal injection
 	at.syncPositionLifecycles(ctx)   // Lifecycle: register/advance positions
@@ -96,12 +113,43 @@ func (at *AutoTrader) runCycle() error {
 	logger.Infof("📊 Account equity: %.2f USDT | Available: %.2f USDT | Positions: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
-	// [HOOT] Cost guard: skip AI call when no positions and in cooldown
+	// [HOOT] Cost guard: skip AI call when no positions and in cooldown (env-driven, trader-level legacy guard)
 	if at.costGuard != nil && at.costGuard.ShouldSkipAI(len(ctx.Positions)) {
 		record.Success = true
 		record.ExecutionLog = append(record.ExecutionLog, "Cost guard: skipped AI call (no positions, in cooldown)")
 		at.saveDecision(record)
 		return nil
+	}
+
+	// [HOOT v1.1 P1-1] Strategy AI Budget: per-strategy cooldown / daily limit
+	// Configured via StrategyConfig.AIBudgetPolicy. Skipped if policy nil or disabled.
+	// Positions held → always allowed (must manage existing positions).
+	if at.config.StrategyConfig != nil {
+		if skip, reason := ai_budget.Check(at.strategyID, at.config.StrategyConfig.AIBudgetPolicy, len(ctx.Positions)); skip {
+			record.Success = true
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("AI Budget: skipped AI call (%s)", reason))
+			logger.Infof("💰 [%s] AI Budget skip: %s", at.name, reason)
+			at.saveDecision(record)
+			return nil
+		}
+	}
+
+	// [HOOT v1.1 P1-2] Token Budget Guard: 运行时 prompt 预算评估
+	// 评估当前策略配置在目标 provider 下的 token 占用，超硬阈值阻止本轮调用
+	// 不阻塞策略运行：仅跳过本轮 AI 调用，下轮重新评估（用户应缩减币种/周期/K线数）
+	if at.config.StrategyConfig != nil {
+		verdict := token_guard.Evaluate(at.config.StrategyConfig, at.aiModel)
+		switch verdict.Level {
+		case token_guard.LevelWarning:
+			logger.Warnf("⚠️ [%s] Token budget warning: %s", at.name, verdict.Reason)
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Token guard warn: %s", verdict.Reason))
+		case token_guard.LevelDanger:
+			logger.Errorf("🚨 [%s] Token budget DANGER (skipping AI this cycle): %s", at.name, verdict.Reason)
+			record.Success = true
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("Token guard BLOCK: %s", verdict.Reason))
+			at.saveDecision(record)
+			return nil
+		}
 	}
 
 	// 5. Use strategy engine to call AI for decision
@@ -181,6 +229,21 @@ func (at *AutoTrader) runCycle() error {
 	if at.costGuard != nil {
 		at.costGuard.RecordAICall()
 	}
+	// [HOOT v1.1 P1-1] Record successful AI call for strategy budget
+	if at.strategyID != "" && at.config.StrategyConfig != nil && at.config.StrategyConfig.AIBudgetPolicy != nil && at.config.StrategyConfig.AIBudgetPolicy.Enabled {
+		ai_budget.Record(at.strategyID)
+	}
+	// [HOOT v1.1 P1-3] 审计：AI 调用完成
+	audit.Snapshot(at.id, at.strategyID, "ai_call_done", map[string]any{
+		"cycle":         at.callCount,
+		"duration_ms":   record.AIRequestDurationMs,
+		"decision_count": func() int {
+			if aiDecision != nil {
+				return len(aiDecision.Decisions)
+			}
+			return 0
+		}(),
+	})
 
 	// AI succeeded — reset failure counter and deactivate safe mode
 	if at.consecutiveAIFailures > 0 {
@@ -228,13 +291,20 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// [HOOT] Step E: PositionManager — evaluate existing positions
+	// v1.1 P3-2: 通过 InstitutionalPipeline 灰度合并 AI + PM 决策
+	// 默认 mode=off → 行为完全等同于原版（PM append 到 AI 末尾）
+	// shadow / partial / full 通过 strategy config 或 feature flag 灰度启用
 	if len(ctx.Positions) > 0 {
 		pmDecisions := at.runPositionManagement(ctx)
 		if len(pmDecisions) > 0 {
 			logger.Infof("📊 [%s] PositionManager generated %d actions", at.name, len(pmDecisions))
-			aiDecision.Decisions = append(aiDecision.Decisions, pmDecisions...)
 		}
+		aiDecision.Decisions = at.ApplyInstitutionalPipeline(aiDecision.Decisions, pmDecisions)
 	}
+
+	// [HOOT v1.1 P4-1] CandidateRanker: 当 open 候选超过可用 slot 时按质量排序裁剪
+	// 默认 disabled via feature_flag 'candidate_ranker'，原样返回零行为变化
+	aiDecision.Decisions = at.applyCandidateRanker(aiDecision.Decisions, len(ctx.Positions))
 
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
 	sortedDecisions := sortDecisionsByPriority(aiDecision.Decisions)
@@ -305,12 +375,17 @@ func (at *AutoTrader) runCycle() error {
 
 			// [HOOT] Track close events for OpenGate + Lifecycle
 			if isCloseAction(d.Action) {
-				if at.openGate != nil {
-					at.openGate.MarkClose(at.id, d.Symbol)
-				}
 				side := "LONG"
 				if d.Action == "close_short" {
 					side = "SHORT"
+				}
+				if at.openGate != nil {
+					// v1.1 P1-4: 用 sided 版本，long/short cooldown 隔离
+					sidedKey := "long"
+					if side == "SHORT" {
+						sidedKey = "short"
+					}
+					at.openGate.MarkCloseSided(at.id, d.Symbol, sidedKey)
 				}
 				kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
 			}

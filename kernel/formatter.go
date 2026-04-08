@@ -228,6 +228,9 @@ func formatCurrentPositionsZH(ctx *Context) string {
 	var sb strings.Builder
 	sb.WriteString("## 当前持仓\n\n")
 
+	// v1.1 P2-2: 解析 ATR 自适应止盈阈值（一次性，避免每个 position 重复）
+	atrCfg := getStrategyConfigForATR(ctx)
+
 	for i, pos := range ctx.Positions {
 		// Calculate drawdown
 		drawdown := pos.UnrealizedPnLPct - pos.PeakPnLPct
@@ -243,8 +246,23 @@ func formatCurrentPositionsZH(ctx *Context) string {
 		sb.WriteString(fmt.Sprintf("保证金 %.0f USDT | ", pos.MarginUsed))
 		sb.WriteString(fmt.Sprintf("强平价 %.4f\n", pos.LiquidationPrice))
 
-		// Add analysis hints
-		if drawdown < -0.30*pos.PeakPnLPct && pos.PeakPnLPct > 0.02 {
+		// v1.1 P2-2: 优先使用 ATR 自适应阈值（启用时），否则回退原版固定 30% peak 回撤
+		atr14 := getPositionATR14(ctx, pos.Symbol)
+		atrThreshold := ComputeATRPullbackThreshold(atrCfg, atr14, pos.MarkPrice, pos.Leverage)
+
+		if atrThreshold > 0 {
+			// ATR 模式：判定价格反向幅度（abs price move）
+			// 注意语义：ATR 阈值是价格变动比例，与峰值无关
+			priceMovePct := (pos.MarkPrice - pos.EntryPrice) / pos.EntryPrice
+			if pos.Side == "short" || pos.Side == "SHORT" {
+				priceMovePct = -priceMovePct
+			}
+			if priceMovePct > atrThreshold && drawdown < -atrThreshold*100 {
+				sb.WriteString(fmt.Sprintf("   ⚠️ **止盈提示 (ATR 自适应 %.2f%%)**: 价格相对入场已变动 %.2f%%，回撤 %.2f%%，建议考虑止盈\n",
+					atrThreshold*100, priceMovePct*100, drawdown))
+			}
+		} else if drawdown < -0.30*pos.PeakPnLPct && pos.PeakPnLPct > 0.02 {
+			// 原版固定阈值（fallback）
 			sb.WriteString(fmt.Sprintf("   ⚠️ **止盈提示**: 当前盈亏从峰值 %.2f%% 回撤到 %.2f%%，回撤幅度 %.2f%%，建议考虑止盈\n",
 				pos.PeakPnLPct, pos.UnrealizedPnLPct, (drawdown/pos.PeakPnLPct)*100))
 		}
@@ -520,8 +538,20 @@ func formatCurrentPositionsEN(ctx *Context) string {
 		sb.WriteString(fmt.Sprintf("Margin %.0f USDT | ", pos.MarginUsed))
 		sb.WriteString(fmt.Sprintf("Liq Price %.4f\n", pos.LiquidationPrice))
 
-		// Analysis hints
-		if drawdown < -0.30*pos.PeakPnLPct && pos.PeakPnLPct > 0.02 {
+		// v1.1 P2-2: ATR-adaptive take profit threshold (fallback to fixed 30% peak drawdown)
+		atr14En := getPositionATR14(ctx, pos.Symbol)
+		atrThresholdEn := ComputeATRPullbackThreshold(getStrategyConfigForATR(ctx), atr14En, pos.MarkPrice, pos.Leverage)
+
+		if atrThresholdEn > 0 {
+			priceMovePct := (pos.MarkPrice - pos.EntryPrice) / pos.EntryPrice
+			if pos.Side == "short" || pos.Side == "SHORT" {
+				priceMovePct = -priceMovePct
+			}
+			if priceMovePct > atrThresholdEn && drawdown < -atrThresholdEn*100 {
+				sb.WriteString(fmt.Sprintf("   ⚠️ **Take Profit Alert (ATR-adaptive %.2f%%)**: price moved %.2f%% from entry, drawdown %.2f%%, consider taking profit\n",
+					atrThresholdEn*100, priceMovePct*100, drawdown))
+			}
+		} else if drawdown < -0.30*pos.PeakPnLPct && pos.PeakPnLPct > 0.02 {
 			sb.WriteString(fmt.Sprintf("   ⚠️ **Take Profit Alert**: PnL dropped from peak %.2f%% to %.2f%%, drawdown %.2f%%, consider taking profit\n",
 				pos.PeakPnLPct, pos.UnrealizedPnLPct, (drawdown/pos.PeakPnLPct)*100))
 		}

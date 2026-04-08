@@ -114,12 +114,15 @@ type Context struct {
 	EventRiskMode      string                             `json:"-"` // "normal" | "threshold_raised" | "blocked_open"
 	TraderID           string                             `json:"-"` // Trader identifier for lifecycle tracking
 	RecentRiskEvents   []RiskEventInfo                    `json:"-"` // Real-time risk guard events from last cycle
+	// v1.1 P2-2: 策略配置引用，供 formatter 读取 ATR 自适应等动态阈值（nil = 沿用原版固定阈值）
+	StrategyConfig     *store.StrategyConfig              `json:"-"`
 }
 
 // Decision AI trading decision
 type Decision struct {
 	Symbol string `json:"symbol"`
 	Action string `json:"action"` // Standard: "open_long", "open_short", "close_long", "close_short", "hold", "wait"
+	// v1.1 P2-4 Sized adjust actions: "reduce_long", "reduce_short", "scale_long", "scale_short" (use PartialPct)
 	// Grid actions: "place_buy_limit", "place_sell_limit", "cancel_order", "cancel_all_orders", "pause_grid", "resume_grid", "adjust_grid"
 
 	// Opening position parameters
@@ -133,6 +136,12 @@ type Decision struct {
 	Quantity   float64 `json:"quantity,omitempty"`    // Order quantity (for grid)
 	LevelIndex int     `json:"level_index,omitempty"` // Grid level index
 	OrderID    string  `json:"order_id,omitempty"`    // Order ID (for cancel)
+
+	// v1.1 P2-4: Sized adjust parameters
+	// PartialPct 部分比例 0..1.0
+	//   reduce_long/short: 平掉当前持仓的 PartialPct 部分（默认 0.5 = 平半仓）
+	//   scale_long/short:  在原有持仓基础上加仓 PartialPct × 当前持仓（默认 0.5 = 加半仓）
+	PartialPct float64 `json:"partial_pct,omitempty"`
 
 	// Common parameters
 	Confidence int     `json:"confidence,omitempty"` // Confidence level (0-100)

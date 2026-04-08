@@ -235,6 +235,16 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 	// Calculate ATR14
 	data.ATR14 = calculateATR(klines, 14)
 
+	// v1.1 P2-1: ATR14 历史序列（截取最近 count 个值，与其他指标序列对齐）
+	if series := calculateATRSeries(klines, 14); len(series) > 0 {
+		take := count
+		if len(series) > take {
+			data.ATR14Values = series[len(series)-take:]
+		} else {
+			data.ATR14Values = series
+		}
+	}
+
 	return data
 }
 
@@ -351,6 +361,16 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 
 	// Calculate 3m ATR14
 	data.ATR14 = calculateATR(klines, 14)
+
+	// v1.1 P2-1: ATR14 历史序列（取最近 10 个值）
+	if series := calculateATRSeries(klines, 14); len(series) > 0 {
+		const intradayKeep = 10
+		if len(series) > intradayKeep {
+			data.ATR14Values = series[len(series)-intradayKeep:]
+		} else {
+			data.ATR14Values = series
+		}
+	}
 
 	return data
 }

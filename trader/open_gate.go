@@ -12,13 +12,23 @@ import (
 // OpenGate enforces open-position frequency control.
 // Hard gates (A): cooldown after close, min interval, hourly limit, consecutive loss cooldown.
 // Soft gates (B): intent counting — does not block, used for position sizing weight.
+//
+// v1.1 (P1-4): 新增 sided 维度的 cooldown / min-hold 跟踪。
+// 原 lastOpenAt / lastCloseAt 按 trader|symbol 索引（与 side 无关）；
+// 新增 lastOpenAtSided / lastCloseAtSided 按 trader|symbol|side 索引，
+// 通过 AllowOpenSided / MarkCloseSided 使用，长仓和空仓的 cooldown 互不影响。
+// 老方法 AllowOpen / MarkClose 保留向后兼容（写老 map），新调用应迁移到 sided 版本。
 type OpenGate struct {
 	mu sync.Mutex
 
-	// Hard gate state
+	// Hard gate state (legacy: side-agnostic)
 	openHistory map[string][]time.Time // traderKey → recent open timestamps
 	lastOpenAt  map[string]time.Time   // traderKey|symbol → last open time
 	lastCloseAt map[string]time.Time   // traderKey|symbol → last close time
+
+	// v1.1 P1-4: side-aware state
+	lastOpenAtSided  map[string]time.Time // traderKey|symbol|side → last open time
+	lastCloseAtSided map[string]time.Time // traderKey|symbol|side → last close time
 
 	// Consecutive loss tracking
 	consecutiveLosses map[string]int       // traderKey → current streak
@@ -31,11 +41,13 @@ type OpenGate struct {
 
 // NewOpenGate creates a new frequency gate.
 func NewOpenGate() *OpenGate {
-	logger.Info("[OPEN_GATE] Initialized")
+	logger.Info("[OPEN_GATE] Initialized (with sided cooldown support v1.1)")
 	return &OpenGate{
 		openHistory:       make(map[string][]time.Time),
 		lastOpenAt:        make(map[string]time.Time),
 		lastCloseAt:       make(map[string]time.Time),
+		lastOpenAtSided:   make(map[string]time.Time),
+		lastCloseAtSided:  make(map[string]time.Time),
 		consecutiveLosses: make(map[string]int),
 		lossLockUntil:     make(map[string]time.Time),
 		confirmCount:      make(map[string]int),
@@ -47,15 +59,34 @@ func (g *OpenGate) key(traderKey, symbol string) string {
 	return traderKey + "|" + symbol
 }
 
+// keySided 三元组 key (v1.1 P1-4) — 长仓和空仓 cooldown 隔离
+func (g *OpenGate) keySided(traderKey, symbol, side string) string {
+	return traderKey + "|" + symbol + "|" + side
+}
+
 func (g *OpenGate) confirmKey(traderKey, symbol, side string) string {
 	return traderKey + "|" + symbol + "|" + side
 }
 
 // MarkClose records a close event (for cooldown tracking).
+//
+// Deprecated: 优先使用 MarkCloseSided 以获得方向独立的 cooldown。
+// 本方法仅写入 side-agnostic map，新的 sided AllowOpen 不会读到。
 func (g *OpenGate) MarkClose(traderKey, symbol string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.lastCloseAt[g.key(traderKey, symbol)] = time.Now()
+}
+
+// MarkCloseSided 记录方向相关的平仓事件 (v1.1 P1-4)
+// side 应为 "long" 或 "short"
+func (g *OpenGate) MarkCloseSided(traderKey, symbol, side string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := time.Now()
+	// 双写：sided + legacy（保持向后兼容，老 caller 仍能读到）
+	g.lastCloseAtSided[g.keySided(traderKey, symbol, side)] = now
+	g.lastCloseAt[g.key(traderKey, symbol)] = now
 }
 
 // RecordLoss increments consecutive loss counter. Call after a losing close.
@@ -191,8 +222,68 @@ func (g *OpenGate) ResetConfirmCount(traderKey, symbol, side string) {
 	delete(g.confirmLastAt, key)
 }
 
+// AllowOpenSided 方向感知的硬门禁 (v1.1 P1-4)
+// 与 AllowOpen 唯一差异：cooldown / min-hold 检查使用 sided key，
+// 长仓 cooldown 不阻塞空仓开仓，反之亦然。其他门禁（loss lockout / hourly limit）保持全局。
+// side 应为 "long" 或 "short"
+func (g *OpenGate) AllowOpenSided(traderKey, symbol, side string, rc store.RiskControlConfig) (bool, string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	now := time.Now()
+	sk := g.keySided(traderKey, symbol, side)
+
+	// 1) Consecutive loss lockout (全局)
+	if until, ok := g.lossLockUntil[traderKey]; ok && now.Before(until) {
+		remain := until.Sub(now).Round(time.Second)
+		return false, fmt.Sprintf("consecutive loss cooldown (remaining %s)", remain)
+	}
+
+	// 2) Post-close cooldown (sided)
+	if rc.CooldownMinutesAfterClose > 0 {
+		if t, ok := g.lastCloseAtSided[sk]; ok && !t.IsZero() {
+			wait := time.Duration(rc.CooldownMinutesAfterClose) * time.Minute
+			if now.Sub(t) < wait {
+				remain := (wait - now.Sub(t)).Round(time.Second)
+				return false, fmt.Sprintf("post-close cooldown %dm side=%s (remaining %s)", rc.CooldownMinutesAfterClose, side, remain)
+			}
+		}
+	}
+
+	// 3) Min interval (sided)
+	if rc.MinHoldMinutes > 0 {
+		if t, ok := g.lastOpenAtSided[sk]; ok && !t.IsZero() {
+			wait := time.Duration(rc.MinHoldMinutes) * time.Minute
+			if now.Sub(t) < wait {
+				remain := (wait - now.Sub(t)).Round(time.Second)
+				return false, fmt.Sprintf("min interval %dm side=%s (remaining %s)", rc.MinHoldMinutes, side, remain)
+			}
+		}
+	}
+
+	// 4) Hourly limit (全局)
+	if rc.MaxOpensPerHour > 0 {
+		h := g.pruneHistory(traderKey, now)
+		if len(h) >= rc.MaxOpensPerHour {
+			remain := h[0].Add(time.Hour).Sub(now).Round(time.Second)
+			return false, fmt.Sprintf("hourly limit %d (remaining %s)", rc.MaxOpensPerHour, remain)
+		}
+		g.openHistory[traderKey] = append(h, now)
+	}
+
+	// 双写 open 时间戳：sided + legacy
+	g.lastOpenAtSided[sk] = now
+	g.lastOpenAt[g.key(traderKey, symbol)] = now
+
+	logger.Infof("[OPEN_GATE] Allowed (sided): trader=%s symbol=%s side=%s", traderKey, symbol, side)
+	return true, ""
+}
+
 // AllowOpen enforces hard gates only: cooldown, min interval, hourly limit, loss lockout.
 // Returns (allowed, reason). On allow, records the open timestamp.
+//
+// Deprecated: 优先使用 AllowOpenSided 以获得方向独立的 cooldown。
+// 保留以兼容现有 caller。
 func (g *OpenGate) AllowOpen(traderKey, symbol string, rc store.RiskControlConfig) (bool, string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

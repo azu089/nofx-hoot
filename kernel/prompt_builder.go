@@ -3,6 +3,7 @@ package kernel
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ============================================================================
@@ -13,7 +14,8 @@ import (
 
 // PromptBuilder builds AI prompts in the configured language
 type PromptBuilder struct {
-	lang Language
+	lang       Language
+	philosophy string // v1.1 P2-3: "mechanical" | "signal_driven" | "hybrid" (空 = mechanical 默认)
 }
 
 // NewPromptBuilder creates a new prompt builder for the given language
@@ -21,12 +23,46 @@ func NewPromptBuilder(lang Language) *PromptBuilder {
 	return &PromptBuilder{lang: lang}
 }
 
-// BuildSystemPrompt builds the system prompt
-func (pb *PromptBuilder) BuildSystemPrompt() string {
-	if pb.lang == LangChinese {
-		return pb.buildSystemPromptZH()
+// WithPhilosophy 设置退出哲学模板（v1.1 P2-3）
+//
+// 支持值:
+//   - "mechanical" 或 "" : 原版机械止损 + 30% peak 回撤 + 三条件平仓
+//   - "signal_driven"    : 禁止固定百分比平仓，仅信号驱动 + 趋势持有
+//   - "hybrid"           : 硬止损底线 + 信号驱动触发（推荐）
+//
+// 未识别值会回退到 mechanical
+func (pb *PromptBuilder) WithPhilosophy(p string) *PromptBuilder {
+	switch p {
+	case "signal_driven", "hybrid", "mechanical":
+		pb.philosophy = p
+	default:
+		pb.philosophy = "mechanical"
 	}
-	return pb.buildSystemPromptEN()
+	return pb
+}
+
+// effectivePhilosophy 返回当前生效的退出哲学（空值默认 mechanical）
+func (pb *PromptBuilder) effectivePhilosophy() string {
+	if pb.philosophy == "" {
+		return "mechanical"
+	}
+	return pb.philosophy
+}
+
+// BuildSystemPrompt builds the system prompt
+//
+// v1.1 P2-3: 退出哲学模板装配
+// 模板内嵌占位符 __EXIT_GUIDANCE_ZH__ / __EXIT_GUIDANCE_EN__，
+// 在装配阶段替换为对应 philosophy 的指引文本。
+// 默认 mechanical → 文本与原版完全一致，零行为变更。
+func (pb *PromptBuilder) BuildSystemPrompt() string {
+	var raw string
+	if pb.lang == LangChinese {
+		raw = pb.buildSystemPromptZH()
+		return strings.Replace(raw, "__EXIT_GUIDANCE_ZH__", getExitGuidanceZH(pb.effectivePhilosophy()), 1)
+	}
+	raw = pb.buildSystemPromptEN()
+	return strings.Replace(raw, "__EXIT_GUIDANCE_EN__", getExitGuidanceEN(pb.effectivePhilosophy()), 1)
 }
 
 // BuildUserPrompt builds the user prompt with full trading context
@@ -60,13 +96,7 @@ func (pb *PromptBuilder) buildSystemPromptZH() string {
 - 单个持仓亏损达到-5%必须止损
 - 优先保护资本，再考虑盈利
 
-### 信号驱动平仓
-- 平仓需要同时满足以下三个条件：
-  1. EMA趋势反转（EMA20穿越EMA50反向）
-  2. OI萎缩（持仓量持续下降，资金在撤出）
-  3. 最小持仓时间已满足（避免因噪音过早退出）
-- 三个条件同时满足才建议平仓
-- 如果只满足1-2个条件，考虑减仓而非全部平仓
+__EXIT_GUIDANCE_ZH__
 
 ### 顺势交易
 - 只在多个时间框架趋势一致时进场
@@ -199,13 +229,7 @@ func (pb *PromptBuilder) buildSystemPromptEN() string {
 - Must stop-loss when single position loss reaches -5%
 - Capital protection first, profit second
 
-### Signal-Driven Exit
-- Exit requires ALL THREE conditions to be met simultaneously:
-  1. EMA trend reversal (EMA20 crosses EMA50 in opposite direction)
-  2. OI contraction (open interest declining — capital is exiting)
-  3. Minimum hold time elapsed (avoid noise-driven premature exits)
-- All three conditions must be met before recommending a full close
-- If only 1-2 conditions met, consider partial close instead of full exit
+__EXIT_GUIDANCE_EN__
 
 ### Trend Following
 - Only enter when trends align across multiple timeframes

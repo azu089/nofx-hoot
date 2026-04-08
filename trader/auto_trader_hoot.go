@@ -17,6 +17,7 @@ import (
 	"nofx/logger"
 	"nofx/market"
 	"nofx/store"
+	"nofx/trader/audit"
 	"os"
 	"strings"
 	"time"
@@ -36,8 +37,14 @@ func isOpenAction(action string) bool {
 	return action == "open_long" || action == "open_short"
 }
 
+// isCloseAction 判定是否为 close 系列 action
+// v1.1 P2-4: 包含 sized adjust 的 reduce_long/short
 func isCloseAction(action string) bool {
-	return action == "close_long" || action == "close_short"
+	switch action {
+	case "close_long", "close_short", "reduce_long", "reduce_short":
+		return true
+	}
+	return false
 }
 
 // ─── Market Regime Detection ────────────────────────────────────────────────
@@ -94,6 +101,10 @@ func (at *AutoTrader) detectPrimaryRegime(ctx *kernel.Context) market.MarketRegi
 
 // injectEventSignals populates ctx.EventSignals and ctx.EventRiskMode.
 // Uses the getEventSignals function if set (injected to avoid circular deps).
+//
+// v1.1 P1-5: 高 severity (≥4) 事件通过 audit pipeline 推送结构化快照，
+// 携带 category / scope / affected_symbols / direction 等元数据，
+// 供下游 Sink（Telegram bot / Sentry / BullMQ worker）消费。
 func (at *AutoTrader) injectEventSignals(ctx *kernel.Context) {
 	if at.getEventSignals == nil {
 		return
@@ -109,6 +120,27 @@ func (at *AutoTrader) injectEventSignals(ctx *kernel.Context) {
 	ctx.EventRiskMode = kernel.DeriveEventRiskMode(signals, 4) // default severity threshold = 4
 	if ctx.EventRiskMode != "normal" {
 		logger.Infof("📰 [%s] Event risk mode: %s (%d active events)", at.name, ctx.EventRiskMode, len(signals))
+	}
+
+	// [HOOT v1.1 P1-5] 推送高 severity 事件到 audit pipeline
+	// 仅对 severity ≥ 3 的事件触发，避免 spam
+	now := time.Now()
+	for _, ev := range signals {
+		if !ev.IsActive(now) || ev.Severity < 3 {
+			continue
+		}
+		audit.Snapshot(at.id, at.strategyID, "event_signal_active", map[string]any{
+			"event_id":         ev.ID,
+			"category":         ev.Category,
+			"severity":         ev.Severity,
+			"direction":        ev.Direction,
+			"scope":            ev.Scope,
+			"affected_symbols": ev.AffectedSymbols,
+			"confidence":       ev.Confidence,
+			"source":           ev.SourceName,
+			"summary":          ev.Summary,
+			"risk_mode":        ctx.EventRiskMode,
+		})
 	}
 }
 
@@ -426,8 +458,13 @@ func (at *AutoTrader) buildArenaGatekeeper() func(symbol, action string, confide
 		}
 
 		// 2. Open-position frequency gate (only for open actions)
+		// v1.1 P1-4: 使用 sided 版本，long/short cooldown 隔离
 		if isOpenAction(action) && at.openGate != nil {
-			allowed, reason := at.openGate.AllowOpen(at.id, symbol, rc)
+			side := "long"
+			if action == "open_short" {
+				side = "short"
+			}
+			allowed, reason := at.openGate.AllowOpenSided(at.id, symbol, side, rc)
 			if !allowed {
 				return false, "arena gatekeeper: OpenGate blocked — " + reason
 			}

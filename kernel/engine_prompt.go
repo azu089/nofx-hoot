@@ -117,6 +117,21 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		sb.WriteString("3. Write chain of thought first, then output structured JSON\n\n")
 	}
 
+	// 6.5 [HOOT v1.1 P2-3] Exit philosophy template
+	// 仅在 cfg.ExitPhilosophy 非 nil 且非 "mechanical" 时追加，确保默认零行为变更
+	if e.config.ExitPhilosophy != nil {
+		philosophy := *e.config.ExitPhilosophy
+		if philosophy != "" && philosophy != "mechanical" {
+			sb.WriteString("# 🚪 Exit Philosophy\n\n")
+			if e.GetLanguage() == LangChinese {
+				sb.WriteString(getExitGuidanceZH(philosophy))
+			} else {
+				sb.WriteString(getExitGuidanceEN(philosophy))
+			}
+			sb.WriteString("\n\n")
+		}
+	}
+
 	// 7. Output format
 	sb.WriteString("# Output Format (Strictly Follow)\n\n")
 	sb.WriteString("**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**\n\n")
@@ -136,7 +151,16 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("## Field Description\n\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	// v1.1 P2-5: 根据 EnableSizedActions 决定是否暴露 sized actions 给 AI
+	if e.config.EnableSizedActions != nil && *e.config.EnableSizedActions {
+		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | reduce_long | reduce_short | scale_long | scale_short | hold | wait\n")
+		sb.WriteString("- `partial_pct` (REQUIRED for reduce_*/scale_*): 0..1.0 ratio\n")
+		sb.WriteString("    - reduce_long/short: close `partial_pct` of current position (e.g. 0.5 = half close)\n")
+		sb.WriteString("    - scale_long/short:  add `partial_pct × current size` on top of existing position\n")
+		sb.WriteString("    - default 0.5 if unspecified\n")
+	} else {
+		sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	}
 	sb.WriteString(fmt.Sprintf("- `confidence`: 0-100 (opening recommended ≥ %d)\n", riskControl.MinConfidence))
 	sb.WriteString("- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd\n")
 	sb.WriteString("- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use `27.76` not `3000 * 0.01`)\n\n")
