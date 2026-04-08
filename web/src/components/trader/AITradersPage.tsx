@@ -893,14 +893,19 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
           <button
             onClick={() => setShowCreateModal(true)}
             disabled={configuredModels.length === 0 || configuredExchanges.length === 0}
-            className="btn-emerald flex items-center justify-center gap-1.5 py-2 rounded-full text-xs"
+            className="relative overflow-hidden flex items-center justify-center gap-1.5 py-2 rounded-full text-xs font-medium text-white transition-all disabled:opacity-50"
+            style={{
+              background:
+                'radial-gradient(ellipse 70% 65% at 50% 105%, rgba(16,185,129,0.32) 0%, rgba(16,185,129,0.16) 35%, rgba(16,185,129,0.05) 65%, transparent 100%)',
+              boxShadow: 'inset 1px 0 0 0 rgba(255,255,255,0.28)',
+            }}
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="whitespace-nowrap">{language === 'zh' ? '交易员' : 'Trader'}</span>
           </button>
         </div>
 
-        {isBeginnerMode ? (
+        {false && isBeginnerMode ? (
           <BeginnerGuideCards
             language={language}
             claw402Ready={claw402Configured}

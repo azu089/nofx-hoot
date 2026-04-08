@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { t } from '../../i18n/translations'
 import { MetricTooltip } from '../common/MetricTooltip'
+import { NexoraSelect } from '../common/NexoraSelect'
 import type {
   HistoricalPosition,
   TraderStats,
@@ -76,14 +77,7 @@ function StatCard({
   language?: any
 }) {
   return (
-    <div
-      className="rounded-lg p-4 transition-all duration-200 hover:scale-[1.02]"
-      style={{
-        background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-        border: '1px solid #2B3139',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-      }}
-    >
+    <div className="px-4 py-2 md:p-4 transition-all duration-200">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">{icon}</span>
         <span className="text-xs" style={{ color: '#848E9C' }}>
@@ -124,10 +118,7 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
     winRate >= 60 ? '#0ECB81' : winRate >= 40 ? '#F0B90B' : '#F6465D'
 
   return (
-    <div
-      className="flex items-center justify-between p-3 rounded-lg transition-all duration-200 hover:bg-white/5"
-      style={{ borderBottom: '1px solid #2B3139' }}
-    >
+    <div className="row-divider flex items-center justify-between p-3 rounded-lg transition-all duration-200 hover:bg-white/5">
       <div className="flex items-center gap-3">
         <span className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
           {(stat.symbol || '').replace('USDT', '')}
@@ -170,13 +161,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
   const pnlColor = totalPnl >= 0 ? '#0ECB81' : '#F6465D'
 
   return (
-    <div
-      className="rounded-lg p-4"
-      style={{
-        background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-        border: `1px solid ${iconColor}33`,
-      }}
-    >
+    <div className="px-4 py-2 md:p-4">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xl">{isLong ? '📈' : '📉'}</span>
         <span
@@ -266,10 +251,7 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
   const displayQty = position.entry_quantity || position.quantity || 0
 
   return (
-    <tr
-      className="transition-all duration-200 hover:bg-white/5"
-      style={{ borderBottom: '1px solid #2B3139' }}
-    >
+    <tr className="fade-divider-b transition-all duration-200 hover:bg-white/5">
       {/* Symbol */}
       <td className="py-3 px-4">
         <div className="flex items-center gap-2">
@@ -527,9 +509,11 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
 
   return (
     <div className="space-y-6">
+      {/* 气泡 1：数据类目（Row1 + Row2 + Direction Stats） */}
+      <div className="nofx-glass px-6 py-3 md:p-6 space-y-3 md:space-y-6">
       {/* Overall Stats - Row 1: Core Metrics */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
           <StatCard
             icon="📊"
             title={t('positionHistory.totalTrades', language)}
@@ -579,12 +563,6 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
             metricKey="expectancy"
             language={language}
           />
-        </div>
-      )}
-
-      {/* Overall Stats - Row 2: Advanced Metrics */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
           <StatCard
             icon="📉"
             title={t('positionHistory.sharpeRatio', language)}
@@ -594,6 +572,12 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
             metricKey="sharpe_ratio"
             language={language}
           />
+        </div>
+      )}
+
+      {/* Overall Stats - Row 2: Advanced Metrics */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
           <StatCard
             icon="🔻"
             title={t('positionHistory.maxDrawdown', language)}
@@ -631,29 +615,25 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
 
       {/* Direction Stats */}
       {directionStats.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
           {directionStats.map((stat) => (
             <DirectionStatsCard key={stat.side} stat={stat} language={language} />
           ))}
         </div>
       )}
+      </div>
+      {/* 气泡 1 结束 */}
 
-      {/* Symbol Performance */}
+      {/* 气泡 2：品种表现 */}
       {symbolStats.length > 0 && (
-        <div
-          className="rounded-lg p-4"
-          style={{
-            background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-            border: '1px solid #2B3139',
-          }}
-        >
+        <div className="nofx-glass p-4">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">🏅</span>
             <span className="font-semibold" style={{ color: '#EAECEF' }}>
               {t('positionHistory.symbolPerformance', language)}
             </span>
           </div>
-          <div className="space-y-1">
+          <div>
             {symbolStats.slice(0, 10).map((stat) => (
               <SymbolStatsRow key={stat.symbol} stat={stat} />
             ))}
@@ -661,89 +641,91 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
         </div>
       )}
 
-      {/* Position List */}
-      <div
-        className="rounded-lg overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-          border: '1px solid #2B3139',
-        }}
-      >
+      {/* 气泡 3：历史仓位 */}
+      <div className="nofx-glass overflow-hidden">
         {/* Filters */}
-        <div
-          className="flex flex-wrap items-center gap-4 p-4"
-          style={{ borderBottom: '1px solid #2B3139' }}
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-sm" style={{ color: '#848E9C' }}>
-              {t('positionHistory.symbol', language)}:
-            </span>
-            <select
-              value={filterSymbol}
-              onChange={(e) => setFilterSymbol(e.target.value)}
-              className="rounded px-3 py-1.5 text-sm"
-              style={{
-                background: '#0B0E11',
-                border: '1px solid #2B3139',
-                color: '#EAECEF',
-              }}
-            >
-              <option value="all">{t('positionHistory.allSymbols', language)}</option>
-              {uniqueSymbols.map((symbol) => (
-                <option key={symbol} value={symbol}>
-                  {(symbol || '').replace('USDT', '')}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm" style={{ color: '#848E9C' }}>
-              {t('positionHistory.side', language)}:
-            </span>
-            <div className="flex rounded overflow-hidden" style={{ border: '1px solid #2B3139' }}>
-              {['all', 'LONG', 'SHORT'].map((side) => (
-                <button
-                  key={side}
-                  onClick={() => setFilterSide(side)}
-                  className="px-3 py-1.5 text-sm capitalize transition-colors"
-                  style={{
-                    background: filterSide === side ? '#2B3139' : 'transparent',
-                    color: filterSide === side ? '#EAECEF' : '#848E9C',
-                  }}
-                >
-                  {side === 'all' ? t('positionHistory.all', language) : side}
-                </button>
-              ))}
+        <div className="fade-divider-b p-4 space-y-3">
+          {/* Row 1: 交易对 + 排序（同一行，左右排布）*/}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs" style={{ color: '#848E9C' }}>
+                {t('positionHistory.symbol', language)}
+              </span>
+              <NexoraSelect
+                value={filterSymbol}
+                onChange={(v) => setFilterSymbol(v)}
+                options={[
+                  { value: 'all', label: t('positionHistory.allSymbols', language) },
+                  ...uniqueSymbols.map((symbol) => ({
+                    value: symbol,
+                    label: (symbol || '').replace('USDT', ''),
+                  })),
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs" style={{ color: '#848E9C' }}>
+                {t('positionHistory.sort', language)}
+              </span>
+              <NexoraSelect
+                value={`${sortBy}-${sortOrder}`}
+                onChange={(v) => {
+                  const [by, order] = v.split('-') as [
+                    'time' | 'pnl' | 'pnl_pct',
+                    'asc' | 'desc',
+                  ]
+                  setSortBy(by)
+                  setSortOrder(order)
+                }}
+                options={[
+                  { value: 'time-desc', label: t('positionHistory.latestFirst', language) },
+                  { value: 'time-asc', label: t('positionHistory.oldestFirst', language) },
+                  { value: 'pnl-desc', label: t('positionHistory.highestPnL', language) },
+                  { value: 'pnl-asc', label: t('positionHistory.lowestPnL', language) },
+                ]}
+              />
             </div>
           </div>
 
-          <div className="flex items-center gap-2 ml-auto">
-            <span className="text-sm" style={{ color: '#848E9C' }}>
-              {t('positionHistory.sort', language)}:
+          {/* Row 2: 方向药丸 segmented control（和看板顶部 Tab 同款 radial 玻璃风）*/}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs" style={{ color: '#848E9C' }}>
+              {t('positionHistory.side', language)}
             </span>
-            <select
-              value={`${sortBy}-${sortOrder}`}
-              onChange={(e) => {
-                const [by, order] = e.target.value.split('-') as [
-                  'time' | 'pnl' | 'pnl_pct',
-                  'asc' | 'desc',
-                ]
-                setSortBy(by)
-                setSortOrder(order)
-              }}
-              className="rounded px-3 py-1.5 text-sm"
-              style={{
-                background: '#0B0E11',
-                border: '1px solid #2B3139',
-                color: '#EAECEF',
-              }}
-            >
-              <option value="time-desc">{t('positionHistory.latestFirst', language)}</option>
-              <option value="time-asc">{t('positionHistory.oldestFirst', language)}</option>
-              <option value="pnl-desc">{t('positionHistory.highestPnL', language)}</option>
-              <option value="pnl-asc">{t('positionHistory.lowestPnL', language)}</option>
-            </select>
+            <div className="bubble-card grid grid-cols-3 p-1 !rounded-full">
+              {(['all', 'LONG', 'SHORT'] as const).map((side, idx, arr) => {
+                const isActive = filterSide === side
+                const isFirst = idx === 0
+                const isLast = idx === arr.length - 1
+                const insetShadows: string[] = []
+                if (isActive && !isFirst) insetShadows.push('inset 1px 0 0 0 rgba(255,255,255,0.28)')
+                if (isActive && !isLast) insetShadows.push('inset -1px 0 0 0 rgba(255,255,255,0.28)')
+                return (
+                  <button
+                    key={side}
+                    onClick={() => setFilterSide(side)}
+                    className={
+                      isActive
+                        ? 'relative flex items-center justify-center py-2 rounded-full text-xs font-medium text-white transition-all overflow-hidden'
+                        : 'flex items-center justify-center py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-emerald-400/10 transition-all'
+                    }
+                    style={
+                      isActive
+                        ? {
+                              background:
+                                  'radial-gradient(ellipse 70% 65% at 50% 105%, rgba(16,185,129,0.32) 0%, rgba(16,185,129,0.16) 35%, rgba(16,185,129,0.05) 65%, transparent 100%)',
+                              boxShadow: insetShadows.join(', '),
+                          }
+                        : undefined
+                    }
+                  >
+                    <span className="whitespace-nowrap">
+                      {side === 'all' ? t('positionHistory.all', language) : side}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
@@ -751,7 +733,7 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr style={{ background: '#0B0E11' }}>
+              <tr className="fade-divider-b">
                 <th
                   className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider"
                   style={{ color: '#848E9C' }}

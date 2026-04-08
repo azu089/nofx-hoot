@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { EquityChart } from './EquityChart'
 import { AdvancedChart } from './AdvancedChart'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { t } from '../../i18n/translations'
-import { BarChart3, CandlestickChart, ChevronDown, Search } from 'lucide-react'
+import { BarChart3, CandlestickChart, ChevronDown, Search, Maximize2, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface ChartTabsProps {
@@ -61,7 +62,32 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
   const [availableSymbols, setAvailableSymbols] = useState<SymbolInfo[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [searchFilter, setSearchFilter] = useState('')
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showFsControls, setShowFsControls] = useState(true)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // 全屏时锁 body 滚动 + ESC 关闭
+  useEffect(() => {
+    if (!isFullscreen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    setShowFsControls(true)
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false)
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', handleEsc)
+    }
+  }, [isFullscreen])
+
+  // 全屏控件 3 秒后自动隐藏（类似视频播放器）
+  useEffect(() => {
+    if (!isFullscreen || !showFsControls) return
+    const timer = setTimeout(() => setShowFsControls(false), 3000)
+    return () => clearTimeout(timer)
+  }, [isFullscreen, showFsControls])
 
   // 当交易所ID变化时，自动切换市场类型
   useEffect(() => {
@@ -144,17 +170,30 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
 
   console.log('[ChartTabs] rendering, activeTab:', activeTab)
 
-  return (
-    <div className={`nofx-glass rounded-lg border border-white/5 relative z-10 w-full flex flex-col transition-all duration-300 ${typeof window !== 'undefined' && window.innerWidth < 768 ? 'h-[500px]' : 'h-[600px]'
-      }`}>
+  const rootHeightClass = isFullscreen
+    ? 'h-full'
+    : (typeof window !== 'undefined' && window.innerWidth < 768 ? 'min-h-[500px]' : 'min-h-[600px]')
+
+  const chartContent = (
+    <div className={`nofx-glass relative z-10 w-full flex flex-col transition-all duration-300 ${rootHeightClass} ${isFullscreen ? 'force-desktop overflow-hidden' : ''}`}>
+      {/* Mobile-only: 右上角全屏横屏按钮 */}
+      {!isFullscreen && (
+        <button
+          onClick={() => setIsFullscreen(true)}
+          className="md:hidden absolute top-2 right-2 z-30 flex items-center justify-center w-7 h-7 rounded-md text-nofx-text-muted hover:text-nofx-gold hover:bg-white/10 transition-all"
+          title={language === 'zh' ? '全屏横屏' : 'Fullscreen'}
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
+      )}
       {/* 
         Premium Professional Toolbar 
         Mobile: Single row, horizontal scroll with gradient mask
         Desktop: Standard flex-wrap/nowrap
       */}
       <div
-        className="relative z-20 flex flex-wrap md:flex-nowrap items-center justify-between gap-y-2 px-3 py-2 shrink-0 backdrop-blur-md bg-[#0B0E11]/80 rounded-t-lg"
-        style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}
+        className="relative z-20 flex flex-wrap md:flex-nowrap items-center justify-between gap-y-2 px-3 py-2 shrink-0"
+        style={{}}
       >
         {/* Left: Tab Switcher */}
         <div className="flex flex-wrap items-center gap-1">
@@ -299,7 +338,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
       </div>
 
       {/* Tab Content - Chart autosizes to this container */}
-      <div className="relative flex-1 bg-[#0B0E11]/50 rounded-b-lg overflow-hidden h-full min-h-0">
+      <div className="relative flex-1 bg-transparent overflow-hidden h-full min-h-0">
         <AnimatePresence mode="wait">
           {activeTab === 'equity' ? (
             <motion.div
@@ -335,5 +374,45 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
       </div>
     </div>
   )
+
+  if (isFullscreen) {
+    const overlay = (
+      <div
+        className="fixed inset-0 z-[9999] bg-black"
+        style={{ touchAction: 'none' }}
+        onClick={() => setShowFsControls((v) => !v)}
+      >
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsFullscreen(false) }}
+          className={`absolute top-3 left-3 z-[10000] flex items-center justify-center w-9 h-9 rounded-full bg-black/60 border border-white/20 text-white hover:bg-black/80 transition-opacity duration-300 ${showFsControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          title="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            width: '100vh',
+            height: '100vw',
+            transform: 'translate(-50%, -50%) rotate(90deg)',
+            transformOrigin: 'center center',
+          }}
+        >
+          {chartContent}
+        </div>
+      </div>
+    )
+    return (
+      <>
+        {/* 占位：保持原位置气泡不塌陷 */}
+        <div className={typeof window !== 'undefined' && window.innerWidth < 768 ? 'h-[500px]' : 'h-[600px]'} />
+        {typeof document !== 'undefined' && createPortal(overlay, document.body)}
+      </>
+    )
+  }
+
+  return chartContent
 }
 

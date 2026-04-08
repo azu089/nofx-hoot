@@ -440,8 +440,8 @@ function App() {
         </AnimatePresence>
       </main>
 
-      {/* Footer — 配置页（/traders）下隐藏 */}
-      {route !== '/traders' && (
+      {/* Footer removed per PM request */}
+      {false && (
       <footer
           className="mt-16"
           style={{ borderTop: '1px solid #2B3139', background: '#181A20' }}

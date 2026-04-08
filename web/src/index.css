@@ -147,8 +147,28 @@ html {
   right: 1rem;
   top: 0;
   height: 1px;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.12), transparent);
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.22), transparent);
   pointer-events: none;
+  z-index: 1;
+}
+
+/* 渐隐底边线 — 用于 div / tr（table 行底部分隔） */
+.fade-divider-b {
+  background-image: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.22), transparent);
+  background-size: calc(100% - 2rem) 1px;
+  background-position: bottom center;
+  background-repeat: no-repeat;
+}
+/* table 行：用 inset box-shadow 画底部 1px 线
+ * 原因：Tailwind preflight 强制 border-collapse: collapse，td 的 border-bottom
+ * 会和相邻 cell border 合并，rgba 低透明度几乎不可见。inset box-shadow 独立渲染，不受影响。
+ */
+tr.fade-divider-b > td,
+tr.fade-divider-b > th {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+tr.fade-divider-b:last-child > td {
+  box-shadow: none !important;
 }
 
 :root {
@@ -422,6 +442,88 @@ body {
 .header-bar {
   background: transparent;
   border-bottom: none;
+}
+
+/* ========================================
+ * Nexora 全局样式覆盖
+ * 让旧设计的深色卡片/边框在所有页面自动获得 Nexora 玻璃风
+ * ======================================== */
+@layer utilities {
+  /* 深色卡片背景 → 半透明雾白 + 模糊 */
+  .bg-nofx-bg,
+  .bg-nofx-bg\/30,
+  .bg-nofx-bg\/50,
+  .bg-nofx-bg\/60,
+  .bg-nofx-bg\/80,
+  .bg-zinc-900,
+  .bg-zinc-900\/20,
+  .bg-zinc-900\/30,
+  .bg-zinc-900\/50,
+  .bg-zinc-900\/80,
+  .bg-zinc-800,
+  .bg-zinc-800\/20,
+  .bg-zinc-800\/50,
+  .bg-zinc-800\/80,
+  .bg-black\/40,
+  .bg-black\/50,
+  .bg-black\/60,
+  .bg-black\/80,
+  .bg-\[\#0b0e11\],
+  .bg-\[\#0B0E11\],
+  .bg-\[\#131722\],
+  .bg-\[\#1E222D\] {
+    background-color: rgba(180, 200, 220, 0.045) !important;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  /* 深色边框 → 透明（Nexora 无边框风格）
+   * 注意：白色半透明边框 .border-white/5,10,20 是高亮描边，不要动
+   */
+  .border-nofx-border,
+  .border-zinc-900,
+  .border-zinc-800,
+  .border-zinc-800\/50,
+  .border-zinc-700,
+  .border-zinc-600,
+  .border-\[\#0b0e11\],
+  .border-\[\#0B0E11\] {
+    border-color: transparent !important;
+  }
+}
+
+/* .nofx-glass 原本只是空 class（仅定义了 CSS 变量）
+ * 直接对齐 .bubble-card，看板/图表所有卡片自动获得 Nexora 气泡（含左上角高亮线）
+ */
+.nofx-glass {
+  position: relative;
+  background-color: rgba(180, 200, 220, 0.045) !important;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-radius: 1.25rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+.nofx-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.405) 0%,
+    rgba(255, 255, 255, 0.216) 4%,
+    rgba(255, 255, 255, 0.117) 12%,
+    rgba(255, 255, 255, 0.072) 35%,
+    rgba(255, 255, 255, 0.05) 70%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
 }
 
 /* Sonner (toast) - Binance theme overrides */
@@ -1019,6 +1121,15 @@ tr:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   transform: translateY(-2px);
 }
+
+/* Force-desktop: 手机端 K 线全屏横屏时，解除 hidden md:* 限制，显示桌面端完整工具栏 */
+.force-desktop .hidden.md\:flex { display: flex !important; }
+.force-desktop .hidden.md\:inline { display: inline !important; }
+.force-desktop .md\:hidden { display: none !important; }
+.force-desktop .md\:flex-nowrap { flex-wrap: nowrap !important; }
+.force-desktop .md\:w-auto { width: auto !important; }
+.force-desktop .md\:max-w-none { max-width: none !important; }
+.force-desktop .md\:gap-3 { gap: 0.75rem !important; }
 
 /* Chart container */
 .chart-container {

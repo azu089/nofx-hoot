@@ -25,6 +25,17 @@ export function DeepVoidBackground({ children, className = '', disableAnimation 
                 </>
             ) : (
                 <>
+                    {/* 0. Nexora 青蓝黑基底（替换原 bg-nofx-bg 的纯色底） */}
+                    <div
+                        className="absolute inset-0 pointer-events-none z-0"
+                        style={{
+                            background: `
+                                radial-gradient(ellipse 85% 70% at 105% 50%, rgba(200, 220, 240, 0.11), transparent 65%),
+                                linear-gradient(180deg, #0E141C 0%, #060A12 100%)
+                            `,
+                        }}
+                    ></div>
+
                     {/* 1. Grain/Noise Texture */}
                     <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light pointer-events-none fixed z-0"></div>
 
@@ -34,10 +45,10 @@ export function DeepVoidBackground({ children, className = '', disableAnimation 
                         <div className="absolute inset-0 bg-grid-pattern opacity-[0.03]"></div>
                     </div>
 
-                    {/* 3. Ambient Glow Spots */}
+                    {/* 3. Ambient Glow Spots — 金色 → Nexora 白/青蓝 */}
                     <div className="absolute inset-0 overflow-hidden pointer-events-none fixed z-0">
-                        <div className="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] bg-nofx-gold/10 rounded-full blur-[120px] mix-blend-screen animate-pulse-slow"></div>
-                        <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] bg-nofx-accent/5 rounded-full blur-[120px] mix-blend-screen animate-pulse-slow" style={{ animationDelay: '2s' }}></div>
+                        <div className="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] rounded-full blur-[120px] mix-blend-screen animate-pulse-slow" style={{ background: 'rgba(200, 220, 240, 0.08)' }}></div>
+                        <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full blur-[120px] mix-blend-screen animate-pulse-slow" style={{ animationDelay: '2s', background: 'rgba(43, 232, 158, 0.04)' }}></div>
                     </div>
 
                     {/* 4. CRT/Scanline Overlay */}

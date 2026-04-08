@@ -10,6 +10,7 @@ import { confirmToast, notify } from '../lib/notify'
 import { t, type Language } from '../i18n/translations'
 import { LogOut, Loader2, Eye, EyeOff, Copy, Check } from 'lucide-react'
 import { DeepVoidBackground } from '../components/common/DeepVoidBackground'
+import { NexoraSelect } from '../components/common/NexoraSelect'
 import { GridRiskPanel } from '../components/strategy/GridRiskPanel'
 import type {
     SystemStatus,
@@ -145,6 +146,8 @@ export function TraderDashboardPage({
     // Current positions pagination
     const [positionsPageSize, setPositionsPageSize] = useState<number>(20)
     const [positionsCurrentPage, setPositionsCurrentPage] = useState<number>(1)
+    // 移动端 Tab 状态：行情（持仓+K线）/ 决策 / 历史
+    const [mobileTab, setMobileTab] = useState<'main' | 'decisions' | 'history'>('main')
 
     // Calculate paginated positions
     const totalPositions = positions?.length || 0
@@ -406,12 +409,7 @@ export function TraderDashboardPage({
         <DeepVoidBackground className="min-h-screen pb-12" disableAnimation>
             <div className="w-full px-4 md:px-8 relative z-10 pt-6">
                 {/* Trader Header */}
-                <div
-                    className="mb-6 rounded-lg p-6 animate-scale-in nofx-glass group"
-                    style={{
-                        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.6) 0%, rgba(15, 23, 42, 0.4) 100%)',
-                    }}
-                >
+                <div className="mb-6 rounded-lg p-6 animate-scale-in nofx-glass group">
                     <div className="flex items-start justify-between mb-4">
                         <h2 className="text-2xl font-bold flex items-center gap-4 text-nofx-text-main">
                             <div className="relative">
@@ -439,18 +437,15 @@ export function TraderDashboardPage({
                         <div className="flex items-center gap-4">
                             {/* Trader Selector */}
                             {traders && traders.length > 0 && (
-                                <div className="flex items-center gap-2 nofx-glass px-1 py-1 rounded-lg border border-white/5">
-                                    <select
-                                        value={selectedTraderId}
-                                        onChange={(e) => onTraderSelect(e.target.value)}
-                                        className="bg-transparent text-sm font-medium cursor-pointer transition-colors text-nofx-text-main focus:outline-none px-2 py-1"
-                                    >
-                                        {traders.map((trader) => (
-                                            <option key={trader.trader_id} value={trader.trader_id} className="bg-[#0B0E11]">
-                                                {trader.trader_name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                <div className="min-w-[140px]">
+                                    <NexoraSelect
+                                        value={selectedTraderId || ''}
+                                        onChange={(v) => onTraderSelect(v)}
+                                        options={traders.map((trader) => ({
+                                            value: trader.trader_id,
+                                            label: trader.trader_name,
+                                        }))}
+                                    />
                                 </div>
                             )}
 
@@ -563,8 +558,8 @@ export function TraderDashboardPage({
                     </div>
                 )}
 
-                {/* Account Overview */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                {/* Account Overview — 4 项合并为 1 个气泡 */}
+                <div className="nofx-glass p-2 mb-8 grid grid-cols-2 md:grid-cols-4">
                     <StatCard
                         title={t('totalEquity', language)}
                         value={`${account?.total_equity?.toFixed(2) || '0.00'}`}
@@ -608,14 +603,54 @@ export function TraderDashboardPage({
                     </div>
                 )}
 
+                {/* Mobile Tab Bar — 配置页同款 segmented control 风格 */}
+                <div className="md:hidden sticky top-16 z-30 mb-4">
+                    <div className="bubble-card grid grid-cols-3 p-1 !rounded-full">
+                        {([
+                            { key: 'main', label: language === 'zh' ? '持仓' : 'Positions' },
+                            { key: 'decisions', label: language === 'zh' ? '决策' : 'Decisions' },
+                            { key: 'history', label: language === 'zh' ? '历史' : 'History' },
+                        ] as const).map((tab, idx, arr) => {
+                            const isActive = mobileTab === tab.key
+                            const isFirst = idx === 0
+                            const isLast = idx === arr.length - 1
+                            const insetShadows: string[] = []
+                            if (isActive && !isFirst) insetShadows.push('inset 1px 0 0 0 rgba(255,255,255,0.28)')
+                            if (isActive && !isLast) insetShadows.push('inset -1px 0 0 0 rgba(255,255,255,0.28)')
+                            return (
+                            <button
+                                key={tab.key}
+                                onClick={() => setMobileTab(tab.key)}
+                                className={
+                                    isActive
+                                        ? 'relative flex items-center justify-center py-2 rounded-full text-xs font-medium text-white transition-all overflow-hidden'
+                                        : 'flex items-center justify-center py-2 rounded-full text-xs font-medium text-zinc-300 hover:text-white hover:bg-emerald-400/10 transition-all'
+                                }
+                                style={
+                                    isActive
+                                        ? {
+                                              background:
+                                                  'radial-gradient(ellipse 70% 65% at 50% 105%, rgba(16,185,129,0.32) 0%, rgba(16,185,129,0.16) 35%, rgba(16,185,129,0.05) 65%, transparent 100%)',
+                                              boxShadow: insetShadows.join(', '),
+                                          }
+                                        : undefined
+                                }
+                            >
+                                <span className="whitespace-nowrap">{tab.label}</span>
+                            </button>
+                            )
+                        })}
+                    </div>
+                </div>
+
                 {/* Main Content Area */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                    {/* Left Column: Charts + Positions */}
-                    <div className="space-y-6">
-                        {/* Chart Tabs (Equity / K-line) */}
+                    {/* Left Column: Positions + Charts — 移动端仅 main tab 显示（持仓在上，K线在下）*/}
+                    <div className={`flex flex-col gap-6 ${mobileTab === 'main' ? '' : 'hidden md:flex'}`}>
+                        {/* Chart Tabs (Equity / K-line) — order-2 放在持仓下方 */}
                         <div
                             ref={chartSectionRef}
-                            className="chart-container animate-slide-in scroll-mt-32 backdrop-blur-sm"
+                            className="order-2 animate-slide-in scroll-mt-32"
                             style={{ animationDelay: '0.1s' }}
                         >
                             <ChartTabs
@@ -629,9 +664,9 @@ export function TraderDashboardPage({
                             />
                         </div>
 
-                        {/* Current Positions */}
+                        {/* Current Positions — order-1 放在 K线上方 */}
                         <div
-                            className="nofx-glass p-6 animate-slide-in relative overflow-hidden group"
+                            className="order-1 nofx-glass p-6 animate-slide-in relative overflow-hidden group"
                             style={{ animationDelay: '0.15s' }}
                         >
                             <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -649,7 +684,95 @@ export function TraderDashboardPage({
                             </div>
                             {positions && positions.length > 0 ? (
                                 <div>
-                                    <div className="overflow-x-auto">
+                                    {/* 移动端：卡片列表（气泡内，无独立气泡） */}
+                                    <div className="md:hidden divide-y divide-white/5">
+                                        {paginatedPositions.map((pos, i) => (
+                                            <div
+                                                key={i}
+                                                className="py-4 first:pt-0 last:pb-0 cursor-pointer"
+                                                onClick={() => {
+                                                    setSelectedChartSymbol(pos.symbol)
+                                                    setChartUpdateKey(Date.now())
+                                                    if (chartSectionRef.current) {
+                                                        chartSectionRef.current.scrollIntoView({
+                                                            behavior: 'smooth',
+                                                            block: 'start',
+                                                        })
+                                                    }
+                                                }}
+                                            >
+                                                {/* 顶部行：币种 + 方向 + 平仓按钮 */}
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono font-semibold text-base text-nofx-text-main">{pos.symbol}</span>
+                                                        <span
+                                                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${pos.side === 'long' ? 'bg-nofx-green/10 text-nofx-green' : 'bg-nofx-red/10 text-nofx-red'}`}
+                                                        >
+                                                            {t(pos.side === 'long' ? 'long' : 'short', language)}
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleClosePosition(pos.symbol, pos.side.toUpperCase())
+                                                        }}
+                                                        disabled={closingPosition === pos.symbol}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-nofx-red/10 text-nofx-red border border-nofx-red/30 hover:bg-nofx-red/20"
+                                                    >
+                                                        {closingPosition === pos.symbol ? (
+                                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                                        ) : (
+                                                            <LogOut className="w-3 h-3" />
+                                                        )}
+                                                        {language === 'zh' ? '平仓' : 'Close'}
+                                                    </button>
+                                                </div>
+
+                                                {/* 字段网格：2 列 × 4 行 */}
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs font-mono">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-nofx-text-muted">{language === 'zh' ? '入场价' : 'Entry'}</span>
+                                                        <span className="text-nofx-text-main">{pos.entry_price.toFixed(4)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-nofx-text-muted">{language === 'zh' ? '标记价' : 'Mark'}</span>
+                                                        <span className="text-nofx-text-main">{pos.mark_price.toFixed(4)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-nofx-text-muted">{language === 'zh' ? '数量' : 'Qty'}</span>
+                                                        <span className="text-nofx-text-main">{pos.quantity.toFixed(4)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-nofx-text-muted">{language === 'zh' ? '价值' : 'Value'}</span>
+                                                        <span className="text-nofx-text-main">{(pos.quantity * pos.mark_price).toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-nofx-text-muted">{language === 'zh' ? '杠杆' : 'Lev.'}</span>
+                                                        <span className="text-nofx-gold">{pos.leverage}x</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-nofx-text-muted">{language === 'zh' ? '强平价' : 'Liq.'}</span>
+                                                        <span className="text-nofx-text-muted">{pos.liquidation_price.toFixed(4)}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* 未实现盈亏单独一行 */}
+                                                <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/5">
+                                                    <span className="text-xs text-nofx-text-muted">{language === 'zh' ? '未实现盈亏' : 'uPnL'}</span>
+                                                    <span
+                                                        className={`font-mono font-bold text-base ${pos.unrealized_pnl >= 0 ? 'text-nofx-green' : 'text-nofx-red'}`}
+                                                        style={{ textShadow: pos.unrealized_pnl >= 0 ? '0 0 10px rgba(14,203,129,0.3)' : '0 0 10px rgba(246,70,93,0.3)' }}
+                                                    >
+                                                        {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)} USDT
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* 桌面端：表格 */}
+                                    <div className="hidden md:block overflow-x-auto">
                                         <table className="w-full text-xs">
                                             <thead className="text-left border-b border-white/5">
                                                 <tr>
@@ -796,9 +919,11 @@ export function TraderDashboardPage({
                         </div>
                     </div>
 
-                    {/* Right Column: Recent Decisions */}
+                    {/* Right Column: Recent Decisions — 移动端仅 decisions tab 显示 */}
                     <div
-                        className="nofx-glass p-6 animate-slide-in h-fit lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] flex flex-col"
+                        className={`nofx-glass p-6 animate-slide-in h-fit lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] flex-col ${
+                            mobileTab === 'decisions' ? 'flex' : 'hidden md:flex'
+                        }`}
                         style={{ animationDelay: '0.2s' }}
                     >
                         {/* Header */}
@@ -885,18 +1010,16 @@ export function TraderDashboardPage({
                     </div>
                 </div>
 
-                {/* Position History Section */}
+                {/* Position History Section — 移动端仅 history tab 显示
+                 * 不再包外层 nofx-glass，PositionHistory 组件内部已有 3 个气泡
+                 */}
                 {selectedTraderId && (
                     <div
-                        className="nofx-glass p-6 animate-slide-in"
+                        className={`animate-slide-in ${
+                            mobileTab === 'history' ? '' : 'hidden md:block'
+                        }`}
                         style={{ animationDelay: '0.25s' }}
                     >
-                        <div className="flex items-center justify-between mb-5">
-                            <h2 className="text-xl font-bold flex items-center gap-2 text-nofx-text-main">
-                                <span className="text-2xl">📜</span>
-                                {t('positionHistory.title', language)}
-                            </h2>
-                        </div>
                         <PositionHistory traderId={selectedTraderId} />
                     </div>
                 )}
@@ -924,7 +1047,7 @@ function StatCard({
     icon?: string
 }) {
     return (
-        <div className="group nofx-glass p-5 rounded-lg transition-all duration-300 hover:bg-white/5 hover:translate-y-[-2px] border border-white/5 hover:border-nofx-gold/20 relative overflow-hidden">
+        <div className="group p-5 rounded-lg transition-all duration-300 hover:bg-white/5 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-4xl grayscale group-hover:grayscale-0">
                 {icon}
             </div>
