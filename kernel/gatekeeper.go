@@ -26,6 +26,7 @@ import (
 	"math"
 	"nofx/logger"
 	"nofx/market"
+	"strings"
 	"time"
 )
 
@@ -249,6 +250,11 @@ func GateAll(candidates []CandidateDecision, signals *MarketSignals, mdMap map[s
 
 // GateExitAction validates close/hold/wait actions.
 // Blocks premature exits when the trend is still healthy.
+//
+// v1.1 审计修复 (2026-04-08):
+//   - EXIT_G3: sync 来源（交易所服务端触发）完全豁免（对齐 nofx改版）
+//   - EXIT_G1: 要求 OI 扩张 + 价格同向才拦（对齐 nofx改版，避免"OI 扩但价跌"误拦）
+//   - EXIT_ESCAPE: HOOT 独有逃生阀，AI 连续 N 次被拦后强制放行（配合 ExitIntentTracker）
 func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Data, cfg GatekeeperConfig) GatekeeperResult {
 	// hold/wait always pass
 	if c.Action == "hold" || c.Action == "wait" || c.Action == "HOLD" || c.Action == "WAIT" {
@@ -256,15 +262,40 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 	}
 
 	sym := c.Symbol
+	closeSide := exitSideFromAction(c.Action)
+
+	// v1.1 审计修复: sync 来源豁免所有 EXIT_G 规则
+	// "sync" 是交易所服务端触发的关单（SL/TP 命中 / 流动性事件），
+	// 不应被 gatekeeper 拦截——拦了也没用且会造成记录混乱
+	if strings.EqualFold(c.Source, "sync") {
+		return GatekeeperResult{Allowed: true}
+	}
+
+	// escapeGrantedResult 生成逃生阀放行结果（带审计标签）
+	escapeGrantedResult := func(blockedBy string) GatekeeperResult {
+		return GatekeeperResult{
+			Allowed:    true,
+			RejectCode: "EXIT_ESCAPE_GRANTED",
+			RejectFeatures: map[string]interface{}{
+				"reason":     "ai repeatedly requested close, escape hatch granted",
+				"blocked_by": blockedBy,
+				"side":       closeSide,
+			},
+		}
+	}
 
 	// EXIT_G3 — Minimum hold time not elapsed
 	if cfg.MinHoldSeconds > 0 && cfg.TraderID != "" {
-		lc := GlobalLifecycleManager().Get(cfg.TraderID, sym, exitSideFromAction(c.Action))
+		lc := GlobalLifecycleManager().Get(cfg.TraderID, sym, closeSide)
 		if lc != nil {
 			holdDuration := time.Since(lc.RegisteredAt)
 			minHold := time.Duration(cfg.MinHoldSeconds) * time.Second
 			if holdDuration < minHold {
 				remaining := minHold - holdDuration
+				// 记录 + 检查逃生阀 (v1.1 HOOT 独有)
+				if GlobalExitIntentTracker().RecordBlockAndCheckEscape(cfg.TraderID, sym, closeSide, "EXIT_G3_MIN_HOLD") {
+					return escapeGrantedResult("EXIT_G3_MIN_HOLD")
+				}
 				return GatekeeperResult{
 					Allowed:      false,
 					RejectReason: fmt.Sprintf("EXIT_G3: min hold %ds not elapsed (held %ds, remaining %ds)", cfg.MinHoldSeconds, int(holdDuration.Seconds()), int(remaining.Seconds())),
@@ -282,21 +313,25 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 		return GatekeeperResult{Allowed: true}
 	}
 
-	// EXIT_G1 — OI still expanding → trend intact, block premature long close
-	// NOTE: Only blocks close_long. When OI is expanding and you're short,
-	// the expansion likely means longs are building (adverse for shorts),
-	// so closing short should be ALLOWED, not blocked.
+	// EXIT_G1 — OI still expanding + price direction confirms trend → block close
+	// v1.1 审计修复: 要求 OI 扩张 + 价格同向才算"趋势完好"
+	// 避免"OI 扩但价跌"的分歧场景下误拦 close_long
 	oiTrend := signals.OITrend[sym]
+	priceChange1h := md.PriceChange1h / 100.0 // 百分比 → 小数
 	if oiTrend == "expansion" {
 		isClosingLong := c.Action == "close_long" || c.Action == "FULL_CLOSE" || c.Action == "PARTIAL_CLOSE"
-		if isClosingLong {
+		if isClosingLong && priceChange1h > 0 {
+			if GlobalExitIntentTracker().RecordBlockAndCheckEscape(cfg.TraderID, sym, closeSide, "EXIT_G1_OI_EXPANDING") {
+				return escapeGrantedResult("EXIT_G1_OI_EXPANDING")
+			}
 			return GatekeeperResult{
 				Allowed:      false,
-				RejectReason: "EXIT_G1: OI still expanding — trend intact, hold position",
-				RejectCode:   "EXIT_G1_OI_EXPANDING",
+				RejectReason: fmt.Sprintf("EXIT_G1: OI expanding + price +%.2f%% — bullish trend intact, hold long", priceChange1h*100),
+				RejectCode:   "EXIT_G1_OI_EXPANDING_LONG",
 				RejectFeatures: map[string]interface{}{
-					"oi_trend": oiTrend,
-					"symbol":   sym,
+					"oi_trend":     oiTrend,
+					"price_change": priceChange1h,
+					"symbol":       sym,
 				},
 			}
 		}
@@ -316,6 +351,9 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 
 					// Long position: block close if EMA20 > EMA50 (uptrend intact)
 					if isClosingLong && ema20 > ema50*1.001 {
+						if GlobalExitIntentTracker().RecordBlockAndCheckEscape(cfg.TraderID, sym, closeSide, "EXIT_G2_HTF_ALIGNED") {
+							return escapeGrantedResult("EXIT_G2_HTF_ALIGNED")
+						}
 						return GatekeeperResult{
 							Allowed:      false,
 							RejectReason: fmt.Sprintf("EXIT_G2: HTF (%s) EMA20 > EMA50 — uptrend intact, hold long", htf),
@@ -327,6 +365,9 @@ func GateExitAction(c *CandidateDecision, signals *MarketSignals, md *market.Dat
 					}
 					// Short position: block close if EMA20 < EMA50 (downtrend intact)
 					if isClosingShort && ema50 > ema20*1.001 {
+						if GlobalExitIntentTracker().RecordBlockAndCheckEscape(cfg.TraderID, sym, closeSide, "EXIT_G2_HTF_ALIGNED") {
+							return escapeGrantedResult("EXIT_G2_HTF_ALIGNED")
+						}
 						return GatekeeperResult{
 							Allowed:      false,
 							RejectReason: fmt.Sprintf("EXIT_G2: HTF (%s) EMA50 > EMA20 — downtrend intact, hold short", htf),

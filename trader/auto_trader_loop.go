@@ -391,6 +391,9 @@ func (at *AutoTrader) runCycle() error {
 				if isFullCloseAction(d.Action) {
 					kernel.GlobalLifecycleManager().Unregister(at.id, d.Symbol, side)
 				}
+				// v1.1 真实策略审计修复: close 成功后清空 ExitIntent 计数
+				// 避免下次同 symbol 重开后残留旧的被拦记录
+				kernel.GlobalExitIntentTracker().RecordSuccess(at.id, d.Symbol, side)
 			}
 
 			// Brief delay after successful execution
