@@ -171,9 +171,6 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 	posKey := decision.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
-	// v1.1 真实策略审计修复: 新开仓清空旧的 ExitIntent 计数
-	kernel.GlobalExitIntentTracker().RecordSuccess(at.id, decision.Symbol, "LONG")
-
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
 		logger.Infof("  ⚠ Failed to set stop loss: %v", err)
@@ -320,9 +317,6 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, acti
 	// Record position opening time
 	posKey := decision.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
-
-	// v1.1 真实策略审计修复: 新开仓清空旧的 ExitIntent 计数
-	kernel.GlobalExitIntentTracker().RecordSuccess(at.id, decision.Symbol, "SHORT")
 
 	// Set stop loss and take profit
 	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
