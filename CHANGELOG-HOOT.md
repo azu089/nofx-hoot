@@ -5,6 +5,7 @@ Enhancements on top of [nofx](https://github.com/NoFxAiOS/nofx) (AGPL-3.0).
 ## [Unreleased]
 
 ### Arena — Multi-AI Consensus Trading (13 files)
+Re-implemented in Go from [TradingAgents](https://github.com/TauricResearch/TradingAgents) ([arXiv:2412.20138](https://arxiv.org/abs/2412.20138)), adapted for crypto futures markets.
 - 13-role structured debate: Market/Social/News/Fundamentals analysts → Research team → 3 Risk Officers (Conservative/Balanced/Aggressive) → Portfolio Manager → Signal Processor
 - 10 MCP tools for analysts: get_stock_data, get_indicators, get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement, get_news, get_global_news, get_insider_transactions
 - Tool-calling loop with 20-iteration hardcap per analyst and error recovery

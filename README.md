@@ -35,6 +35,7 @@
 ### What's New in This Fork
 
 **Arena — Multi-AI Consensus Trading**
+Based on [TradingAgents](https://github.com/TauricResearch/TradingAgents) ([arXiv:2412.20138](https://arxiv.org/abs/2412.20138)) — a multi-agent LLM financial trading framework. Re-implemented in Go with crypto-market adaptations.
 - 13-role structured debate system (4 analysts → 3 researchers → 3 risk officers → portfolio manager → signal processor)
 - Each analyst runs independent tool-calling loops with 10 market data tools
 - BM25-based financial memory for historical situation matching
