@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package kernel
 
 import (
@@ -108,7 +112,7 @@ type Context struct {
 	BTCETHLeverage     int                                `json:"-"`
 	AltcoinLeverage    int                                `json:"-"`
 	Timeframes         []string                           `json:"-"`
-	// HOOT extensions
+	// Extensions
 	Signals            *MarketSignals                     `json:"-"` // Structured market signals
 	EventSignals       []EventSignal                      `json:"-"` // Active event signals
 	EventRiskMode      string                             `json:"-"` // "normal" | "threshold_raised" | "blocked_open"

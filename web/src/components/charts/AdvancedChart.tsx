@@ -930,7 +930,7 @@ export function AdvancedChart({
         <div className="flex items-center gap-4">
           {/* Symbol & Interval */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-white">{symbol}</span>
+            <span className="text-sm font-medium text-white">{symbol}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1F2937] text-gray-400">{interval}</span>
             <span
               className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase"
@@ -947,7 +947,7 @@ export function AdvancedChart({
           {marketStats && (
             <div className="flex items-center gap-3 pl-3 border-l border-[#2B3139]">
               <span
-                className="text-base font-bold tabular-nums"
+                className="text-base font-medium tabular-nums"
                 style={{ color: marketStats.priceChange >= 0 ? '#10B981' : '#EF4444' }}
               >
                 {marketStats.price.toLocaleString(undefined, {
@@ -1029,7 +1029,7 @@ export function AdvancedChart({
           >
             <div className="flex items-center gap-2">
               <BarChart2 className="w-4 h-4 text-yellow-400" />
-              <h4 className="text-sm font-bold text-white">
+              <h4 className="text-sm font-medium text-white">
                 {language === 'zh' ? '技术指标' : 'Technical Indicators'}
               </h4>
             </div>

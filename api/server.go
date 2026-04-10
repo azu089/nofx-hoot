@@ -1,7 +1,12 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,6 +15,7 @@ import (
 	"nofx/logger"
 	"nofx/manager"
 	"nofx/store"
+	"os"
 	"strings"
 	"time"
 
@@ -118,6 +124,11 @@ func (s *Server) setupRoutes() {
 		s.route(api, "POST", "/register", "Register new user", s.handleRegister)
 		s.route(api, "POST", "/login", "User login, returns JWT token", s.handleLogin)
 		s.route(api, "POST", "/reset-password", "Reset password", s.handleResetPassword)
+
+		// Internal service-to-service: shadow-user upsert from upstream platform.
+		// Authenticated by X-Internal-Token inside the handler (NOT authMiddleware,
+		// because the user being upserted may not exist yet).
+		s.route(api, "POST", "/internal/users/upsert", "Upsert shadow user from upstream platform", s.handleInternalUpsertUser)
 
 		// Routes requiring authentication
 		protected := api.Group("/", s.authMiddleware())
@@ -542,18 +553,64 @@ func (s *Server) getTraderFromQuery(c *gin.Context) (*manager.TraderManager, str
 	return s.traderManager, traderID, nil
 }
 
-// authMiddleware JWT authentication middleware.
+// authMiddleware authenticates requests via three paths, in priority order:
 //
-// LOCAL DEV MODE: when the request has no Authorization header, auto-inject
-// the first user from the DB (single-tenant local dev convention). This
-// keeps downstream handlers that rely on c.Get("user_id") / c.Get("email")
-// working after the frontend login UI was removed. Requests that DO provide
-// an Authorization header still go through the full JWT path below, so
-// future re-enabling of auth needs no further changes here.
+//  1. Internal service-to-service: when X-Internal-Token is present, it must
+//     match the HOOT_INTERNAL_TOKEN environment value (constant-time compare).
+//     The caller is then trusted to assert the end-user via X-User-Id, which
+//     must resolve to an existing user in the local store. This path is used
+//     by the upstream business platform to proxy authenticated user
+//     requests without sharing the JWT secret.
+//
+//  2. JWT bearer: standard Authorization: Bearer <token> path, unchanged.
+//
+//  3. Local-dev auto-inject: only when NOFX_DEV_AUTO_USER=1 AND no auth
+//     headers were supplied at all, fall back to the first user in the DB.
+//     This single-tenant convenience must stay disabled in production.
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Path 1: internal service-to-service auth
+		if internalToken := c.GetHeader("X-Internal-Token"); internalToken != "" {
+			expected := os.Getenv("HOOT_INTERNAL_TOKEN")
+			if expected == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "internal auth not configured"})
+				c.Abort()
+				return
+			}
+			a := []byte(internalToken)
+			b := []byte(expected)
+			if len(a) != len(b) || subtle.ConstantTimeCompare(a, b) != 1 {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal token"})
+				c.Abort()
+				return
+			}
+			userID := c.GetHeader("X-User-Id")
+			if userID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "missing X-User-Id"})
+				c.Abort()
+				return
+			}
+			user, err := s.store.User().GetByID(userID)
+			if err != nil || user == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				c.Abort()
+				return
+			}
+			c.Set("user_id", user.ID)
+			c.Set("email", user.Email)
+			c.Set("auth_mode", "internal")
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			// Path 3: local-dev auto-inject (gated by explicit env)
+			if os.Getenv("NOFX_DEV_AUTO_USER") != "1" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+				c.Abort()
+				return
+			}
 			users, err := s.store.User().GetAll()
 			if err != nil || len(users) == 0 {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "No default user available for local dev mode"})
@@ -601,8 +658,12 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 
 // Start Start server
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%d", s.port)
-	logger.Infof("🌐 API server starting at http://localhost%s", addr)
+	bindAddr := os.Getenv("NOFX_BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1"
+	}
+	addr := fmt.Sprintf("%s:%d", bindAddr, s.port)
+	logger.Infof("🌐 API server starting at http://%s", addr)
 	logger.Infof("📊 API Documentation:")
 	logger.Infof("  • GET  /api/health           - Health check")
 	logger.Infof("  • GET  /api/traders          - Public AI trader leaderboard top 50 (no auth required)")

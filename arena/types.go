@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package arena 实现 TradingAgents 多 AI 辩论策略（Arena 模式）。
 // 13 个角色（4分析师 + 2研究员 + 1研究管理 + 1交易员 + 3风控辩论 + 1投资组合管理 + 1信号处理）
 // 通过结构化辩论流程产出交易信号。
@@ -32,7 +35,7 @@ type ArenaConfig struct {
 	MaxLeverage     int     `json:"max_leverage"`      // 最大杠杆
 	PositionSizeUSD float64 `json:"position_size_usd"` // 单笔仓位大小（USD notional）
 
-	// 风控约束（AI 决策时可见，1:1 对应 nofx ai_trading 的 RiskControlConfig 核心字段）
+	// 风控约束（AI 决策时可见，与 RiskControlConfig 核心字段对齐）
 	MaxPositions      int     `json:"max_positions"`       // 最大并发持仓数
 	PositionSizeRatio float64 `json:"position_size_ratio"` // 单笔仓位占余额比例 0-1
 	MaxMarginUsage    float64 `json:"max_margin_usage"`    // 最大保证金使用率 0-1

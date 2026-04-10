@@ -190,10 +190,14 @@ function App() {
       return
     }
 
+    // 优先选正在运行的，否则退回第一个
+    const runningTrader = traders.find((t) => t.is_running)
+    const fallback = runningTrader || traders[0]
+
     if (selectedTraderSlug) {
       // 通过 slug 找到对应的 trader
       const trader = findTraderBySlug(selectedTraderSlug, traders)
-      const nextTraderId = trader?.trader_id || traders[0].trader_id
+      const nextTraderId = trader?.trader_id || fallback.trader_id
       if (nextTraderId !== selectedTraderId) {
         setSelectedTraderId(nextTraderId)
       }
@@ -201,7 +205,7 @@ function App() {
     }
 
     if (!selectedTraderId) {
-      setSelectedTraderId(traders[0].trader_id)
+      setSelectedTraderId(fallback.trader_id)
     }
   }, [traders, selectedTraderId, selectedTraderSlug])
 
@@ -341,15 +345,20 @@ function App() {
   }
   return (
     <div
-      className="min-h-screen"
+      className="min-h-screen relative"
       style={{
-        background: `
-          radial-gradient(ellipse 85% 70% at 105% 50%, rgba(200, 220, 240, 0.11), transparent 65%),
-          linear-gradient(180deg, #0E141C 0%, #060A12 100%)
-        `,
+        background: 'linear-gradient(180deg, #0A1018 0%, #04080D 100%)',
         color: '#EAECEF',
       }}
     >
+      {/* 全局呼吸光 — fixed 铺满 viewport，覆盖 header + main 无缝 */}
+      <div
+        className="fixed inset-0 pointer-events-none z-0 animate-pulse-slow"
+        style={{
+          background:
+            'radial-gradient(ellipse 120% 100% at 100% 50%, rgba(215, 228, 245, 0.09) 0%, rgba(215, 228, 245, 0.05) 25%, rgba(215, 228, 245, 0.025) 50%, rgba(215, 228, 245, 0.009) 75%, transparent 100%)',
+        }}
+      ></div>
       <HeaderBar
         isLoggedIn={!!user}
         currentPage={currentPage}
@@ -458,7 +467,7 @@ function App() {
                 href={OFFICIAL_LINKS.github}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition-all hover:scale-105"
                 style={{
                   background: '#1E2329',
                   color: '#848E9C',
@@ -490,7 +499,7 @@ function App() {
                 href={OFFICIAL_LINKS.twitter}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition-all hover:scale-105"
                 style={{
                   background: '#1E2329',
                   color: '#848E9C',
@@ -522,7 +531,7 @@ function App() {
                 href={OFFICIAL_LINKS.telegram}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition-all hover:scale-105"
                 style={{
                   background: '#1E2329',
                   color: '#848E9C',

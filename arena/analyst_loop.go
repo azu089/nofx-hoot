@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 import (
@@ -20,17 +23,16 @@ import (
 //   3. 循环直到 LLM 给出无工具调用的最终答案，或达到硬上限 MaxToolCallIterations
 //
 // 设计决策：
-//   - 硬上限 10 轮：Python 原版用 langgraph recursion_limit=100，实际分析师极少超过 5
+//   - 硬上限 20 轮：实测分析师典型需要 3-5 轮完成，20 轮为 4 倍安全余量
 //   - 工具执行失败不中断：把错误字符串作为 tool result 返回，让 LLM 决定如何恢复
 //   - 完整日志：每次 iteration + 每个工具调用 + 参数 + 返回字符数
 // ---------------------------------------------------------------------------
 
 // MaxToolCallIterations 单个分析师的 tool calling 硬上限
 //
-// Python 原版 langgraph recursion_limit=100，实测分析师典型需要 3-5 轮即可完成。
-// 这里设 20 是 4 倍安全余量：足以容纳复杂探索场景，又远低于 Python 上限以防止失控烧 token。
-// 触顶时保持 Python 原版的 all-or-nothing 语义 — 直接返回 error，
-// 由 engine.go Phase 1 的 "单个分析师失败不中断" 逻辑决定后续流程。
+// Set to 20 — sufficient headroom for complex exploration while preventing runaway token burn.
+// On limit exceeded, the loop returns error with all-or-nothing semantics;
+// engine.go Phase 1 decides whether to continue without this analyst's report.
 const MaxToolCallIterations = 20
 
 // AnalystLoopConfig 分析师 tool calling 循环的配置

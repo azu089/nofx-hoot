@@ -50,7 +50,7 @@ export function TraderConfigViewModal({
               className="rounded-lg"
             />
             <div>
-              <h2 className="text-xl font-bold text-[#EAECEF]">交易员配置</h2>
+              <h2 className="text-xl font-medium text-[#EAECEF]">交易员配置</h2>
               <p className="text-sm text-[#848E9C] mt-1">
                 {traderData.trader_name} 的配置信息
               </p>
@@ -59,7 +59,7 @@ export function TraderConfigViewModal({
           <div className="flex items-center gap-2">
             {/* Running Status */}
             <div
-              className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"
+              className="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1"
               style={
                 traderData.is_running
                   ? { background: 'rgba(14, 203, 129, 0.1)', color: '#0ECB81' }
@@ -82,7 +82,7 @@ export function TraderConfigViewModal({
         <div className="p-6 space-y-6">
           {/* Basic Info */}
           <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-            <h3 className="text-lg font-semibold text-[#EAECEF] mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-medium text-[#EAECEF] mb-4 flex items-center gap-2">
               🤖 基础信息
             </h3>
             <div className="space-y-3">
@@ -116,7 +116,7 @@ export function TraderConfigViewModal({
           {/* Strategy Info - only show if strategy is bound */}
           {traderData.strategy_id && (
             <div className="bg-[#0B0E11] border border-[#2B3139] rounded-lg p-5">
-              <h3 className="text-lg font-semibold text-[#EAECEF] mb-4 flex items-center gap-2">
+              <h3 className="text-lg font-medium text-[#EAECEF] mb-4 flex items-center gap-2">
                 📋 使用策略
               </h3>
               <div className="space-y-3">

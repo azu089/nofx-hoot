@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // trader/candidate_ranker.go — 候选决策排序器
 //
 // 目的: 当 AI 返回的 open 候选数量 > maxPositions 时，按质量排序选最优 K 个，

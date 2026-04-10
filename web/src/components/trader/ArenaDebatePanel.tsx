@@ -93,7 +93,7 @@ export function ArenaDebatePanel({ traderId, language }: ArenaDebatePanelProps) 
       >
         <div className="flex items-center gap-2">
           <Scale className="w-5 h-5" style={{ color: '#6366F1' }} />
-          <span className="font-bold text-base" style={{ color: '#EAECEF' }}>
+          <span className="font-medium text-base" style={{ color: '#EAECEF' }}>
             {tx(lang, 'title')}
           </span>
         </div>
@@ -101,7 +101,7 @@ export function ArenaDebatePanel({ traderId, language }: ArenaDebatePanelProps) 
           type="button"
           onClick={handleTrigger}
           disabled={triggering}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80 disabled:opacity-50"
           style={{
             background: 'rgba(99, 102, 241,0.15)',
             color: '#6366F1',
@@ -133,7 +133,7 @@ export function ArenaDebatePanel({ traderId, language }: ArenaDebatePanelProps) 
         {latest && (
           <div>
             <div
-              className="text-xs font-semibold mb-3 uppercase tracking-wider"
+              className="text-xs font-medium mb-3 uppercase tracking-wider"
               style={{ color: '#64748B' }}
             >
               {tx(lang, 'latest')}
@@ -145,7 +145,7 @@ export function ArenaDebatePanel({ traderId, language }: ArenaDebatePanelProps) 
         {history.length > 0 && (
           <div>
             <div
-              className="text-xs font-semibold mb-3 uppercase tracking-wider"
+              className="text-xs font-medium mb-3 uppercase tracking-wider"
               style={{ color: '#64748B' }}
             >
               {tx(lang, 'history')}

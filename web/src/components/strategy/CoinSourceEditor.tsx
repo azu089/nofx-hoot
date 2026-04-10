@@ -193,29 +193,39 @@ export function CoinSourceEditor({
         <label className="block text-sm font-medium mb-3 text-nofx-text">
           {t('sourceType')}
         </label>
-        <div className="grid grid-cols-5 gap-2">
-          {sourceTypes.map(({ value, icon: Icon, color }) => (
-            <button
-              key={value}
-              onClick={() =>
-                !disabled &&
-                onChange({ ...config, source_type: value as CoinSourceConfig['source_type'] })
-              }
-              disabled={disabled}
-              className={`p-4 rounded-lg border transition-all ${config.source_type === value
-                ? 'ring-2 ring-nofx-gold bg-nofx-gold/10'
-                : 'hover:bg-white/5 bg-nofx-bg'
-                } border-nofx-gold/20`}
-            >
-              <Icon className="w-6 h-6 mx-auto mb-2" style={{ color }} />
-              <div className="text-sm font-medium text-nofx-text">
-                {t(value)}
-              </div>
-              <div className="text-xs mt-1 text-nofx-text-muted">
-                {t(`${value}Desc`)}
-              </div>
-            </button>
-          ))}
+        <div className="flex flex-col gap-2 md:grid md:grid-cols-5 md:gap-2">
+          {sourceTypes.map(({ value, icon: Icon }) => {
+            const isSelected = config.source_type === value
+            return (
+              <button
+                key={value}
+                onClick={() =>
+                  !disabled &&
+                  onChange({ ...config, source_type: value as CoinSourceConfig['source_type'] })
+                }
+                disabled={disabled}
+                className="relative overflow-hidden px-3 py-2 md:p-4 rounded-xl transition-all text-left md:text-center"
+                style={
+                  isSelected
+                    ? {
+                        background:
+                          'radial-gradient(ellipse 70% 65% at 50% 105%, rgba(16,185,129,0.28) 0%, rgba(16,185,129,0.12) 35%, rgba(16,185,129,0.04) 65%, transparent 100%), transparent',
+                        boxShadow:
+                          'inset 1px 0 0 0 rgba(255,255,255,0.28), inset -1px 0 0 0 rgba(255,255,255,0.28)',
+                      }
+                    : undefined
+                }
+              >
+                <div className="flex items-center gap-3 md:block">
+                  <Icon className="w-5 h-5 md:w-6 md:h-6 md:mx-auto md:mb-2 text-white/80 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-nofx-text">{t(value)}</div>
+                    <div className="text-xs mt-0.5 md:mt-1 text-nofx-text-muted">{t(`${value}Desc`)}</div>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -251,14 +261,15 @@ export function CoinSourceEditor({
                 onChange={(e) => setNewCoin(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCoin()}
                 placeholder="BTC, ETH, SOL..."
-                className="flex-1 px-4 py-2 rounded-lg bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                className="flex-1 px-4 py-2 rounded-lg bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
               />
               <button
                 onClick={handleAddCoin}
-                className="px-4 py-2 rounded-lg flex items-center gap-2 transition-colors bg-nofx-gold text-black hover:bg-yellow-500"
+                className="px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors btn-emerald whitespace-nowrap flex-shrink-0"
+                title={t('addCoin')}
               >
                 <Plus className="w-4 h-4" />
-                {t('addCoin')}
+                <span className="hidden sm:inline">{t('addCoin')}</span>
               </button>
             </div>
           )}
@@ -307,14 +318,15 @@ export function CoinSourceEditor({
               onChange={(e) => setNewExcludedCoin(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddExcludedCoin()}
               placeholder="BTC, ETH, DOGE..."
-              className="flex-1 px-4 py-2 rounded-lg text-sm bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+              className="flex-1 px-4 py-2 rounded-lg text-sm bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
             />
             <button
               onClick={handleAddExcludedCoin}
-              className="px-4 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm bg-nofx-danger text-white hover:bg-red-600"
+              className="px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors text-sm bg-nofx-danger text-white hover:bg-red-600 whitespace-nowrap flex-shrink-0"
+              title={t('addExcludedCoin')}
             >
               <Ban className="w-4 h-4" />
-              {t('addExcludedCoin')}
+              <span className="hidden sm:inline">{t('addExcludedCoin')}</span>
             </button>
           </div>
         )}
@@ -358,10 +370,10 @@ export function CoinSourceEditor({
                   value={config.ai500_limit || 10}
                   onChange={(e) =>
                     !disabled &&
-                    onChange({ ...config, ai500_limit: parseInt(e.target.value) || 10 })
+                    onChange({ ...config, ai500_limit: parseInt(e.target.value, 10) })
                   }
                   disabled={disabled}
-                  className="px-3 py-1.5 rounded bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                  className="px-3 py-1.5 rounded bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                 >
                   {[5, 10, 15, 20, 30, 50].map(n => (
                     <option key={n} value={n}>{n}</option>
@@ -415,10 +427,10 @@ export function CoinSourceEditor({
                   value={config.oi_top_limit || 10}
                   onChange={(e) =>
                     !disabled &&
-                    onChange({ ...config, oi_top_limit: parseInt(e.target.value) || 10 })
+                    onChange({ ...config, oi_top_limit: parseInt(e.target.value, 10) })
                   }
                   disabled={disabled}
-                  className="px-3 py-1.5 rounded bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                  className="px-3 py-1.5 rounded bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                 >
                   {[5, 10, 15, 20, 30, 50].map(n => (
                     <option key={n} value={n}>{n}</option>
@@ -472,10 +484,10 @@ export function CoinSourceEditor({
                   value={config.oi_low_limit || 10}
                   onChange={(e) =>
                     !disabled &&
-                    onChange({ ...config, oi_low_limit: parseInt(e.target.value) || 10 })
+                    onChange({ ...config, oi_low_limit: parseInt(e.target.value, 10) })
                   }
                   disabled={disabled}
-                  className="px-3 py-1.5 rounded bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                  className="px-3 py-1.5 rounded bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                 >
                   {[5, 10, 15, 20, 30, 50].map(n => (
                     <option key={n} value={n}>{n}</option>
@@ -532,10 +544,10 @@ export function CoinSourceEditor({
                     value={config.ai500_limit || 10}
                     onChange={(e) => {
                       e.stopPropagation()
-                      !disabled && onChange({ ...config, ai500_limit: parseInt(e.target.value) || 10 })
+                      !disabled && onChange({ ...config, ai500_limit: parseInt(e.target.value, 10) })
                     }}
                     disabled={disabled}
-                    className="px-2 py-1 rounded text-xs bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                    className="px-2 py-1 rounded text-xs bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {[5, 10, 15, 20, 30, 50].map(n => (
@@ -579,10 +591,10 @@ export function CoinSourceEditor({
                     value={config.oi_top_limit || 10}
                     onChange={(e) => {
                       e.stopPropagation()
-                      !disabled && onChange({ ...config, oi_top_limit: parseInt(e.target.value) || 10 })
+                      !disabled && onChange({ ...config, oi_top_limit: parseInt(e.target.value, 10) })
                     }}
                     disabled={disabled}
-                    className="px-2 py-1 rounded text-xs bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                    className="px-2 py-1 rounded text-xs bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {[5, 10, 15, 20, 30, 50].map(n => (
@@ -626,10 +638,10 @@ export function CoinSourceEditor({
                     value={config.oi_low_limit || 10}
                     onChange={(e) => {
                       e.stopPropagation()
-                      !disabled && onChange({ ...config, oi_low_limit: parseInt(e.target.value) || 10 })
+                      !disabled && onChange({ ...config, oi_low_limit: parseInt(e.target.value, 10) })
                     }}
                     disabled={disabled}
-                    className="px-2 py-1 rounded text-xs bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                    className="px-2 py-1 rounded text-xs bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {[5, 10, 15, 20, 30, 50].map(n => (
@@ -697,14 +709,14 @@ export function CoinSourceEditor({
                     }}
                     onClick={(e) => e.stopPropagation()}
                     placeholder="BTC, ETH..."
-                    className="flex-1 px-2 py-1 rounded text-xs bg-nofx-bg border border-nofx-gold/20 text-nofx-text"
+                    className="flex-1 px-2 py-1 rounded text-xs bg-nofx-bg border border-emerald-400/30 text-nofx-text focus:border-emerald-400/60 focus:outline-none"
                   />
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       handleAddCoin()
                     }}
-                    className="px-2 py-1 rounded text-xs bg-nofx-gold text-black hover:bg-yellow-500"
+                    className="px-2 py-1 rounded text-xs btn-emerald"
                   >
                     <Plus className="w-3 h-3" />
                   </button>

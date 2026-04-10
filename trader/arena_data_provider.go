@@ -1,6 +1,9 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package trader
 
-// arena_data_provider.go — HOOT: implements arena.DataProvider for the ArenaRunner.
+// arena_data_provider.go — implements arena.DataProvider for the ArenaRunner.
 //
 // ArenaDataProvider bridges the trader layer's market data facilities into the
 // arena package without creating a circular dependency. All methods are nil-safe

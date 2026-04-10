@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 import (
@@ -7,16 +10,15 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// tools.go — 10 个工具的 mcp.Tool 定义，1:1 对齐 Python TradingAgents 原版
+// tools.go — 10 个工具的 mcp.Tool 定义
 //
-// 来源（Python @tool 装饰器）：
-//   tradingagents/agents/utils/core_stock_tools.py       → get_stock_data
-//   tradingagents/agents/utils/technical_indicators_tools.py → get_indicators
-//   tradingagents/agents/utils/fundamental_data_tools.py → get_fundamentals / get_balance_sheet / get_cashflow / get_income_statement
-//   tradingagents/agents/utils/news_data_tools.py        → get_news / get_global_news / get_insider_transactions
+// Tool catalogue (matches TradingAgents ICAIF 2024 tool naming):
+//   get_stock_data, get_indicators
+//   get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement
+//   get_news, get_global_news, get_insider_transactions
 //
-// 参数 schema 严格匹配 Python Annotated[type, "description"] 的声明。
-// 工具名称不改（保持 stock/ticker 等股票语义），加密货币适配在执行器层做。
+// Parameter schemas mirror the original @tool decorator annotations.
+// Tool names retain stock/ticker semantics; crypto normalization is handled in the executor layer.
 // ---------------------------------------------------------------------------
 
 // ============================================================================
@@ -288,7 +290,7 @@ var ToolGetInsiderTransactions = mcp.Tool{
 }
 
 // ============================================================================
-// 分析师 → 工具集映射（1:1 对齐 Python trading_graph.py::_create_tool_nodes）
+// 分析师 → 工具集映射
 // ============================================================================
 
 // AnalystToolSets 每个分析师绑定的工具列表
@@ -303,8 +305,8 @@ var AnalystToolSets = map[string][]mcp.Tool{
 	AnalystNews: {
 		ToolGetNews,
 		ToolGetGlobalNews,
-		// 注意：Python news_analyst.py 的 tools 列表只有 [get_news, get_global_news]
-		// get_insider_transactions 在 Python 原版中虽然定义了，但没有任何分析师使用
+		// news_analyst only uses get_news + get_global_news.
+		// get_insider_transactions is defined but not assigned to any analyst.
 	},
 	AnalystFundamentals: {
 		ToolGetFundamentals,

@@ -26,7 +26,7 @@ export default function DeploymentHub() {
                             <Server className="w-4 h-4" /> System Deployment
                         </div>
 
-                        <h2 className="text-4xl md:text-6xl font-black text-white leading-tight">
+                        <h2 className="text-4xl md:text-6xl font-medium text-white leading-tight">
                             DEPLOY <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold to-white">INSTANTLY</span>
                         </h2>
 
@@ -45,7 +45,7 @@ export default function DeploymentHub() {
                                         <item.icon className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <h4 className="text-white font-bold font-mono text-sm mb-1">{item.label}</h4>
+                                        <h4 className="text-white font-medium font-mono text-sm mb-1">{item.label}</h4>
                                         <p className="text-zinc-500 text-xs">{item.desc}</p>
                                     </div>
                                 </div>
@@ -96,7 +96,7 @@ export default function DeploymentHub() {
                                                     initial={{ scale: 0.5, opacity: 0 }}
                                                     animate={{ scale: 1, opacity: 1 }}
                                                     exit={{ scale: 0.5, opacity: 0 }}
-                                                    className="flex items-center gap-1 text-green-400 bg-green-400/10 px-2 py-1 rounded text-xs font-bold"
+                                                    className="flex items-center gap-1 text-green-400 bg-green-400/10 px-2 py-1 rounded text-xs font-medium"
                                                 >
                                                     <Check className="w-3 h-3" />
                                                 </motion.div>

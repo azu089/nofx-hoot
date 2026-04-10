@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package trader
 
 // arena_record_adapter.go — 将 arena.ArenaDecisionRecordData 映射到 store.ArenaDecisionRecord 并持久化。

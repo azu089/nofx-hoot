@@ -68,7 +68,7 @@ export default function HeaderBar({
           className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
         >
           <img src="/icons/nofx.svg" alt="NOFX Logo" className="w-7 h-7" />
-          <span className="text-lg font-bold text-nofx-gold">
+          <span className="text-lg font-medium text-nofx-gold">
             NOFX
           </span>
         </div>
@@ -80,12 +80,13 @@ export default function HeaderBar({
             {/* Navigation tabs configuration */}
             {(() => {
               // Define all navigation tabs
+              // 临时隐藏：strategy-market（策略市场）/ competition（排行榜），保留路由与页面代码
               const navTabs: { page: Page; path: string; label: string; requiresAuth: boolean }[] = [
-                { page: 'strategy-market', path: '/strategy-market', label: language === 'zh' ? '策略市场' : language === 'id' ? 'Pasar' : 'Market', requiresAuth: true },
+                // { page: 'strategy-market', path: '/strategy-market', label: language === 'zh' ? '策略市场' : language === 'id' ? 'Pasar' : 'Market', requiresAuth: true },
                 { page: 'traders', path: '/traders', label: t('configNav', language), requiresAuth: true },
                 { page: 'trader', path: '/dashboard', label: t('dashboardNav', language), requiresAuth: true },
                 { page: 'strategy', path: '/strategy', label: t('strategyNav', language), requiresAuth: true },
-                { page: 'competition', path: '/competition', label: t('realtimeNav', language), requiresAuth: true },
+                // { page: 'competition', path: '/competition', label: t('realtimeNav', language), requiresAuth: true },
               ]
 
               const handleNavClick = (tab: typeof navTabs[0]) => {
@@ -105,7 +106,7 @@ export default function HeaderBar({
                 <button
                   key={tab.page}
                   onClick={() => handleNavClick(tab)}
-                  className={`text-sm font-bold transition-all duration-300 relative focus:outline-2 focus:outline-yellow-500 px-3 py-2 rounded-lg
+                  className={`text-sm font-medium transition-all duration-300 relative focus:outline-2 focus:outline-yellow-500 px-3 py-2 rounded-lg
                     ${currentPage === tab.page ? 'text-nofx-gold' : 'text-nofx-text-muted hover:text-nofx-gold'}`}
                 >
                   {currentPage === tab.page && (
@@ -241,12 +242,13 @@ export default function HeaderBar({
           >
             <div className="flex flex-col gap-5">
               {(() => {
+                // 临时隐藏：strategy-market / competition
                 const navTabs: { page: Page; path: string; label: string; requiresAuth: boolean }[] = [
-                  { page: 'strategy-market', path: '/strategy-market', label: language === 'zh' ? '策略市场' : language === 'id' ? 'Pasar' : 'Market', requiresAuth: true },
+                  // { page: 'strategy-market', path: '/strategy-market', label: language === 'zh' ? '策略市场' : language === 'id' ? 'Pasar' : 'Market', requiresAuth: true },
                   { page: 'traders', path: '/traders', label: t('configNav', language), requiresAuth: true },
                   { page: 'trader', path: '/dashboard', label: t('dashboardNav', language), requiresAuth: true },
                   { page: 'strategy', path: '/strategy', label: t('strategyNav', language), requiresAuth: true },
-                  { page: 'competition', path: '/competition', label: t('realtimeNav', language), requiresAuth: true },
+                  // { page: 'competition', path: '/competition', label: t('realtimeNav', language), requiresAuth: true },
                 ]
 
                 const handleMobileNavClick = (tab: typeof navTabs[0]) => {

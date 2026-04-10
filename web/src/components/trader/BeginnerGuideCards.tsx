@@ -139,10 +139,10 @@ export function BeginnerGuideCards({
     <section className="space-y-4 rounded-[28px] border border-white/10 bg-zinc-950/60 p-5 backdrop-blur-xl">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.3em] text-nofx-gold/80">
+          <div className="text-xs font-medium uppercase tracking-[0.3em] text-nofx-gold/80">
             {isZh ? '新手引导' : 'Quickstart'}
           </div>
-          <h2 className="mt-1 text-xl font-bold text-white">
+          <h2 className="mt-1 text-xl font-medium text-white">
             {isZh
               ? '先按这 4 步走，最快上手'
               : 'Follow these 4 steps to get started fast'}
@@ -166,7 +166,7 @@ export function BeginnerGuideCards({
                   <Icon className="h-5 w-5" />
                 </div>
                 <span
-                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] ${
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.22em] ${
                     card.ready
                       ? 'bg-emerald-500/15 text-emerald-300'
                       : 'bg-zinc-800 text-zinc-400'
@@ -182,7 +182,7 @@ export function BeginnerGuideCards({
                 </span>
               </div>
 
-              <h3 className="mt-4 text-base font-semibold text-white">
+              <h3 className="mt-4 text-base font-medium text-white">
                 {card.title}
               </h3>
               <p className="mt-2 min-h-[72px] text-sm leading-6 text-zinc-400">
@@ -194,7 +194,7 @@ export function BeginnerGuideCards({
                 type="button"
                 onClick={card.onAction}
                 disabled={card.disabled}
-                className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-medium transition ${
                   card.disabled
                     ? 'cursor-not-allowed bg-zinc-900 text-zinc-500'
                     : 'bg-nofx-gold text-black hover:bg-yellow-400'

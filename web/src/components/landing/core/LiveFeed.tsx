@@ -71,7 +71,7 @@ export default function LiveFeed() {
                 <div className="hidden md:flex items-center gap-6 text-zinc-600 border-r border-zinc-900 pr-6 shrink-0">
                     <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="font-bold text-zinc-400">WS_CONN: STABLE</span>
+                        <span className="font-medium text-zinc-400">WS_CONN: STABLE</span>
                     </div>
                     <div className="flex items-center gap-2">
                         <span className="text-nofx-gold">TPS: 48,291</span>
@@ -91,7 +91,7 @@ export default function LiveFeed() {
                                 className="absolute inset-0 flex items-center gap-4"
                             >
                                 <span className="text-zinc-600">[{log.time}]</span>
-                                <span className={`font-bold w-10 ${log.type === 'LIQ' ? 'text-red-500 bg-red-500/10 px-1 rounded' :
+                                <span className={`font-medium w-10 ${log.type === 'LIQ' ? 'text-red-500 bg-red-500/10 px-1 rounded' :
                                     log.type === 'ARB' ? 'text-nofx-gold bg-nofx-gold/10 px-1 rounded' :
                                         log.type === 'EXE' ? 'text-green-500' : 'text-zinc-500'
                                     }`}>{log.type}</span>
@@ -105,7 +105,7 @@ export default function LiveFeed() {
                         {logs.map((log) => (
                             <div key={log.id} className="flex gap-2 w-full truncate border-b border-zinc-900/50 pb-1 last:border-0">
                                 <span className="text-zinc-700 w-16 shrink-0">{log.time.split('.')[0]}</span>
-                                <span className={`font-bold w-8 shrink-0 ${log.type === 'LIQ' ? 'text-red-500' :
+                                <span className={`font-medium w-8 shrink-0 ${log.type === 'LIQ' ? 'text-red-500' :
                                     log.type === 'ARB' ? 'text-nofx-gold' :
                                         'text-zinc-500'
                                     }`}>{log.type}</span>

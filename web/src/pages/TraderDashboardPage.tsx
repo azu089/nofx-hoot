@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { mutate } from 'swr'
 import { api } from '../lib/api'
 import { ChartTabs } from '../components/charts/ChartTabs'
@@ -8,9 +9,8 @@ import { PositionHistory } from '../components/trader/PositionHistory'
 import { PunkAvatar, getTraderAvatar } from '../components/common/PunkAvatar'
 import { confirmToast, notify } from '../lib/notify'
 import { t, type Language } from '../i18n/translations'
-import { LogOut, Loader2, Eye, EyeOff, Copy, Check } from 'lucide-react'
+import { LogOut, Loader2, Eye, EyeOff, Copy, Check, ChevronDown } from 'lucide-react'
 import { DeepVoidBackground } from '../components/common/DeepVoidBackground'
-import { NexoraSelect } from '../components/common/NexoraSelect'
 import { GridRiskPanel } from '../components/strategy/GridRiskPanel'
 import type {
     SystemStatus,
@@ -148,6 +148,35 @@ export function TraderDashboardPage({
     const [positionsCurrentPage, setPositionsCurrentPage] = useState<number>(1)
     // 移动端 Tab 状态：行情（持仓+K线）/ 决策 / 历史
     const [mobileTab, setMobileTab] = useState<'main' | 'decisions' | 'history'>('main')
+    // Trader 切换下拉开关
+    const [traderDropdownOpen, setTraderDropdownOpen] = useState(false)
+    const traderTriggerRef = useRef<HTMLButtonElement>(null)
+    const traderPopoverRef = useRef<HTMLDivElement>(null)
+    const [traderPopoverPos, setTraderPopoverPos] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 0 })
+    // 计算 popover 位置（基于 button rect）
+    useLayoutEffect(() => {
+        if (!traderDropdownOpen || !traderTriggerRef.current) return
+        const rect = traderTriggerRef.current.getBoundingClientRect()
+        setTraderPopoverPos({
+            left: rect.left,
+            top: rect.bottom + 8,
+            width: Math.max(rect.width, 220),
+        })
+    }, [traderDropdownOpen])
+    // 点击外部关闭
+    useEffect(() => {
+        if (!traderDropdownOpen) return
+        const handleClick = (e: MouseEvent) => {
+            const t = e.target as Node
+            if (
+                traderTriggerRef.current?.contains(t) ||
+                traderPopoverRef.current?.contains(t)
+            ) return
+            setTraderDropdownOpen(false)
+        }
+        document.addEventListener('mousedown', handleClick)
+        return () => document.removeEventListener('mousedown', handleClick)
+    }, [traderDropdownOpen])
 
     // Calculate paginated positions
     const totalPositions = positions?.length || 0
@@ -245,14 +274,10 @@ export function TraderDashboardPage({
             <div className="flex items-center justify-center min-h-[60vh] relative z-10">
                 <div className="text-center max-w-md mx-auto px-6">
                     <div
-                        className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center nofx-glass"
-                        style={{
-                            background: 'rgba(240, 185, 11, 0.1)',
-                            borderColor: 'rgba(240, 185, 11, 0.3)',
-                        }}
+                        className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center bubble-card"
                     >
                         <svg
-                            className="w-12 h-12 text-nofx-gold"
+                            className="w-12 h-12 text-emerald-400"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -265,7 +290,7 @@ export function TraderDashboardPage({
                             />
                         </svg>
                     </div>
-                    <h2 className="text-2xl font-bold mb-3 text-nofx-text-main">
+                    <h2 className="text-2xl font-medium mb-3 text-nofx-text-main">
                         {language === 'zh' ? '无法连接到服务器' : 'Connection Failed'}
                     </h2>
                     <p className="text-base mb-6 text-nofx-text-muted">
@@ -275,7 +300,7 @@ export function TraderDashboardPage({
                     </p>
                     <button
                         onClick={() => window.location.reload()}
-                        className="px-6 py-3 rounded-lg font-semibold transition-all hover:scale-105 active:scale-95 nofx-glass border border-nofx-gold/30 text-nofx-gold hover:bg-nofx-gold/10"
+                        className="btn-emerald px-6 py-3 rounded-full"
                     >
                         {language === 'zh' ? '重试' : 'Retry'}
                     </button>
@@ -310,7 +335,7 @@ export function TraderDashboardPage({
                             />
                         </svg>
                     </div>
-                    <h2 className="text-2xl font-bold mb-3 text-nofx-text-main">
+                    <h2 className="text-2xl font-medium mb-3 text-nofx-text-main">
                         {t('dashboardEmptyTitle', language)}
                     </h2>
                     <p className="text-base mb-6 text-nofx-text-muted">
@@ -318,7 +343,7 @@ export function TraderDashboardPage({
                     </p>
                     <button
                         onClick={onNavigateToTraders}
-                        className="px-6 py-3 rounded-lg font-semibold transition-all hover:scale-105 active:scale-95 nofx-glass border border-nofx-gold/30 text-nofx-gold hover:bg-nofx-gold/10"
+                        className="px-6 py-3 rounded-lg font-medium transition-all hover:scale-105 active:scale-95 nofx-glass border border-nofx-gold/30 text-nofx-gold hover:bg-nofx-gold/10"
                     >
                         {t('goToTradersPage', language)}
                     </button>
@@ -329,46 +354,45 @@ export function TraderDashboardPage({
 
     if (selectedTrader && !selectedTrader.is_running) {
         return (
-            <div className="flex items-center justify-center min-h-[60vh] relative z-10">
-                <div className="text-center max-w-md mx-auto px-6">
+            <div className="flex items-center justify-center min-h-[60vh] relative z-10 px-4">
+                <div className="nofx-glass p-8 md:p-10 text-center max-w-sm w-full">
+                    {/* Icon — emerald tinted circle */}
                     <div
-                        className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center nofx-glass"
+                        className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center"
                         style={{
-                            background: 'rgba(240, 185, 11, 0.1)',
-                            borderColor: 'rgba(240, 185, 11, 0.3)',
+                            background: 'rgba(43, 232, 158, 0.12)',
+                            boxShadow: '0 0 24px rgba(43, 232, 158, 0.15)',
                         }}
                     >
                         <svg
-                            className="w-12 h-12 text-nofx-gold"
+                            className="w-7 h-7 text-emerald-400"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
+                            strokeWidth={1.8}
                         >
                             <path
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 8v4m0 4h.01M7.5 4h9A2.5 2.5 0 0119 6.5v11A2.5 2.5 0 0116.5 20h-9A2.5 2.5 0 015 17.5v-11A2.5 2.5 0 017.5 4z"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"
                             />
                         </svg>
                     </div>
-                    <h2 className="text-2xl font-bold mb-3 text-nofx-text-main">
+
+                    <h2 className="text-xl font-medium mb-2 text-white">
                         {t('traderNotRunningTitle', language)}
                     </h2>
-                    <p className="mb-2 text-nofx-text-muted">
+                    <p className="mb-1 text-sm text-zinc-400">
                         {t('traderNotRunningDescription', language)}
                     </p>
-                    <p className="mb-6 text-sm text-nofx-text-muted/80">
+                    <p className="mb-6 text-sm text-zinc-500 font-mono">
                         {selectedTrader.trader_name}
                     </p>
+
                     <button
                         type="button"
                         onClick={onNavigateToTraders}
-                        className="px-5 py-3 rounded-lg font-semibold transition-all hover:scale-[1.02]"
-                        style={{
-                            background: 'linear-gradient(135deg, #F0B90B 0%, #D4A017 100%)',
-                            color: '#0B0E11',
-                        }}
+                        className="btn-emerald w-full py-2.5 rounded-full text-sm"
                     >
                         {t('goStartTrader', language)}
                     </button>
@@ -407,48 +431,44 @@ export function TraderDashboardPage({
 
     return (
         <DeepVoidBackground className="min-h-screen pb-12" disableAnimation>
-            <div className="w-full px-4 md:px-8 relative z-10 pt-6">
+            <div className="w-full px-3 md:px-8 relative z-10 py-4">
                 {/* Trader Header */}
                 <div className="mb-6 rounded-lg p-6 animate-scale-in nofx-glass group">
-                    <div className="flex items-start justify-between mb-4">
-                        <h2 className="text-2xl font-bold flex items-center gap-4 text-nofx-text-main">
-                            <div className="relative">
-                                <PunkAvatar
-                                    seed={getTraderAvatar(
-                                        selectedTrader.trader_id,
-                                        selectedTrader.trader_name
-                                    )}
-                                    size={56}
-                                    className="rounded-xl border-2 border-nofx-gold/30 shadow-[0_0_15px_rgba(240,185,11,0.2)]"
-                                />
-                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-nofx-green rounded-full border-2 border-[#0B0E11] shadow-[0_0_8px_rgba(14,203,129,0.8)] animate-pulse" />
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-3xl tracking-tight text-nofx-text font-semibold">
+                    {/* Row 1: Avatar + 可点击名字（内嵌 select 触发原生 picker）+ Wallet */}
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="relative flex-shrink-0">
+                            <PunkAvatar
+                                seed={getTraderAvatar(
+                                    selectedTrader.trader_id,
+                                    selectedTrader.trader_name
+                                )}
+                                size={56}
+                                className="rounded-xl border-2 border-nofx-gold/30 shadow-[0_0_15px_rgba(240,185,11,0.2)]"
+                            />
+                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-nofx-green rounded-full border-2 border-[#0B0E11] shadow-[0_0_8px_rgba(14,203,129,0.8)] animate-pulse" />
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                            <button
+                                ref={traderTriggerRef}
+                                type="button"
+                                onClick={() => traders && traders.length > 0 && setTraderDropdownOpen(v => !v)}
+                                className="flex items-center gap-1.5 text-left min-w-0"
+                                aria-label={language === 'zh' ? '切换交易员' : 'Switch trader'}
+                            >
+                                <span className="text-2xl md:text-3xl font-medium tracking-tight text-nofx-text-main whitespace-nowrap overflow-hidden text-ellipsis">
                                     {selectedTrader.trader_name}
                                 </span>
-                                <span className="text-xs font-mono text-nofx-text-muted opacity-60 flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 bg-nofx-gold rounded-full" />
-                                    ID: {selectedTrader.trader_id.slice(0, 8)}...
-                                </span>
-                            </div>
-                        </h2>
+                                {traders && traders.length > 0 && (
+                                    <ChevronDown className={`w-5 h-5 text-nofx-text-muted flex-shrink-0 transition-transform ${traderDropdownOpen ? 'rotate-180' : ''}`} />
+                                )}
+                            </button>
+                            <span className="text-xs font-mono text-nofx-text-muted opacity-60 flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 bg-nofx-gold rounded-full" />
+                                ID: {selectedTrader.trader_id.slice(0, 8)}...
+                            </span>
+                        </div>
 
-                        <div className="flex items-center gap-4">
-                            {/* Trader Selector */}
-                            {traders && traders.length > 0 && (
-                                <div className="min-w-[140px]">
-                                    <NexoraSelect
-                                        value={selectedTraderId || ''}
-                                        onChange={(v) => onTraderSelect(v)}
-                                        options={traders.map((trader) => ({
-                                            value: trader.trader_id,
-                                            label: trader.trader_name,
-                                        }))}
-                                    />
-                                </div>
-                            )}
-
+                        <div className="flex items-center gap-4 ml-auto">
                             {/* Wallet Address Display for Perp-DEX */}
                             {exchanges && isPerpDex && (
                                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg nofx-glass border border-nofx-gold/20">
@@ -501,11 +521,13 @@ export function TraderDashboardPage({
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-6 text-sm flex-wrap text-nofx-text-muted font-mono pl-2">
+
+                    {/* Row 2: Metadata — 顶层只用 gap 分隔，Strategy+Cycles+Runtime 分组始终同一行 */}
+                    <div className="flex items-center gap-x-6 gap-y-2 flex-wrap text-sm text-nofx-text-muted font-mono">
                         <span className="flex items-center gap-2">
                             <span className="opacity-60">AI Model:</span>
                             <span
-                                className="font-bold px-2 py-0.5 rounded text-xs tracking-wide"
+                                className="font-medium px-2 py-0.5 rounded text-xs tracking-wide"
                                 style={{
                                     background: selectedTrader.ai_model.includes('qwen') ? 'rgba(192, 132, 252, 0.15)' : 'rgba(96, 165, 250, 0.15)',
                                     color: selectedTrader.ai_model.includes('qwen') ? '#c084fc' : '#60a5fa',
@@ -518,29 +540,33 @@ export function TraderDashboardPage({
                                 )}
                             </span>
                         </span>
-                        <span className="w-px h-3 bg-white/10 hidden md:block" />
                         <span className="flex items-center gap-2">
                             <span className="opacity-60">Exchange:</span>
-                            <span className="text-nofx-text-main font-semibold">
+                            <span className="text-nofx-text-main font-medium">
                                 {getExchangeDisplayNameFromList(
                                     selectedTrader.exchange_id,
                                     exchanges
                                 )}
                             </span>
                         </span>
-                        <span className="w-px h-3 bg-white/10 hidden md:block" />
-                        <span className="flex items-center gap-2">
+                        {/* Strategy 单独一行 */}
+                        <span className="flex items-center gap-1.5 whitespace-nowrap">
                             <span className="opacity-60">Strategy:</span>
-                            <span className="text-nofx-gold font-semibold tracking-wide">
+                            <span className="text-nofx-gold font-medium tracking-wide">
                                 {selectedTrader.strategy_name || 'No Strategy'}
                             </span>
                         </span>
+                        {/* Cycles + Runtime 独占一行 */}
                         {status && (
-                            <div className="hidden md:contents">
-                                <span className="w-px h-3 bg-white/10" />
-                                <span>Cycles: <span className="text-nofx-text-main">{status.call_count}</span></span>
-                                <span className="w-px h-3 bg-white/10" />
-                                <span>Runtime: <span className="text-nofx-text-main">{status.runtime_minutes} min</span></span>
+                            <div className="flex items-center gap-x-4 flex-wrap">
+                                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                                    <span className="opacity-60">Cycles:</span>
+                                    <span className="text-nofx-text-main font-medium">{status.call_count}</span>
+                                </span>
+                                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                                    <span className="opacity-60">Runtime:</span>
+                                    <span className="text-nofx-text-main font-medium">{status.runtime_minutes} min</span>
+                                </span>
                             </div>
                         )}
                     </div>
@@ -548,9 +574,9 @@ export function TraderDashboardPage({
 
                 {/* Debug Info */}
                 {account && (
-                    <div className="mb-4 px-3 py-1.5 rounded bg-black/40 border border-white/5 text-[10px] font-mono text-nofx-text-muted flex justify-between items-center opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="mb-4 px-3 py-1.5 rounded bg-black/40 border border-white/5 text-[10px] font-mono text-nofx-text-muted flex flex-wrap justify-between items-center gap-x-4 gap-y-1 opacity-60 hover:opacity-100 transition-opacity">
                         <span>SYSTEM_STATUS::ONLINE</span>
-                        <div className="flex gap-4">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
                             <span>LAST_UPDATE::{lastUpdate}</span>
                             <span>EQ::{account?.total_equity?.toFixed(2)}</span>
                             <span>PNL::{account?.total_pnl?.toFixed(2)}</span>
@@ -673,7 +699,7 @@ export function TraderDashboardPage({
                                 <div className="w-24 h-24 rounded-full bg-blue-500 blur-3xl" />
                             </div>
                             <div className="flex items-center justify-between mb-5 relative z-10">
-                                <h2 className="text-lg font-bold flex items-center gap-2 text-nofx-text-main uppercase tracking-wide">
+                                <h2 className="text-lg font-medium flex items-center gap-2 text-nofx-text-main uppercase tracking-wide">
                                     <span className="text-blue-500">◈</span> {t('currentPositions', language)}
                                 </h2>
                                 {positions && positions.length > 0 && (
@@ -704,9 +730,9 @@ export function TraderDashboardPage({
                                                 {/* 顶部行：币种 + 方向 + 平仓按钮 */}
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-mono font-semibold text-base text-nofx-text-main">{pos.symbol}</span>
+                                                        <span className="font-mono font-medium text-base text-nofx-text-main">{pos.symbol}</span>
                                                         <span
-                                                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${pos.side === 'long' ? 'bg-nofx-green/10 text-nofx-green' : 'bg-nofx-red/10 text-nofx-red'}`}
+                                                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${pos.side === 'long' ? 'bg-nofx-green/10 text-nofx-green' : 'bg-nofx-red/10 text-nofx-red'}`}
                                                         >
                                                             {t(pos.side === 'long' ? 'long' : 'short', language)}
                                                         </span>
@@ -718,7 +744,7 @@ export function TraderDashboardPage({
                                                             handleClosePosition(pos.symbol, pos.side.toUpperCase())
                                                         }}
                                                         disabled={closingPosition === pos.symbol}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-nofx-red/10 text-nofx-red border border-nofx-red/30 hover:bg-nofx-red/20"
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-nofx-red/10 text-nofx-red border border-nofx-red/30 hover:bg-nofx-red/20"
                                                     >
                                                         {closingPosition === pos.symbol ? (
                                                             <Loader2 className="w-3 h-3 animate-spin" />
@@ -761,7 +787,7 @@ export function TraderDashboardPage({
                                                 <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/5">
                                                     <span className="text-xs text-nofx-text-muted">{language === 'zh' ? '未实现盈亏' : 'uPnL'}</span>
                                                     <span
-                                                        className={`font-mono font-bold text-base ${pos.unrealized_pnl >= 0 ? 'text-nofx-green' : 'text-nofx-red'}`}
+                                                        className={`font-mono font-medium text-base ${pos.unrealized_pnl >= 0 ? 'text-nofx-green' : 'text-nofx-red'}`}
                                                         style={{ textShadow: pos.unrealized_pnl >= 0 ? '0 0 10px rgba(14,203,129,0.3)' : '0 0 10px rgba(246,70,93,0.3)' }}
                                                     >
                                                         {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)} USDT
@@ -776,16 +802,16 @@ export function TraderDashboardPage({
                                         <table className="w-full text-xs">
                                             <thead className="text-left border-b border-white/5">
                                                 <tr>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-left">{t('symbol', language)}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-center">{t('side', language)}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-center">{language === 'zh' ? '操作' : 'Action'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('entryPrice', language)}>{language === 'zh' ? '入场价' : 'Entry'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('markPrice', language)}>{language === 'zh' ? '标记价' : 'Mark'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-right" title={t('quantity', language)}>{language === 'zh' ? '数量' : 'Qty'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('positionValue', language)}>{language === 'zh' ? '价值' : 'Value'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-center hidden md:table-cell" title={t('leverage', language)}>{language === 'zh' ? '杠杆' : 'Lev.'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-right" title={t('unrealizedPnL', language)}>{language === 'zh' ? '未实现盈亏' : 'uPnL'}</th>
-                                                    <th className="px-1 pb-3 font-semibold text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('liqPrice', language)}>{language === 'zh' ? '强平价' : 'Liq.'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-left">{t('symbol', language)}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-center">{t('side', language)}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-center">{language === 'zh' ? '操作' : 'Action'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('entryPrice', language)}>{language === 'zh' ? '入场价' : 'Entry'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('markPrice', language)}>{language === 'zh' ? '标记价' : 'Mark'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-right" title={t('quantity', language)}>{language === 'zh' ? '数量' : 'Qty'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('positionValue', language)}>{language === 'zh' ? '价值' : 'Value'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-center hidden md:table-cell" title={t('leverage', language)}>{language === 'zh' ? '杠杆' : 'Lev.'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-right" title={t('unrealizedPnL', language)}>{language === 'zh' ? '未实现盈亏' : 'uPnL'}</th>
+                                                    <th className="px-1 pb-3 font-medium text-nofx-text-muted whitespace-nowrap text-right hidden md:table-cell" title={t('liqPrice', language)}>{language === 'zh' ? '强平价' : 'Liq.'}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -804,12 +830,12 @@ export function TraderDashboardPage({
                                                             }
                                                         }}
                                                     >
-                                                        <td className="px-1 py-3 font-mono font-semibold whitespace-nowrap text-left text-nofx-text-main group-hover/row:text-white transition-colors">
+                                                        <td className="px-1 py-3 font-mono font-medium whitespace-nowrap text-left text-nofx-text-main group-hover/row:text-white transition-colors">
                                                             {pos.symbol}
                                                         </td>
                                                         <td className="px-1 py-3 whitespace-nowrap text-center">
                                                             <span
-                                                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${pos.side === 'long' ? 'bg-nofx-green/10 text-nofx-green shadow-[0_0_8px_rgba(14,203,129,0.2)]' : 'bg-nofx-red/10 text-nofx-red shadow-[0_0_8px_rgba(246,70,93,0.2)]'}`}
+                                                                className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider ${pos.side === 'long' ? 'bg-nofx-green/10 text-nofx-green shadow-[0_0_8px_rgba(14,203,129,0.2)]' : 'bg-nofx-red/10 text-nofx-red shadow-[0_0_8px_rgba(246,70,93,0.2)]'}`}
                                                             >
                                                                 {t(pos.side === 'long' ? 'long' : 'short', language)}
                                                             </span>
@@ -822,7 +848,7 @@ export function TraderDashboardPage({
                                                                     handleClosePosition(pos.symbol, pos.side.toUpperCase())
                                                                 }}
                                                                 disabled={closingPosition === pos.symbol}
-                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed mx-auto bg-nofx-red/10 text-nofx-red border border-nofx-red/30 hover:bg-nofx-red/20"
+                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed mx-auto bg-nofx-red/10 text-nofx-red border border-nofx-red/30 hover:bg-nofx-red/20"
                                                                 title={language === 'zh' ? '平仓' : 'Close Position'}
                                                             >
                                                                 {closingPosition === pos.symbol ? (
@@ -836,11 +862,11 @@ export function TraderDashboardPage({
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{pos.entry_price.toFixed(4)}</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{pos.mark_price.toFixed(4)}</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-right text-nofx-text-main">{pos.quantity.toFixed(4)}</td>
-                                                        <td className="px-1 py-3 font-mono font-bold whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{(pos.quantity * pos.mark_price).toFixed(2)}</td>
+                                                        <td className="px-1 py-3 font-mono font-medium whitespace-nowrap text-right text-nofx-text-main hidden md:table-cell">{(pos.quantity * pos.mark_price).toFixed(2)}</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-center text-nofx-gold hidden md:table-cell">{pos.leverage}x</td>
                                                         <td className="px-1 py-3 font-mono whitespace-nowrap text-right">
                                                             <span
-                                                                className={`font-bold ${pos.unrealized_pnl >= 0 ? 'text-nofx-green shadow-nofx-green' : 'text-nofx-red shadow-nofx-red'}`}
+                                                                className={`font-medium ${pos.unrealized_pnl >= 0 ? 'text-nofx-green shadow-nofx-green' : 'text-nofx-red shadow-nofx-red'}`}
                                                                 style={{ textShadow: pos.unrealized_pnl >= 0 ? '0 0 10px rgba(14,203,129,0.3)' : '0 0 10px rgba(246,70,93,0.3)' }}
                                                             >
                                                                 {pos.unrealized_pnl >= 0 ? '+' : ''}
@@ -912,7 +938,7 @@ export function TraderDashboardPage({
                             ) : (
                                 <div className="text-center py-16 text-nofx-text-muted opacity-60">
                                     <div className="text-6xl mb-4 opacity-50 grayscale">📊</div>
-                                    <div className="text-lg font-semibold mb-2">{t('noPositions', language)}</div>
+                                    <div className="text-lg font-medium mb-2">{t('noPositions', language)}</div>
                                     <div className="text-sm">{t('noActivePositions', language)}</div>
                                 </div>
                             )}
@@ -937,7 +963,7 @@ export function TraderDashboardPage({
                                 🧠
                             </div>
                             <div className="flex-1">
-                                <h2 className="text-xl font-bold text-nofx-text-main">
+                                <h2 className="text-xl font-medium text-nofx-text-main">
                                     {t('recentDecisions', language)}
                                 </h2>
                                 {status?.strategy_type === 'arena' ? (
@@ -970,7 +996,7 @@ export function TraderDashboardPage({
 
                         {/* Decisions List - Scrollable */}
                         <div
-                            className="space-y-4 overflow-y-auto pr-2 custom-scrollbar"
+                            className="overflow-y-auto pr-2 custom-scrollbar"
                             style={{ maxHeight: 'calc(100vh - 280px)' }}
                         >
                             {status?.strategy_type === 'arena' ? (
@@ -981,7 +1007,7 @@ export function TraderDashboardPage({
                                 ) : (
                                     <div className="py-16 text-center text-nofx-text-muted opacity-60">
                                         <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
-                                        <div className="text-lg font-semibold mb-2 text-nofx-text-main">
+                                        <div className="text-lg font-medium mb-2 text-nofx-text-main">
                                             {t('noDecisionsYet', language)}
                                         </div>
                                         <div className="text-sm">
@@ -997,7 +1023,7 @@ export function TraderDashboardPage({
                                 ) : (
                                     <div className="py-16 text-center text-nofx-text-muted opacity-60">
                                         <div className="text-6xl mb-4 opacity-30 grayscale">🧠</div>
-                                        <div className="text-lg font-semibold mb-2 text-nofx-text-main">
+                                        <div className="text-lg font-medium mb-2 text-nofx-text-main">
                                             {t('noDecisionsYet', language)}
                                         </div>
                                         <div className="text-sm">
@@ -1024,6 +1050,40 @@ export function TraderDashboardPage({
                     </div>
                 )}
             </div>
+
+            {/* Trader 切换下拉 — 用 portal 悬浮在所有内容之上，不影响布局 */}
+            {traderDropdownOpen && traders && traders.length > 0 && createPortal(
+                <div
+                    ref={traderPopoverRef}
+                    className="bubble-card p-1 max-h-64 overflow-y-auto"
+                    style={{
+                        position: 'fixed',
+                        left: traderPopoverPos.left,
+                        top: traderPopoverPos.top,
+                        width: traderPopoverPos.width,
+                        zIndex: 100,
+                    }}
+                >
+                    {traders.map((trader) => {
+                        const isActive = trader.trader_id === selectedTraderId
+                        return (
+                            <button
+                                key={trader.trader_id}
+                                type="button"
+                                onClick={() => {
+                                    onTraderSelect(trader.trader_id)
+                                    setTraderDropdownOpen(false)
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-emerald-400/15 text-emerald-300' : 'text-zinc-300 hover:bg-white/5 hover:text-white'}`}
+                            >
+                                {trader.trader_name}
+                                {isActive && <Check className="inline w-3.5 h-3.5 ml-2" />}
+                            </button>
+                        )
+                    })}
+                </div>,
+                document.body
+            )}
         </DeepVoidBackground>
     )
 }
@@ -1055,7 +1115,7 @@ function StatCard({
                 {title}
             </div>
             <div className="flex items-baseline gap-1 mb-1">
-                <div className="text-2xl font-bold font-mono text-nofx-text-main tracking-tight group-hover:text-white transition-colors">
+                <div className="text-2xl font-medium font-mono text-nofx-text-main tracking-tight group-hover:text-white transition-colors">
                     {value}
                 </div>
                 {unit && <span className="text-xs font-mono text-nofx-text-muted opacity-60">{unit}</span>}
@@ -1064,7 +1124,7 @@ function StatCard({
             {change !== undefined && (
                 <div className="flex items-center gap-1">
                     <div
-                        className={`text-sm mono font-bold flex items-center gap-1 ${positive ? 'text-nofx-green' : 'text-nofx-red'}`}
+                        className={`text-sm mono font-medium flex items-center gap-1 ${positive ? 'text-nofx-green' : 'text-nofx-red'}`}
                     >
                         <span>{positive ? '▲' : '▼'}</span>
                         <span>{positive ? '+' : ''}{change.toFixed(2)}%</span>

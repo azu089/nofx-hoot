@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // trader/institutional_pipeline.go — InstitutionalPipeline + PM 授权
 //
 // 通过统一的灰度模式控制 AI 与 PositionManager 的协作方式：

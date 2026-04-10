@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package coinglass
 
 // liquidation_map.go — Liquidation heatmap engine.

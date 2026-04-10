@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package store
 
 import (
@@ -363,8 +367,28 @@ type RiskControlConfig struct {
 	// Min AI confidence to open position (AI guided)
 	MinConfidence int `json:"min_confidence"`
 
-	// Risk control mode: "aggressive" | "balanced" | "high_win_rate" (default: "balanced")
+	// Risk control mode: "aggressive" | "balanced" | "high_win_rate" | "institutional" (default: "balanced")
 	Mode string `json:"mode,omitempty"`
+
+	// --- Rules Engine (institutional mode) ---
+	// Minimum composite score to execute a trade (default: 50)
+	MinScoreToTrade float64 `json:"min_score_to_trade,omitempty"`
+	// Minimum score gap between top two candidates (default: 5.0, below → wait)
+	MinScoreGapToTrade float64 `json:"min_score_gap_to_trade,omitempty"`
+
+	// --- Adaptive thresholds ---
+	// Rolling window size for win-rate calculation (default: 50)
+	AdaptiveWindowSize int `json:"adaptive_window_size,omitempty"`
+	// Win rate below which thresholds tighten (default: 0.55)
+	AdaptiveTriggerWinRate float64 `json:"adaptive_trigger_win_rate,omitempty"`
+	// Consecutive losses before cooldown period (default: 3)
+	ConsecutiveLossesBeforeCooldown int `json:"consecutive_losses_before_cooldown,omitempty"`
+	// Min trades on a symbol before it can be blacklisted (default: 10)
+	SymbolBlacklistMinTrades int `json:"symbol_blacklist_min_trades,omitempty"`
+	// Symbol blacklist win-rate threshold (default: 0.45)
+	SymbolBlacklistWinRateThreshold float64 `json:"symbol_blacklist_win_rate_threshold,omitempty"`
+	// Symbol blacklist duration in hours (default: 24)
+	SymbolBlacklistWindowHours int `json:"symbol_blacklist_window_hours,omitempty"`
 
 	// --- Open Gate: frequency control ---
 	// Cooldown minutes after closing a position on same symbol (0 = disabled)

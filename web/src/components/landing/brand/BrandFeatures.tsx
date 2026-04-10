@@ -40,7 +40,7 @@ export default function BrandFeatures() {
             <div className="max-w-[1920px] mx-auto px-6 lg:px-16">
 
                 <div className="mb-16 border-l-4 border-nofx-gold pl-6">
-                    <h2 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter mb-4">
+                    <h2 className="text-4xl md:text-5xl font-medium text-white uppercase tracking-tighter mb-4">
                         Core Protocol <span className="text-zinc-600">Specs</span>
                     </h2>
                     <p className="text-xl text-zinc-400 font-mono">
@@ -64,7 +64,7 @@ export default function BrandFeatures() {
 
                             <f.icon className="w-10 h-10 text-nofx-gold mb-6" />
 
-                            <h3 className="text-xl font-bold text-white mb-3 uppercase flex items-center gap-2">
+                            <h3 className="text-xl font-medium text-white mb-3 uppercase flex items-center gap-2">
                                 {f.title}
                             </h3>
 

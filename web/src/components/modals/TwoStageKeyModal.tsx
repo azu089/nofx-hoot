@@ -181,7 +181,7 @@ export function TwoStageKeyModal({
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
         <div className="bg-gray-900 p-8 rounded-xl max-w-lg w-full mx-4 border border-gray-700">
           <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-white mb-2">
+            <h2 className="text-xl font-medium text-white mb-2">
               🔐 {t('twoStageKey.title', language)}
               {contextLabel && (
                 <span className="text-gray-300 text-base font-normal ml-2">

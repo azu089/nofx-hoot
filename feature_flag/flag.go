@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package feature_flag 提供通用功能开关框架
 //
 // 设计目标:
@@ -6,7 +9,7 @@
 //   - 后续可扩展 Redis/DB backend 而不破坏调用方
 //
 // 配置来源（按优先级）:
-//  1. env 变量: HOOT_FF_<flag_key>=<spec>
+//  1. env 变量: HOOT_FF_<flag_key>=<spec>  (前缀固定，变量名不变)
 //  2. SetSpec() 运行时设置
 //  3. 默认值（未注册即 false）
 //
@@ -54,7 +57,7 @@ var (
 	specs = map[string]*Spec{}
 )
 
-// init 启动时从 env 加载所有 HOOT_FF_* 变量
+// init 启动时从 env 加载所有 HOOT_FF_* 环境变量
 func init() {
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, envPrefix) {

@@ -180,7 +180,7 @@ function TradingViewChartComponent({
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5" style={{ color: '#F0B90B' }} />
             <h3
-              className="text-base sm:text-lg font-bold"
+              className="text-base sm:text-lg font-medium"
               style={{ color: '#EAECEF' }}
             >
               {t('marketChart', language)}
@@ -246,7 +246,7 @@ function TradingViewChartComponent({
                 setShowSymbolDropdown(!showSymbolDropdown)
                 setShowExchangeDropdown(false)
               }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-bold transition-all"
+              className="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition-all"
               style={{
                 background: 'rgba(240, 185, 11, 0.1)',
                 border: '1px solid rgba(240, 185, 11, 0.3)',

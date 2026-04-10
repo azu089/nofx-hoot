@@ -130,34 +130,14 @@ export class HttpClient {
     const status = error.response?.status ?? 0
 
     // Handle 401 Unauthorized
+    //
+    // The app runs in single-tenant mode: the backend auto-binds requests
+    // without an Authorization header to the local user, and no interactive
+    // login screen is exposed. On 401 we therefore do NOT touch any cached
+    // credentials (clearing them would strand the session with no way back)
+    // and we do NOT force a navigation. We just surface the error so views
+    // can render their own empty state.
     if (status === 401) {
-      if (HttpClient.isHandling401) {
-        throw new Error('Session expired')
-      }
-
-      HttpClient.isHandling401 = true
-
-      // Clean up
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_user')
-
-      // Notify global listeners
-      window.dispatchEvent(new Event('unauthorized'))
-
-      // Only redirect if not already on login page
-      if (!window.location.pathname.includes('/login')) {
-        const returnUrl = window.location.pathname + window.location.search
-        if (returnUrl !== '/login' && returnUrl !== '/') {
-          sessionStorage.setItem('returnUrl', returnUrl)
-        }
-
-        sessionStorage.setItem('from401', 'true')
-        window.location.href = '/login'
-
-        // Return pending promise
-        return new Promise(() => {})
-      }
-
       throw new Error('Session expired')
     }
 

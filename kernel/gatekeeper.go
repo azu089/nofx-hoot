@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package kernel
 
 // gatekeeper.go — Hard-filter gate for trade candidates.
@@ -64,6 +67,10 @@ type GatekeeperConfig struct {
 	// G9 — Minimum confidence
 	MinConfidence int
 
+	// Strategy mode: "aggressive"|"balanced"|"high_win_rate"|"institutional"
+	// aggressive skips MinConfidence + cooldown checks
+	StrategyMode string
+
 	// Exit validation
 	TraderID        string
 	MinHoldSeconds  int
@@ -111,7 +118,12 @@ func Gate(c *CandidateDecision, signals *MarketSignals, md *market.Data, cfg Gat
 
 	sym := c.Symbol
 
-	// G7 — Cooldown check (fast path)
+	// Full Mandate (aggressive): skip all signal-based gates, only enforce R:R floor
+	if cfg.StrategyMode == "aggressive" {
+		return checkRRAndConfidence(c, md, cfg)
+	}
+
+	// G7 — Cooldown check
 	if cfg.InCooldown {
 		return GatekeeperResult{
 			Allowed:      false,
@@ -409,6 +421,10 @@ func checkRRAndConfidence(c *CandidateDecision, md *market.Data, cfg GatekeeperC
 		} else {
 			minRR = 1.5
 		}
+		// Precision mode enforces elevated minimum R:R
+		if cfg.StrategyMode == "high_win_rate" && minRR < 2.0 {
+			minRR = 2.0
+		}
 
 		var err error
 		if c.IsLong() {
@@ -428,8 +444,8 @@ func checkRRAndConfidence(c *CandidateDecision, md *market.Data, cfg GatekeeperC
 		}
 	}
 
-	// G9 — Minimum confidence
-	if cfg.MinConfidence > 0 && c.Confidence < cfg.MinConfidence {
+	// G9 — Minimum confidence (aggressive mode bypasses)
+	if cfg.StrategyMode != "aggressive" && cfg.MinConfidence > 0 && c.Confidence < cfg.MinConfidence {
 		return GatekeeperResult{
 			Allowed:      false,
 			RejectReason: fmt.Sprintf("confidence %d < minimum %d", c.Confidence, cfg.MinConfidence),

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // trader/pretrade_integration.go — PreTradeSimulator 主循环接入
 //
 // 设计:

@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package trader
 
 import (
@@ -335,7 +339,7 @@ func (at *AutoTrader) InitializeGrid() error {
 	logger.Infof("[Grid] Initialized: %d levels, $%.2f - $%.2f, spacing $%.2f",
 		gridConfig.GridCount, at.gridState.LowerPrice, at.gridState.UpperPrice, at.gridState.GridSpacing)
 
-	// [HOOT CRITICAL-2] Sync grid config to risk guard for real-time boundary checks.
+	// Sync grid config to risk guard for real-time boundary checks.
 	if at.riskGuard != nil {
 		at.riskGuard.UpdateGridConfig(gridConfig)
 		logger.Infof("[Grid] RiskGuard grid config updated: symbol=%s upper=%.2f lower=%.2f",

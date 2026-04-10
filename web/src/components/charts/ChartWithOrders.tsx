@@ -432,7 +432,7 @@ export function ChartWithOrders({
       <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid #2B3139' }}>
         <div className="flex items-center gap-3">
           <span className="text-xl">📈</span>
-          <h3 className="text-lg font-bold" style={{ color: '#EAECEF' }}>
+          <h3 className="text-lg font-medium" style={{ color: '#EAECEF' }}>
             {symbol} {interval}
           </h3>
         </div>
@@ -514,11 +514,11 @@ export function ChartWithOrders({
       {/* 图例说明 */}
       <div className="flex items-center gap-4 p-4 text-xs" style={{ borderTop: '1px solid #2B3139', color: '#848E9C' }}>
         <div className="flex items-center gap-2">
-          <span className="font-bold" style={{ color: '#0ECB81' }}>B</span>
+          <span className="font-medium" style={{ color: '#0ECB81' }}>B</span>
           <span>{language === 'zh' ? 'BUY (买入)' : 'BUY'}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-bold" style={{ color: '#F6465D' }}>S</span>
+          <span className="font-medium" style={{ color: '#F6465D' }}>S</span>
           <span>{language === 'zh' ? 'SELL (卖出)' : 'SELL'}</span>
         </div>
       </div>

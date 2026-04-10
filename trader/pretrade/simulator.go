@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package pretrade 提供下单前预模拟（dry-run）能力
 //
 // 设计目标:

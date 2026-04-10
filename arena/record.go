@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 // record.go — Arena 决策持久化接口（在 arena 包内定义，避免循环依赖）

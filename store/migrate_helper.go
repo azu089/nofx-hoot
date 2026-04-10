@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package store
 
 import (
@@ -59,7 +62,7 @@ func addColumnIfNotExists(db *gorm.DB, table, column, colDef string) error {
 	return nil
 }
 
-// RunMigrations runs all HOOT-specific migrations on startup.
+// RunMigrations runs all schema migrations on startup.
 // Safe to call multiple times — skips columns that already exist.
 func RunMigrations(db *gorm.DB) error {
 	// TraderPosition: open_timestamp for hold time tracking

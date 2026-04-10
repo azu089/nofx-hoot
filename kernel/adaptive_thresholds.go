@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package kernel
 
 // adaptive_thresholds.go — Rolling win-rate driven threshold adaptation.
@@ -45,13 +48,15 @@ type AdaptiveState struct {
 	blHours          int     // blacklist duration hours (default 24)
 
 	// Baseline thresholds (from config)
-	baseMinConfidence int
-	baseMinRR         float64
-	baseCooldown      int
+	baseMinConfidence   int
+	baseMinRR           float64
+	baseMinScoreToTrade float64
+	baseCooldown        int
 
 	// Current effective thresholds (may be tightened)
 	MinConfidence     int
 	MinRR             float64
+	MinScoreToTrade   float64
 	CooldownThreshold int
 }
 
@@ -61,6 +66,7 @@ type AdaptiveConfig struct {
 	TriggerWinRate          float64 // threshold to trigger tightening (default 0.55)
 	BaseMinConfidence       int     // baseline min confidence
 	BaseMinRR               float64 // baseline min R:R ratio
+	BaseMinScoreToTrade     float64 // baseline min composite score for Vote (default 50)
 	BaseCooldownThreshold   int     // baseline consecutive loss cooldown
 	SymbolBlacklistMinTrades int    // min trades for symbol blacklist (default 10)
 	SymbolBlacklistWinRate  float64 // symbol blacklist threshold (default 0.45)
@@ -74,11 +80,40 @@ func DefaultAdaptiveConfig() AdaptiveConfig {
 		TriggerWinRate:           0.55,
 		BaseMinConfidence:        0,
 		BaseMinRR:                1.5,
+		BaseMinScoreToTrade:      52,
 		BaseCooldownThreshold:    3,
 		SymbolBlacklistMinTrades: 10,
 		SymbolBlacklistWinRate:   0.45,
 		SymbolBlacklistHours:     24,
 	}
+}
+
+// AdaptiveConfigForMode returns a config tuned for the given strategy mode.
+func AdaptiveConfigForMode(mode string) AdaptiveConfig {
+	base := DefaultAdaptiveConfig()
+	switch mode {
+	case "aggressive":
+		base.TriggerWinRate = 0.40       // more tolerant before tightening
+		base.BaseMinConfidence = 0       // no confidence gate
+		base.BaseMinRR = 1.0             // accept lower R:R
+		base.BaseMinScoreToTrade = 50    // lowest bar
+		base.BaseCooldownThreshold = 99  // practically no cooldown
+	case "high_win_rate":
+		base.TriggerWinRate = 0.60       // tighten sooner
+		base.BaseMinConfidence = 80      // high bar
+		base.BaseMinRR = 2.0             // stricter R:R
+		base.BaseMinScoreToTrade = 63    // highest bar
+		base.BaseCooldownThreshold = 2   // cool down after 2 losses
+	case "institutional":
+		base.TriggerWinRate = 0.55
+		base.BaseMinConfidence = 70
+		base.BaseMinRR = 1.5
+		base.BaseMinScoreToTrade = 58    // moderately strict
+		base.BaseCooldownThreshold = 3
+	default: // balanced
+		// use defaults as-is
+	}
+	return base
 }
 
 // NewAdaptiveState creates an AdaptiveState with the given config.
@@ -114,12 +149,14 @@ func NewAdaptiveState(cfg AdaptiveConfig) *AdaptiveState {
 		blMinTrades:      cfg.SymbolBlacklistMinTrades,
 		blWinRateThresh:  cfg.SymbolBlacklistWinRate,
 		blHours:          cfg.SymbolBlacklistHours,
-		baseMinConfidence: cfg.BaseMinConfidence,
-		baseMinRR:         cfg.BaseMinRR,
-		baseCooldown:      cfg.BaseCooldownThreshold,
-		MinConfidence:     cfg.BaseMinConfidence,
-		MinRR:             cfg.BaseMinRR,
-		CooldownThreshold: cfg.BaseCooldownThreshold,
+		baseMinConfidence:   cfg.BaseMinConfidence,
+		baseMinRR:           cfg.BaseMinRR,
+		baseMinScoreToTrade: cfg.BaseMinScoreToTrade,
+		baseCooldown:        cfg.BaseCooldownThreshold,
+		MinConfidence:       cfg.BaseMinConfidence,
+		MinRR:               cfg.BaseMinRR,
+		MinScoreToTrade:     cfg.BaseMinScoreToTrade,
+		CooldownThreshold:   cfg.BaseCooldownThreshold,
 	}
 }
 
@@ -180,6 +217,13 @@ func (a *AdaptiveState) RollingWinRate() float64 {
 	return a.rollingWinRate()
 }
 
+// EffectiveMinScore returns the current adaptive min composite score for Vote.
+func (a *AdaptiveState) EffectiveMinScore() float64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.MinScoreToTrade
+}
+
 // EffectiveMinConfidence returns the current adaptive min confidence.
 func (a *AdaptiveState) EffectiveMinConfidence() int {
 	a.mu.RLock()
@@ -224,6 +268,7 @@ func (a *AdaptiveState) recompute(now time.Time) {
 	// Start from baseline
 	minConf := a.baseMinConfidence
 	minRR := a.baseMinRR
+	minScore := a.baseMinScoreToTrade
 	cooldown := a.baseCooldown
 
 	// Global win-rate tightening
@@ -231,13 +276,15 @@ func (a *AdaptiveState) recompute(now time.Time) {
 	if wr >= 0 && wr < a.triggerWinRate {
 		minConf += 5
 		minRR += 0.2
+		minScore += 5
 		cooldown++
-		logger.Infof("⚡ [AdaptiveThresholds] Rolling WR=%.1f%% < %.0f%% → tightened: min_conf=%d, min_rr=%.1f, cooldown=%d",
-			wr*100, a.triggerWinRate*100, minConf, minRR, cooldown)
+		logger.Infof("⚡ [AdaptiveThresholds] Rolling WR=%.1f%% < %.0f%% → tightened: min_conf=%d, min_rr=%.1f, min_score=%.0f, cooldown=%d",
+			wr*100, a.triggerWinRate*100, minConf, minRR, minScore, cooldown)
 	}
 
 	a.MinConfidence = minConf
 	a.MinRR = minRR
+	a.MinScoreToTrade = minScore
 	a.CooldownThreshold = cooldown
 
 	// Per-symbol blacklist

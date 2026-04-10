@@ -175,7 +175,7 @@ export default function TerminalHero() {
                     {/* Main Title - Massive & Impactful */}
                     {/* Main Title - Massive & Impactful */}
                     <div className="relative z-20 mix-blend-hard-light md:mix-blend-normal">
-                        <h1 className="text-5xl sm:text-6xl md:text-8xl lg:text-9xl font-black tracking-tighter leading-[0.9] md:leading-[0.8] mb-6 select-none bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-zinc-600 drop-shadow-2xl">
+                        <h1 className="text-5xl sm:text-6xl md:text-8xl lg:text-9xl font-medium tracking-tighter leading-[0.9] md:leading-[0.8] mb-6 select-none bg-clip-text text-transparent bg-gradient-to-b from-white via-white to-zinc-600 drop-shadow-2xl">
                             AGENTIC<br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold via-white to-nofx-gold animate-shimmer bg-[length:200%_auto] tracking-tight filter drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]">TRADING</span>
                         </h1>
@@ -202,7 +202,7 @@ export default function TerminalHero() {
                                     <div className="absolute -inset-0.5 bg-gradient-to-r from-nofx-gold/20 to-blue-600/20 rounded-lg blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                                     <div className="relative flex items-center gap-3 px-6 py-3 rounded-lg bg-zinc-900/80 border border-zinc-700 hover:border-nofx-gold/50 transition-all duration-300 backdrop-blur-sm">
                                         <div className="w-1.5 h-1.5 rounded-full bg-nofx-success shadow-[0_0_8px_rgba(74,222,128,0.6)] animate-pulse"></div>
-                                        <span className="text-lg md:text-xl font-bold text-white tracking-wider group-hover:text-nofx-gold transition-colors">{market}</span>
+                                        <span className="text-lg md:text-xl font-medium text-white tracking-wider group-hover:text-nofx-gold transition-colors">{market}</span>
                                     </div>
                                 </div>
                             ))}
@@ -221,7 +221,7 @@ export default function TerminalHero() {
                     <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
                         <button
                             onClick={() => document.getElementById('market-scanner')?.scrollIntoView({ behavior: 'smooth' })}
-                            className="group relative overflow-hidden bg-nofx-gold text-black px-8 py-4 font-bold font-mono tracking-wider hover:scale-105 transition-transform duration-200"
+                            className="group relative overflow-hidden bg-nofx-gold text-black px-8 py-4 font-medium font-mono tracking-wider hover:scale-105 transition-transform duration-200"
                             style={{ clipPath: 'polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%)' }}
                         >
                             <span className="relative z-10 flex items-center gap-2">
@@ -340,7 +340,7 @@ function CommunityStats() {
                         <stat.icon className={`w-4 h-4 ${stat.color}`} />
                         <span className="text-[10px] font-mono text-zinc-500 tracking-wider">{stat.label}</span>
                     </div>
-                    <span className="text-xl font-bold font-mono text-white group-hover:text-nofx-gold transition-colors">{stat.value}</span>
+                    <span className="text-xl font-medium font-mono text-white group-hover:text-nofx-gold transition-colors">{stat.value}</span>
                 </a>
             ))}
         </div>

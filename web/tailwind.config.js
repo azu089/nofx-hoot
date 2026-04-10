@@ -26,6 +26,20 @@ export default {
         },
         'nofx-success': '#0ECB81',
         'nofx-danger': '#F6465D',
+        // 统一主题春绿，覆盖 Tailwind 默认 emerald 调色板
+        emerald: {
+          50: '#E8FBF1',
+          100: '#CEF7E0',
+          200: '#9EEFC2',
+          300: '#62E9B1',
+          400: '#3BDD95',
+          500: '#28C57A',
+          600: '#1FAE6A',
+          700: '#1A8E57',
+          800: '#166E44',
+          900: '#0F4D30',
+          950: '#072F1C',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui'],

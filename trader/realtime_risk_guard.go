@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package trader
 
 // realtime_risk_guard.go — Real-time risk monitoring between runCycle intervals.

@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package kernel
 
 import (
@@ -38,11 +42,31 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	// 2. Trading mode variant
 	switch strings.ToLower(strings.TrimSpace(variant)) {
 	case "aggressive":
-		sb.WriteString("## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ 70\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio\n\n")
-	case "conservative":
-		sb.WriteString("## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses\n\n")
-	case "scalping":
-		sb.WriteString("## Mode: Scalping\n- Focus on short-term momentum, smaller profit targets but require quick action\n- If price doesn't move as expected within two bars, immediately reduce position or stop-loss\n\n")
+		sb.WriteString("## Mode: Full Mandate\n")
+		sb.WriteString("- You have full discretion over all trading decisions\n")
+		sb.WriteString("- Confidence ≥ 60 is sufficient to open positions\n")
+		sb.WriteString("- Batch position building is allowed when trend is clear\n")
+		sb.WriteString("- Stop-loss is still mandatory — full discretion does not mean no risk control\n\n")
+	case "balanced":
+		sb.WriteString("## Mode: Smart Guard\n")
+		sb.WriteString("- Default operating mode — balance opportunity capture with risk control\n")
+		sb.WriteString("- Require confidence ≥ 70 and at least 2 confirming signals before entry\n")
+		sb.WriteString("- Respect cooldown periods after consecutive losses\n")
+		sb.WriteString("- Risk-reward ratio must meet minimum threshold\n\n")
+	case "high_win_rate":
+		sb.WriteString("## Mode: Precision Mode\n")
+		sb.WriteString("- Win rate is the primary objective — fewer trades, higher quality\n")
+		sb.WriteString("- Require confidence ≥ 80 and ALL confirming signals must align\n")
+		sb.WriteString("- Counter-trend positions are FORBIDDEN — only trade with the trend\n")
+		sb.WriteString("- Minimum risk-reward ratio is elevated to 2:1\n")
+		sb.WriteString("- If uncertain, output WAIT — never force a trade\n\n")
+	case "institutional":
+		sb.WriteString("## Mode: Rules Engine\n")
+		sb.WriteString("- You are a CANDIDATE GENERATOR, not the final decision maker\n")
+		sb.WriteString("- A downstream scoring and voting engine evaluates your proposals\n")
+		sb.WriteString("- Generate up to 3 diverse, well-reasoned trade candidates\n")
+		sb.WriteString("- Include 'wait' as a candidate if signals are ambiguous\n")
+		sb.WriteString("- Include invalidation conditions for each candidate\n\n")
 	}
 
 	// 3. Hard constraints (risk control)
@@ -63,7 +87,11 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 	sb.WriteString(fmt.Sprintf("- Position Value Limit (BTC/ETH): max %.0f USDT (= equity %.0f × %.1fx)\n",
 		accountEquity*btcEthPosValueRatio, accountEquity, btcEthPosValueRatio))
 	sb.WriteString(fmt.Sprintf("- Max Margin Usage: ≤%.0f%%\n", riskControl.MaxMarginUsage*100))
-	sb.WriteString(fmt.Sprintf("- Min Position Size: ≥%.0f USDT\n\n", riskControl.MinPositionSize))
+	sb.WriteString(fmt.Sprintf("- Min Position Size: ≥%.0f USDT\n", riskControl.MinPositionSize))
+	// Disambiguator: these thresholds gate NEW entries only. Hitting them must not
+	// be treated as an exit signal for positions already open. Exit decisions live
+	// in the Exit Philosophy / signal section further below.
+	sb.WriteString("- **Scope of the limits above**: entry gates only. Touching any ceiling (including margin usage) is NOT a valid reason, by itself, to close or reduce an existing position.\n\n")
 
 	sb.WriteString("## AI GUIDED (Recommended, you should follow):\n")
 	sb.WriteString(fmt.Sprintf("- Trading Leverage: Altcoins max %dx | BTC/ETH max %dx\n",
@@ -81,16 +109,55 @@ func (e *StrategyEngine) BuildSystemPrompt(accountEquity float64, variant string
 		accountEquity, btcEthPosValueRatio, accountEquity*btcEthPosValueRatio))
 	sb.WriteString("- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!\n\n")
 
+	// 3b. Signal resonance rules (injected for balanced / high_win_rate modes)
+	modeLC := strings.ToLower(strings.TrimSpace(variant))
+	if modeLC == "balanced" || modeLC == "high_win_rate" {
+		minRR := riskControl.MinRiskRewardRatio
+		if minRR <= 0 {
+			minRR = 1.5
+		}
+		if modeLC == "high_win_rate" && minRR < 2.0 {
+			minRR = 2.0
+		}
+		resonanceReq := "at least 2 out of 3"
+		if modeLC == "high_win_rate" {
+			resonanceReq = "all 3"
+		}
+		sb.WriteString("# 🛡️ Signal Resonance Rules (MANDATORY)\n\n")
+		sb.WriteString("Quality over quantity — fewer, higher-conviction trades.\n\n")
+		sb.WriteString("**Resonance Requirement** — To open any position you MUST satisfy " + resonanceReq + " of:\n")
+		sb.WriteString("  1. Technical trend aligns with proposed direction (EMA/RSI/MACD confirm)\n")
+		sb.WriteString("  2. Open Interest is EXPANDING (not contracting) in the same direction\n")
+		sb.WriteString("  3. Funding rate is NOT extreme in your direction (no crowding risk)\n\n")
+		sb.WriteString("**Crowding Rules** — You MUST NOT:\n")
+		sb.WriteString("  - Open LONG when funding > 0.1%/8h (longs overcrowded)\n")
+		sb.WriteString("  - Open SHORT when funding < -0.05%/8h (shorts overcrowded)\n")
+		sb.WriteString("  - Open LONG when long-account ratio > 75%\n")
+		sb.WriteString("  - Open SHORT when long-account ratio < 30%\n\n")
+		sb.WriteString("**OI Divergence** — You MUST NOT:\n")
+		sb.WriteString("  - Open LONG when price rising but OI contracting (shorts covering, not demand)\n")
+		sb.WriteString("  - Open SHORT when price falling but OI contracting (long liquidation, may reverse)\n\n")
+		sb.WriteString(fmt.Sprintf("**Minimum Risk-Reward Ratio**: %.1f:1\n\n", minRR))
+		if modeLC == "high_win_rate" {
+			sb.WriteString("**Precision mode active** — counter-trend positions FORBIDDEN. Only trade with the trend and full 3/3 signal resonance.\n\n")
+		}
+		sb.WriteString("If signals indicate crowding or divergence, output WAIT — do NOT force a trade.\n\n")
+	}
+
 	// 4. Trading frequency (editable)
 	if promptSections.TradingFrequency != "" {
 		sb.WriteString(promptSections.TradingFrequency)
 		sb.WriteString("\n\n")
 	} else {
+		// Frequency awareness is an anti-churn guideline for OPENING cadence.
+		// It is intentionally not an exit trigger: reaching the dwell target does
+		// not by itself justify closing a position.
 		sb.WriteString("# ⏱️ Trading Frequency Awareness\n\n")
-		sb.WriteString("- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour\n")
-		sb.WriteString("- >2 trades/hour = Overtrading\n")
-		sb.WriteString("- Single position hold time ≥ 30-60 minutes\n")
-		sb.WriteString("If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.\n\n")
+		sb.WriteString("_Scope: this section governs how often you open new positions. It is not a close trigger._\n\n")
+		sb.WriteString("- Skilled discretionary baseline: 2-4 trades/day ≈ 0.1-0.2 trades/hour\n")
+		sb.WriteString("- More than 2 trades/hour is overtrading — raise the entry bar instead of taking more trades\n")
+		sb.WriteString("- Healthy dwell time per position: ≥ 30-60 minutes (shorter than this usually reflects impatience, not edge)\n")
+		sb.WriteString("- Reaching the dwell target does NOT by itself justify closing; use the exit criteria to decide when to leave.\n\n")
 	}
 
 	// 5. Entry standards (editable)

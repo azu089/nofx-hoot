@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package ai_budget 提供策略级 AI 调用预算控制
 //
 // 特性:

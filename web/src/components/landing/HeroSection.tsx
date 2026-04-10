@@ -76,14 +76,14 @@ export default function HeroSection({ language }: HeroSectionProps) {
             ) : language === 'zh' ? (
               <>
                 {daysOld} 天内获得{' '}
-                <span className="font-bold tabular-nums">
+                <span className="font-medium tabular-nums">
                   {(animatedStars / 1000).toFixed(1)}K+
                 </span>{' '}
                 GitHub Stars
               </>
             ) : (
               <>
-                <span className="font-bold tabular-nums">
+                <span className="font-medium tabular-nums">
                   {(animatedStars / 1000).toFixed(1)}K+
                 </span>{' '}
                 GitHub Stars in {daysOld} days
@@ -97,7 +97,7 @@ export default function HeroSection({ language }: HeroSectionProps) {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
+          className="text-5xl sm:text-6xl lg:text-7xl font-medium mb-6 leading-tight"
         >
           <span style={{ color: '#EAECEF' }}>{t('heroTitle1', language)}</span>
           <br />
@@ -140,7 +140,7 @@ export default function HeroSection({ language }: HeroSectionProps) {
         >
           <motion.a
             href="/competition"
-            className="group flex items-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all"
+            className="group flex items-center gap-3 px-8 py-4 rounded-xl font-medium text-lg transition-all"
             style={{
               background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
               color: '#0B0E11',
@@ -161,7 +161,7 @@ export default function HeroSection({ language }: HeroSectionProps) {
             href={OFFICIAL_LINKS.github}
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center gap-3 px-8 py-4 rounded-xl font-bold text-lg transition-all"
+            className="group flex items-center gap-3 px-8 py-4 rounded-xl font-medium text-lg transition-all"
             style={{
               background: 'rgba(255, 255, 255, 0.05)',
               color: '#EAECEF',
@@ -200,7 +200,7 @@ export default function HeroSection({ language }: HeroSectionProps) {
               transition={{ delay: 0.5 + index * 0.1 }}
             >
               <div
-                className="text-3xl sm:text-4xl font-bold mb-1"
+                className="text-3xl sm:text-4xl font-medium mb-1"
                 style={{
                   background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
                   WebkitBackgroundClip: 'text',

@@ -48,7 +48,7 @@ export default function AgentTerminal() {
                         </div>
                     </div>
                     <div className="flex items-baseline gap-3">
-                        <span className="text-3xl font-bold text-green-400 font-mono tracking-tight">+$12,847.50</span>
+                        <span className="text-3xl font-medium text-green-400 font-mono tracking-tight">+$12,847.50</span>
                         <span className="text-green-500/80 text-sm font-mono">+8.42%</span>
                     </div>
 
@@ -79,17 +79,17 @@ export default function AgentTerminal() {
                 <div className="grid grid-cols-3 divide-x divide-zinc-800/40 border-b border-zinc-800/40">
                     <div className="p-3 text-center">
                         <div className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider mb-1">OI</div>
-                        <div className="text-white font-bold font-mono">$847M</div>
+                        <div className="text-white font-medium font-mono">$847M</div>
                         <div className="text-green-500 text-[10px] font-mono">↑ 2.1%</div>
                     </div>
                     <div className="p-3 text-center">
                         <div className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider mb-1">Netflow</div>
-                        <div className="text-green-400 font-bold font-mono">+$124M</div>
+                        <div className="text-green-400 font-medium font-mono">+$124M</div>
                         <div className="text-zinc-500 text-[10px] font-mono">24h inflow</div>
                     </div>
                     <div className="p-3 text-center">
                         <div className="text-zinc-500 text-[10px] font-mono uppercase tracking-wider mb-1">L/S Ratio</div>
-                        <div className="text-white font-bold font-mono">1.24</div>
+                        <div className="text-white font-medium font-mono">1.24</div>
                         <div className="flex gap-0.5 mt-1 px-2">
                             <div className="h-1 bg-green-500/60 rounded-l flex-[55]" />
                             <div className="h-1 bg-red-500/60 rounded-r flex-[45]" />
@@ -150,7 +150,7 @@ export default function AgentTerminal() {
                             <div key={i} className="flex items-center justify-between py-2 px-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div
-                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold border"
+                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-medium border"
                                         style={{
                                             backgroundColor: pos.color + '15',
                                             borderColor: pos.color + '30',

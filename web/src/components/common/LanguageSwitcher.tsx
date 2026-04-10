@@ -19,7 +19,7 @@ export function LanguageSwitcher() {
           key={code}
           type="button"
           onClick={() => setLanguage(code)}
-          className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+          className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
             language === code
               ? 'bg-nofx-gold/15 text-nofx-gold'
               : 'text-zinc-500 hover:text-zinc-300 bg-transparent'

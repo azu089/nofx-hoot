@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // kernel/global_blacklist.go — 全局共享黑名单
 //
 // AdaptiveState 是 per-trader 实例，黑名单只影响单个 trader；

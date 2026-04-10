@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package kernel
 
 // event_signals.go — Event signal system for macro/regulatory/exchange intelligence.

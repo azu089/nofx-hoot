@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 import (
@@ -52,8 +55,7 @@ func parseTradingDetails(text string) (float64, float64, float64, int) {
 
 // ---------------------------------------------------------------------------
 // ArenaEngine 编排 13 角色顺序执行，产出 ArenaSignal
-// 1:1 对应 Python TradingAgents/graph/trading_graph.py 的 propagate()
-// + TradingAgents/graph/reflection.py 的 reflect_and_remember()
+// Implements the debate propagation and reflection flow from TradingAgents (ICAIF 2024).
 // ---------------------------------------------------------------------------
 
 // ArenaEngine 辩论引擎
@@ -90,8 +92,6 @@ func NewArenaEngine(config *ArenaConfig, aiClient mcp.AIClient) *ArenaEngine {
 }
 
 // RunFullDebate 完整辩论流程（6 个阶段）
-// 1:1 对应 Python TradingAgentsGraph.propagate()
-//
 // accountInfo 包含 total equity / available balance / unrealized PnL / margin used pct,
 // 全部塞进 state 供 Trader / PortfolioManager 的 FormatAccountContext 使用。
 func (e *ArenaEngine) RunFullDebate(

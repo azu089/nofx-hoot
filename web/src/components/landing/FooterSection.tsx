@@ -51,7 +51,7 @@ export default function FooterSection({ language }: FooterSectionProps) {
           <div className="md:col-span-1">
             <div className="flex items-center gap-3 mb-4">
               <img src="/icons/nofx.svg" alt="NOFX Logo" className="w-8 h-8" />
-              <span className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+              <span className="text-xl font-medium" style={{ color: '#EAECEF' }}>
                 NOFX
               </span>
             </div>
@@ -81,7 +81,7 @@ export default function FooterSection({ language }: FooterSectionProps) {
 
           {/* Links */}
           <div>
-            <h4 className="text-sm font-semibold mb-4" style={{ color: '#EAECEF' }}>
+            <h4 className="text-sm font-medium mb-4" style={{ color: '#EAECEF' }}>
               {t('links', language)}
             </h4>
             <ul className="space-y-3">
@@ -103,7 +103,7 @@ export default function FooterSection({ language }: FooterSectionProps) {
 
           {/* Resources */}
           <div>
-            <h4 className="text-sm font-semibold mb-4" style={{ color: '#EAECEF' }}>
+            <h4 className="text-sm font-medium mb-4" style={{ color: '#EAECEF' }}>
               {t('resources', language)}
             </h4>
             <ul className="space-y-3">
@@ -126,7 +126,7 @@ export default function FooterSection({ language }: FooterSectionProps) {
 
           {/* Supporters */}
           <div>
-            <h4 className="text-sm font-semibold mb-4" style={{ color: '#EAECEF' }}>
+            <h4 className="text-sm font-medium mb-4" style={{ color: '#EAECEF' }}>
               {t('supporters', language)}
             </h4>
             <div className="flex flex-wrap gap-2">

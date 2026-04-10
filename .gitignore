@@ -126,3 +126,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 PR_DESCRIPTION.md
+
+# 运行时数据
+backtests/
+*.bak.*
+nofx_old_*
+nofx.backup-*
+nofx.old-*
+nofx.v1.1-*

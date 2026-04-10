@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package execution
 
 // simulator.go — Trade execution simulator with slippage, fee, and latency models.

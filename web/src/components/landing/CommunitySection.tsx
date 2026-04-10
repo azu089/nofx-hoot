@@ -41,7 +41,7 @@ function TweetCard({ quote, authorName, handle, avatarUrl, tweetUrl, delay }: Tw
             style={{ border: '2px solid rgba(255, 255, 255, 0.1)' }}
           />
           <div>
-            <div className="font-semibold text-sm" style={{ color: '#EAECEF' }}>
+            <div className="font-medium text-sm" style={{ color: '#EAECEF' }}>
               {authorName}
             </div>
             <div className="text-xs" style={{ color: '#5E6673' }}>
@@ -113,7 +113,7 @@ export default function CommunitySection({ language }: CommunitySectionProps) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
-          <h2 className="text-4xl lg:text-5xl font-bold mb-4" style={{ color: '#EAECEF' }}>
+          <h2 className="text-4xl lg:text-5xl font-medium mb-4" style={{ color: '#EAECEF' }}>
             {language === 'zh' ? '社区声音' : 'Community Voices'}
           </h2>
           <p className="text-lg" style={{ color: '#848E9C' }}>

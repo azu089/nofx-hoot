@@ -250,7 +250,7 @@ export function SignalBadge({ signal }: { signal: string }) {
   const cfg = getSignalCfg(signal)
   return (
     <span
-      className="inline-flex items-center gap-1 font-bold uppercase tracking-wider rounded-full px-3 py-1 text-xs"
+      className="inline-flex items-center gap-1 font-medium uppercase tracking-wider rounded-full px-3 py-1 text-xs"
       style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}
     >
       {cfg.icon}
@@ -263,7 +263,7 @@ export function ConfidencePill({ value }: { value: number }) {
   const color = getConfidenceColor(value)
   return (
     <div
-      className="px-2 py-1 rounded text-xs font-semibold"
+      className="px-2 py-1 rounded text-xs font-medium"
       style={{ background: `${color}22`, color }}
     >
       {value.toFixed(0)}%
@@ -294,33 +294,31 @@ function PromptRow({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded hover:bg-white/5"
+        className="flex items-center justify-between w-full py-2 bg-transparent hover:bg-white/5 transition-colors text-left rounded"
       >
         <div className="flex items-center gap-2">
+          {open ? (
+            <span className="text-xs text-nofx-text-muted">▼</span>
+          ) : (
+            <span className="text-xs text-nofx-text-muted">▶</span>
+          )}
           <span className="text-base">{icon}</span>
-          <span className="font-semibold" style={{ color }}>
-            {title}
-          </span>
+          <span className="text-sm font-medium text-nofx-text">{title}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
+        <div className="flex items-center gap-1">
+          <span
+            role="button"
             onClick={(e) => {
               e.stopPropagation()
               copyToClipboard(content)
             }}
-            className="text-xs px-2.5 py-1 rounded hover:opacity-80 transition-opacity flex items-center gap-1"
-            style={{
-              background: `${color}33`,
-              color,
-              border: `1px solid ${color}55`,
-            }}
-            title="Copy to clipboard"
+            className="p-1 rounded hover:bg-white/10 text-nofx-text-muted hover:text-emerald-400 transition-colors"
+            title="Copy"
           >
             <Copy className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
+          </span>
+          <span
+            role="button"
             onClick={(e) => {
               e.stopPropagation()
               downloadAsFile(
@@ -330,35 +328,17 @@ function PromptRow({
                   : filename,
               )
             }}
-            className="text-xs px-2.5 py-1 rounded hover:opacity-80 transition-opacity flex items-center gap-1"
-            style={{
-              background: `${color}33`,
-              color,
-              border: `1px solid ${color}55`,
-            }}
-            title="Download as file"
+            className="p-1 rounded hover:bg-white/10 text-nofx-text-muted hover:text-emerald-400 transition-colors"
+            title="Download"
           >
             <Download className="w-3 h-3" />
-          </button>
-          <span
-            className="text-xs px-2 py-0.5 rounded"
-            style={{ background: `${color}26`, color }}
-          >
-            {open ? '▼ 收起' : '▶ 展开'}
           </span>
         </div>
       </button>
       {open && (
-        <div
-          className="mt-2 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
-          style={{
-            background: '#0A0A1A',
-            border: '1px solid #2B3139',
-            color: '#EAECEF',
-          }}
-        >
+        <pre className="mt-2 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto bg-transparent text-nofx-text-main">
           {content}
-        </div>
+        </pre>
       )}
     </div>
   )
@@ -373,29 +353,17 @@ function AgentRow({ displayName, content }: { displayName: string; content: stri
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 text-xs transition-colors w-full justify-between p-2 rounded hover:bg-white/5"
+        className="flex items-center justify-between w-full py-1.5 text-xs bg-transparent hover:bg-white/5 transition-colors text-left rounded"
       >
-        <span className="font-semibold" style={{ color: '#94A3B8' }}>
-          {displayName}
-        </span>
-        <span
-          className="text-xs px-2 py-0.5 rounded"
-          style={{ background: 'rgba(99, 102, 241,0.15)', color: '#6366F1' }}
-        >
-          {open ? '▼ 收起' : '▶ 展开'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-nofx-text-muted">{open ? '▼' : '▶'}</span>
+          <span className="font-medium text-nofx-text-muted">{displayName}</span>
+        </div>
       </button>
       {open && (
-        <div
-          className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto ml-2"
-          style={{
-            background: '#0A0A1A',
-            border: '1px solid #2B3139',
-            color: '#EAECEF',
-          }}
-        >
+        <pre className="mt-1 ml-4 text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-transparent text-nofx-text-main">
           {content}
-        </div>
+        </pre>
       )}
     </div>
   )
@@ -418,44 +386,28 @@ function CoTSection({
 
   return (
     <div>
-      {/* 外层折叠 header — 样式对齐 DecisionCard aiThinking 行 */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 text-sm transition-colors w-full justify-between p-2 rounded hover:bg-white/5"
+        className="flex items-center justify-between w-full py-2 bg-transparent hover:bg-white/5 transition-colors text-left rounded"
       >
         <div className="flex items-center gap-2">
+          <span className="text-xs text-nofx-text-muted">{open ? '▼' : '▶'}</span>
           <span className="text-base">🧠</span>
-          <span className="font-semibold" style={{ color: '#6366F1' }}>
-            {title}
-          </span>
+          <span className="text-sm font-medium text-nofx-text">{title}</span>
         </div>
-        <span
-          className="text-xs px-2 py-0.5 rounded"
-          style={{ background: 'rgba(99, 102, 241,0.15)', color: '#6366F1' }}
-        >
-          {open ? '▼ 收起' : '▶ 展开'}
-        </span>
       </button>
 
       {open && (
-        <div
-          className="mt-2 rounded-lg p-3 space-y-1"
-          style={{
-            background: '#0A0A1A',
-            border: '1px solid #2B3139',
-          }}
-        >
+        <div className="mt-2 space-y-0">
           {agents.map(({ agent, content }) => {
             const displayName = agentRoles[agent] ?? agent
-            return (
-              <AgentRow key={agent} displayName={displayName} content={content} />
-            )
+            return <AgentRow key={agent} displayName={displayName} content={content} />
           })}
           {count === 0 && (
-            <div className="text-xs font-mono whitespace-pre-wrap" style={{ color: '#EAECEF' }}>
+            <pre className="text-xs font-mono whitespace-pre-wrap bg-transparent text-nofx-text-main">
               {cotTrace}
-            </div>
+            </pre>
           )}
         </div>
       )}
@@ -485,61 +437,35 @@ export function ArenaDecisionCard({
   const agentRoles: Record<string, string> = JSON.parse(ax(lang, 'agentRoles'))
 
   return (
-    <div
-      className="rounded-xl p-5 transition-all duration-300 hover:translate-y-[-2px]"
-      style={{
-        border: '1px solid #2B3139',
-        background: 'linear-gradient(180deg, #12122A 0%, #12122A 100%)',
-        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
-      }}
-    >
-      {/* ── 头部：完全对齐 DecisionCard ── */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{ background: 'rgba(99, 102, 241, 0.15)' }}
-          >
-            <span className="text-xl">🤖</span>
-          </div>
+    <div className="py-4 fade-divider-b">
+      {/* ── 头部 ── */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🤖</span>
           <div>
-            <div className="font-bold" style={{ color: '#EAECEF' }}>
+            <div className="text-sm font-medium text-nofx-text-main">
               {t('cycle', tLang)} #{record.cycle_number ?? '-'}
             </div>
-            <div className="text-xs" style={{ color: '#848E9C' }}>
+            <div className="text-[10px] text-nofx-text-muted">
               {new Date(record.created_at).toLocaleString()}
             </div>
           </div>
         </div>
-        {/* 成功/失败 徽章 — 对齐 DecisionCard */}
-        <div
-          className="px-4 py-1.5 rounded-full text-xs font-bold tracking-wider"
+        <span
+          className="px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wider"
           style={
             record.action_executed
-              ? {
-                  background: 'rgba(34, 197, 94, 0.15)',
-                  color: '#22C55E',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                }
-              : {
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  color: '#EF4444',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                }
+              ? { color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.4)' }
+              : { color: '#F6465D', border: '1px solid rgba(246, 70, 93, 0.4)' }
           }
         >
           {t(record.action_executed ? 'success' : 'failed', tLang)}
-        </div>
+        </span>
       </div>
 
-      {/* ── Arena 独有内容区 ── */}
-
       {/* 信号徽章 + 信心 + 币种 */}
-      <div
-        className="flex items-center gap-2 flex-wrap mb-3 pb-3"
-        style={{ borderTop: '1px solid #2B3139', paddingTop: '12px' }}
-      >
-        <span className="font-mono font-bold text-base" style={{ color: '#EAECEF' }}>
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <span className="font-mono font-medium text-sm text-nofx-text-main">
           {record.symbol.replace('USDT', '')}
         </span>
         <SignalBadge signal={record.signal} />
@@ -548,15 +474,12 @@ export function ArenaDecisionCard({
 
       {/* 4 列交易细节 */}
       {hasEntry && (
-        <div
-          className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 pb-3"
-          style={{ borderBottom: '1px solid #2B3139' }}
-        >
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
           <div className="text-center">
             <div className="text-xs mb-1" style={{ color: '#94A3B8' }}>
               {ax(lang, 'entry')}
             </div>
-            <div className="font-mono font-semibold text-xs" style={{ color: '#EAECEF' }}>
+            <div className="font-mono font-medium text-xs" style={{ color: '#EAECEF' }}>
               {formatPrice(record.entry_price)}
             </div>
           </div>
@@ -564,7 +487,7 @@ export function ArenaDecisionCard({
             <div className="text-xs mb-1" style={{ color: '#EF4444' }}>
               {ax(lang, 'stopLoss')}
             </div>
-            <div className="font-mono font-semibold text-xs" style={{ color: '#EF4444' }}>
+            <div className="font-mono font-medium text-xs" style={{ color: '#EF4444' }}>
               {formatPrice(record.stop_loss)}
             </div>
             {record.stop_loss && record.entry_price && (
@@ -577,7 +500,7 @@ export function ArenaDecisionCard({
             <div className="text-xs mb-1" style={{ color: '#22C55E' }}>
               {ax(lang, 'takeProfit')}
             </div>
-            <div className="font-mono font-semibold text-xs" style={{ color: '#22C55E' }}>
+            <div className="font-mono font-medium text-xs" style={{ color: '#22C55E' }}>
               {formatPrice(record.take_profit)}
             </div>
             {record.take_profit && record.entry_price && (
@@ -590,7 +513,7 @@ export function ArenaDecisionCard({
             <div className="text-xs mb-1" style={{ color: '#94A3B8' }}>
               {ax(lang, 'leverage')}
             </div>
-            <div className="font-mono font-semibold text-xs" style={{ color: '#6366F1' }}>
+            <div className="font-mono font-medium text-xs" style={{ color: '#6366F1' }}>
               {record.leverage ?? 0}x
             </div>
           </div>
@@ -599,26 +522,23 @@ export function ArenaDecisionCard({
 
       {/* 风险回报比 */}
       {rrr > 0 && (
-        <div
-          className="flex items-center justify-between mb-3 pb-3"
-          style={{ borderBottom: '1px solid #2B3139' }}
-        >
-          <span className="text-xs flex items-center gap-1" style={{ color: '#94A3B8' }}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs flex items-center gap-1 text-nofx-text-muted">
             <Scale className="w-3 h-3" />
             {ax(lang, 'riskReward')}
           </span>
           <div className="flex items-center gap-2">
-            <div className="flex gap-1 text-xs">
-              <span style={{ color: '#EF4444' }}>1</span>
-              <span style={{ color: '#94A3B8' }}>:</span>
-              <span style={{ color: '#22C55E' }}>{rrr.toFixed(2)}</span>
+            <div className="flex gap-1 text-xs font-mono">
+              <span className="text-red-400">1</span>
+              <span className="text-nofx-text-muted">:</span>
+              <span className="text-emerald-400">{rrr.toFixed(2)}</span>
             </div>
-            <div className="h-1.5 rounded-full" style={{ width: '50px', background: '#2B3139' }}>
+            <div className="h-1 rounded-full w-12 bg-white/10">
               <div
                 className="h-full rounded-full"
                 style={{
                   width: `${Math.min((rrr / 5) * 100, 100)}%`,
-                  background: rrr >= 3 ? '#22C55E' : rrr >= 2 ? '#6366F1' : '#EF4444',
+                  background: rrr >= 3 ? '#10B981' : rrr >= 2 ? '#F0B90B' : '#F6465D',
                 }}
               />
             </div>
@@ -653,29 +573,26 @@ export function ArenaDecisionCard({
         )}
       </div>
 
-      {/* ── 底部统一黑框：AI call duration + reject/error 信息 — 对齐 DecisionCard execution_log 样式 ── */}
+      {/* ── 底部执行日志 — 悬空 ── */}
       {((record.ai_call_duration_ms ?? 0) > 0 ||
         (!record.action_executed && record.reject_reason) ||
         record.error_message) && (
-        <div
-          className="rounded-lg p-3 mt-4 text-xs font-mono space-y-1"
-          style={{ background: '#0A0A1A', border: '1px solid #2B3139', color: '#EAECEF' }}
-        >
+        <div className="mt-3 text-[11px] font-mono space-y-0.5 text-nofx-text-muted">
           {(record.ai_call_duration_ms ?? 0) > 0 && (
             <div>AI call duration: {record.ai_call_duration_ms} ms</div>
           )}
           {!record.action_executed && record.reject_reason && (
-            <div style={{ color: '#EF4444' }}>
+            <div className="text-red-400">
               ✗ {record.symbol} {record.signal} rejected: {record.reject_reason}
             </div>
           )}
           {record.action_executed && (
-            <div style={{ color: '#22C55E' }}>
+            <div className="text-emerald-400">
               ✓ {record.symbol} {record.signal} succeeded
             </div>
           )}
           {record.error_message && (
-            <div style={{ color: '#EF4444' }}>✗ {record.error_message}</div>
+            <div className="text-red-400">✗ {record.error_message}</div>
           )}
         </div>
       )}

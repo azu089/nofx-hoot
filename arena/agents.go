@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 import (
@@ -40,7 +43,8 @@ func appendAgentTrace(state *ArenaState, agentName, sys, user, response string) 
 
 // ---------------------------------------------------------------------------
 // agents.go — 13 个 Agent 函数
-// 每个 Agent = prompt（从 Python 原版 1:1 翻译）+ LLM 调用 + 写入 state
+// Each Agent = prompt template + LLM call + state write.
+// Implements the analyst pattern from TradingAgents (ICAIF 2024).
 //
 // 角色列表：
 //   4 分析师:  RunMarketAnalyst, RunSocialAnalyst, RunNewsAnalyst, RunFundamentalsAnalyst
@@ -52,17 +56,11 @@ func appendAgentTrace(state *ArenaState, agentName, sys, user, response string) 
 //   1 信号:    ExtractSignal
 // ---------------------------------------------------------------------------
 
-// langInstruction 1:1 对应 Python agent_utils.py::get_language_instruction
-//
-// Python 原版:
-//
-//	def get_language_instruction() -> str:
-//	    lang = get_config().get("output_language", "English")
-//	    if lang.strip().lower() == "english":
-//	        return ""
-//	    return f" Write your entire response in {lang}."
-//
-// 返回值以空格开头，因为会直接拼到 system_message 末尾的句号之后。
+// langInstruction returns the language directive appended to system prompts.
+// Returns an empty string for English (no directive needed).
+// Returns " Write your entire response in <Lang>." for other languages.
+// The leading space is intentional — it is concatenated directly after the period ending system_message.
+// See: TradingAgents (ICAIF 2024), agent_utils.py::get_language_instruction
 func langInstruction(config *ArenaConfig) string {
 	if config == nil {
 		return ""
@@ -79,19 +77,17 @@ func langInstruction(config *ArenaConfig) string {
 }
 
 // buildAnalystSystemPrompt 拼装分析师的完整 system prompt
-// 1:1 对应 Python ChatPromptTemplate.from_messages([("system", "...")]).partial(...)
+// buildAnalystSystemPrompt assembles the full system prompt for an analyst role.
 //
-// 组装方式：
-//   prefix = "You are a helpful AI assistant... You have access to the following tools: {tool_names}.\n{system_message}For your reference, the current date is {current_date}. {instrument_context}"
-//   replace {tool_names}, {system_message}, {current_date}, {instrument_context}
-//   最后追加 langInstruction（中文时追加中文指令）
+// Template layout:
+//   prefix = "... You have access to the following tools: {tool_names}.\n{system_message}For your reference, the current date is {current_date}. {instrument_context}"
+//   placeholders: {tool_names}, {system_message}, {current_date}, {instrument_context}
+//   langInstruction is appended to system_message so the directive precedes the date/instrument lines.
 func buildAnalystSystemPrompt(roleSystemMessage, analystType, symbol, tradeDate string, config *ArenaConfig) string {
 	toolNames := ToolNamesForAnalyst(analystType)
-	// 1:1 对应 Python 原版：langInstruction 追加到 system_message 末尾
-	// （Python: `system_message = "..." + get_language_instruction()`）
-	// 这样展开后位置是：
-	//   "... tools: {tool_names}.\n[role msg][markdown][lang]For your reference, {date}. {instrument}"
-	// 而不是把 lang 放到 instrument 之后。
+	// Append language directive to system_message before template expansion.
+	// This positions the directive before the date/instrument context lines,
+	// matching the intended prompt structure.
 	roleMessageWithLang := roleSystemMessage + langInstruction(config)
 	return fillTemplate(AnalystSystemPromptPrefix, map[string]string{
 		"tool_names":         toolNames,
@@ -105,9 +101,8 @@ func buildAnalystSystemPrompt(roleSystemMessage, analystType, symbol, tradeDate 
 //
 // 源：Python agent_utils.py::build_instrument_context（股票市场版，引用 .TO/.L/.HK/.T 后缀）
 //
-// 加密货币适配：这是整个 Arena 系统**唯一的 prompt 文本改动点** ——
-// 把 Python 原版的股票交易所后缀 (.TO, .L, .HK, .T) 替换为加密货币 USDT 永续合约说明。
-// 其他所有分析师 prompt（AnalystSystemPromptPrefix + 4 个 SystemMessage）均与 Python 原版一字不差。
+// Crypto adaptation: the only prompt-text change in the Arena system.
+// Stock exchange suffixes (.TO, .L, .HK, .T) are replaced with USDT perpetual contract wording.
 func buildInstrumentContext(symbol string) string {
 	return fmt.Sprintf(
 		"The instrument to analyze is `%s`. Use this exact ticker in every tool call, report, and recommendation, preserving the exchange-qualified format (e.g. BTCUSDT, ETHUSDT for Binance Futures perpetual contracts).",
@@ -128,8 +123,7 @@ func RunMarketAnalyst(client mcp.AIClient, state *ArenaState, data *market.Data,
 		state.Symbol, state.TradeDate, config,
 	)
 
-	// 初始 user message：对应 Python Propagator.create_initial_state() 塞入的第一个 human message
-	// Python 原版只用 company_name 作为初始消息，我们加上简要持仓供 LLM 参考
+	// 初始 user message：symbol + 当前持仓摘要，供 LLM 参考
 	userPrompt := fmt.Sprintf("%s\n\n%s",
 		state.Symbol,
 		FormatPositionsBrief(state.CurrentPositions),

@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package trader
 
 import (
@@ -311,7 +315,7 @@ func (at *AutoTrader) syncGridState() {
 			}
 		}
 	}
-	// [HOOT] Reverse check: detect filled levels that were closed externally
+	// Reverse check: detect filled levels that were closed externally
 	// (manual close via nofx UI, exchange native UI, or anything that bypassed the
 	// grid's own close flow). Without this, gridState.Levels stays "filled" forever
 	// and the grid stops placing new orders for that layer.

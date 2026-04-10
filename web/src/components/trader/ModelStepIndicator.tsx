@@ -16,7 +16,7 @@ export function ModelStepIndicator({ currentStep, labels }: ModelStepIndicatorPr
           <React.Fragment key={index}>
             <div className="flex items-center gap-2">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
                   isDone || isActive
                     ? 'bg-emerald-400 text-black shadow-[0_0_16px_rgba(43,232,158,0.4)]'
                     : 'bg-white/5 text-zinc-500 border border-white/10'

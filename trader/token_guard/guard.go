@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package token_guard 在 AI 调用前对 prompt 预算做运行时拦截
 //
 // 行为:

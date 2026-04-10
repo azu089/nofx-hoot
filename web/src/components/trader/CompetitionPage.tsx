@@ -87,7 +87,7 @@ export function CompetitionPage() {
               </div>
               <div>
                 <h1
-                  className="text-xl md:text-2xl font-bold flex items-center gap-2 text-white"
+                  className="text-xl md:text-2xl font-medium flex items-center gap-2 text-white"
                 >
                   {t('aiCompetition', language)}
                   <span
@@ -108,7 +108,7 @@ export function CompetitionPage() {
             <Trophy
               className="w-16 h-16 mx-auto mb-4 text-zinc-700"
             />
-            <h3 className="text-lg font-bold mb-2 text-white">
+            <h3 className="text-lg font-medium mb-2 text-white">
               {t('noTraders', language)}
             </h3>
             <p className="text-sm text-zinc-400">
@@ -143,7 +143,7 @@ export function CompetitionPage() {
             </div>
             <div>
               <h1
-                className="text-xl md:text-2xl font-bold flex items-center gap-2 text-white"
+                className="text-xl md:text-2xl font-medium flex items-center gap-2 text-white"
               >
                 {t('aiCompetition', language)}
                 <span
@@ -162,12 +162,12 @@ export function CompetitionPage() {
               {t('leader', language)}
             </div>
             <div
-              className="text-base md:text-lg font-bold text-nofx-gold"
+              className="text-base md:text-lg font-medium text-nofx-gold"
             >
               {leader?.trader_name}
             </div>
             <div
-              className="text-sm font-semibold"
+              className="text-sm font-medium"
               style={{
                 color: (leader?.total_pnl ?? 0) >= 0 ? '#0ECB81' : '#F6465D',
               }}
@@ -187,7 +187,7 @@ export function CompetitionPage() {
           >
             <div className="flex items-center justify-between mb-6">
               <h2
-                className="text-lg font-bold flex items-center gap-2 text-white"
+                className="text-lg font-medium flex items-center gap-2 text-white"
               >
                 {t('performanceComparison', language)}
               </h2>
@@ -205,7 +205,7 @@ export function CompetitionPage() {
           >
             <div className="flex items-center justify-between mb-6">
               <h2
-                className="text-lg font-bold flex items-center gap-2 text-white"
+                className="text-lg font-medium flex items-center gap-2 text-white"
               >
                 {t('leaderboard', language)}
               </h2>
@@ -243,7 +243,7 @@ export function CompetitionPage() {
                       <div className="flex items-center gap-3">
                         {/* Rank Badge */}
                         <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
                           style={{
                             background: index === 0
                               ? 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)'
@@ -265,13 +265,13 @@ export function CompetitionPage() {
                         />
                         <div>
                           <div
-                            className="font-bold text-sm"
+                            className="font-medium text-sm"
                             style={{ color: '#EAECEF' }}
                           >
                             {trader.trader_name}
                           </div>
                           <div
-                            className="text-xs mono font-semibold"
+                            className="text-xs mono font-medium"
                             style={{ color: traderColor }}
                           >
                             {trader.ai_model.toUpperCase()} +{' '}
@@ -288,7 +288,7 @@ export function CompetitionPage() {
                             {t('equity', language)}
                           </div>
                           <div
-                            className="text-sm md:text-base font-bold mono"
+                            className="text-sm md:text-base font-medium mono"
                             style={{ color: '#EAECEF' }}
                           >
                             {trader.total_equity?.toFixed(2) || '0.00'}
@@ -301,7 +301,7 @@ export function CompetitionPage() {
                             {t('pnl', language)}
                           </div>
                           <div
-                            className="text-sm md:text-base font-bold mono"
+                            className="text-sm md:text-base font-medium mono"
                             style={{
                               color:
                                 (trader.total_pnl ?? 0) >= 0
@@ -327,7 +327,7 @@ export function CompetitionPage() {
                             {t('pos', language)}
                           </div>
                           <div
-                            className="text-sm md:text-base font-bold mono"
+                            className="text-sm md:text-base font-medium mono"
                             style={{ color: '#EAECEF' }}
                           >
                             {trader.position_count}
@@ -340,7 +340,7 @@ export function CompetitionPage() {
                         {/* Status */}
                         <div>
                           <div
-                            className="px-2 py-1 rounded text-xs font-bold"
+                            className="px-2 py-1 rounded text-xs font-medium"
                             style={
                               trader.is_running
                                 ? {
@@ -372,7 +372,7 @@ export function CompetitionPage() {
             style={{ animationDelay: '0.3s' }}
           >
             <h2
-              className="text-lg font-bold mb-6 flex items-center gap-2 text-white"
+              className="text-lg font-medium mb-6 flex items-center gap-2 text-white"
             >
               {t('headToHead', language)}
             </h2>
@@ -421,7 +421,7 @@ export function CompetitionPage() {
                         />
                       </div>
                       <div
-                        className="text-sm md:text-base font-bold mb-2"
+                        className="text-sm md:text-base font-medium mb-2"
                         style={{
                           color: getTraderColor(sortedTraders, trader.trader_id),
                         }}
@@ -429,7 +429,7 @@ export function CompetitionPage() {
                         {trader.trader_name}
                       </div>
                       <div
-                        className="text-lg md:text-2xl font-bold mono mb-1"
+                        className="text-lg md:text-2xl font-medium mono mb-1"
                         style={{
                           color:
                             (trader.total_pnl ?? 0) >= 0 ? '#0ECB81' : '#F6465D',
@@ -442,7 +442,7 @@ export function CompetitionPage() {
                       </div>
                       {hasValidData && isWinning && gap > 0 && (
                         <div
-                          className="text-xs font-semibold"
+                          className="text-xs font-medium"
                           style={{ color: '#0ECB81' }}
                         >
                           {t('leadingBy', language, { gap: gap.toFixed(2) })}
@@ -450,7 +450,7 @@ export function CompetitionPage() {
                       )}
                       {hasValidData && !isWinning && gap < 0 && (
                         <div
-                          className="text-xs font-semibold"
+                          className="text-xs font-medium"
                           style={{ color: '#F6465D' }}
                         >
                           {t('behindBy', language, {
@@ -460,7 +460,7 @@ export function CompetitionPage() {
                       )}
                       {!hasValidData && (
                         <div
-                          className="text-xs font-semibold"
+                          className="text-xs font-medium"
                           style={{ color: '#848E9C' }}
                         >
                           —

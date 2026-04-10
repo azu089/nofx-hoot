@@ -604,7 +604,7 @@ docker compose up -d
 - **[FAQ](faq.en.md)** - Frequently Asked Questions
 - **[Getting Started](../getting-started/README.md)** - Setup guide
 - **[Architecture Docs](../architecture/README.md)** - How the system works
-- **[CLAUDE.md](../../CLAUDE.md)** - Developer documentation
+
 
 ---
 

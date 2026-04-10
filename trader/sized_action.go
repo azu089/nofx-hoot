@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // trader/sized_action.go — 细粒度仓位调整 action
 //
 // 4 个 sized action（基于现有 close/open 路径 + partial_pct 缩放）:

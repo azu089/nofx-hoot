@@ -183,7 +183,7 @@ export interface RiskControlConfig {
   min_risk_reward_ratio: number;   // Min take_profit / stop_loss ratio (AI guided)
   min_confidence: number;          // Min AI confidence to open position (AI guided)
 
-  // 最小持仓时间（秒）— 后端强制 >= 720
+  // 持仓保护期（秒）— 后端硬控，最低 720 秒（12 分钟），期间禁止平仓
   min_hold_seconds?: number;
 
   // 策略模式：normal / aggressive / conservative 等

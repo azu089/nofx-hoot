@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package intelligence
 
 // event_summary.go — Event summary formatting for admin/API display.

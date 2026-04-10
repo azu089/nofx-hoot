@@ -84,7 +84,7 @@ export function WebCryptoEnvironmentCheck({
       <div className="flex items-start gap-2 text-green-400 text-xs">
         <ShieldCheck className="w-4 h-4 flex-shrink-0" />
         <div>
-          <div className="font-semibold">
+          <div className="font-medium">
             {t('environmentCheck.secureTitle', language)}
           </div>
           <div>{t('environmentCheck.secureDesc', language)}</div>
@@ -95,12 +95,12 @@ export function WebCryptoEnvironmentCheck({
       <div className="text-xs" style={{ color: '#F59E0B' }}>
         <div className="flex items-start gap-2 mb-1">
           <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-          <div className="font-semibold">
+          <div className="font-medium">
             {t('environmentCheck.insecureTitle', language)}
           </div>
         </div>
         <div>{t('environmentCheck.insecureDesc', language)}</div>
-        <div className="mt-2 font-semibold">
+        <div className="mt-2 font-medium">
           {t('environmentCheck.tipsTitle', language)}
         </div>
         <ul className="list-disc pl-5 space-y-1 mt-1">
@@ -114,7 +114,7 @@ export function WebCryptoEnvironmentCheck({
       <div className="text-xs" style={{ color: '#F87171' }}>
         <div className="flex items-start gap-2 mb-1">
           <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-          <div className="font-semibold">
+          <div className="font-medium">
             {t('environmentCheck.unsupportedTitle', language)}
           </div>
         </div>
@@ -125,7 +125,7 @@ export function WebCryptoEnvironmentCheck({
       <div className="flex items-start gap-2 text-gray-400 text-xs">
         <ShieldMinus className="w-4 h-4 flex-shrink-0" />
         <div>
-          <div className="font-semibold">
+          <div className="font-medium">
             {t('environmentCheck.disabledTitle', language)}
           </div>
           <div>{t('environmentCheck.disabledDesc', language)}</div>

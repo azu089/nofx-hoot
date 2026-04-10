@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 import (
@@ -9,8 +12,8 @@ import (
 
 // ---------------------------------------------------------------------------
 // FinancialMemory — BM25 记忆系统
-// 1:1 对应 Python TradingAgents/agents/utils/memory.py (FinancialSituationMemory)
-// 使用 BM25-Okapi 算法做词法相似度匹配，无需外部 API / embedding
+// Implements the FinancialSituationMemory pattern from TradingAgents (ICAIF 2024).
+// Uses BM25-Okapi lexical similarity — no external API or embedding required.
 // ---------------------------------------------------------------------------
 
 // BM25 超参数（与 rank_bm25.BM25Okapi 默认值一致）

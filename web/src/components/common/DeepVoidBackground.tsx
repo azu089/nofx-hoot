@@ -8,34 +8,12 @@ interface DeepVoidBackgroundProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function DeepVoidBackground({ children, className = '', disableAnimation = false, ...props }: DeepVoidBackgroundProps) {
     return (
-        <div className={`relative w-full min-h-screen bg-nofx-bg text-nofx-text overflow-hidden flex flex-col ${className}`} {...props}>
-            {/* Background layers: use a much lighter static stack when animations are disabled */}
-            {disableAnimation ? (
-                <>
-                    {/* Nexora 青蓝黑基底 + 左侧中间白光晕 */}
-                    <div
-                        className="absolute inset-0 pointer-events-none z-0"
-                        style={{
-                            background: `
-                                radial-gradient(ellipse 85% 70% at 105% 50%, rgba(200, 220, 240, 0.11), transparent 65%),
-                                linear-gradient(180deg, #0E141C 0%, #060A12 100%)
-                            `,
-                        }}
-                    ></div>
-                </>
-            ) : (
-                <>
-                    {/* 0. Nexora 青蓝黑基底（替换原 bg-nofx-bg 的纯色底） */}
-                    <div
-                        className="absolute inset-0 pointer-events-none z-0"
-                        style={{
-                            background: `
-                                radial-gradient(ellipse 85% 70% at 105% 50%, rgba(200, 220, 240, 0.11), transparent 65%),
-                                linear-gradient(180deg, #0E141C 0%, #060A12 100%)
-                            `,
-                        }}
-                    ></div>
+        <div className={`relative w-full min-h-screen text-nofx-text overflow-hidden flex flex-col ${className}`} {...props}>
+            {/* 基底/呼吸光已由 App.tsx 外层 fixed 层提供，此处不再重复 */}
 
+            {/* 仅非简化分支才加 grain/grid/CRT 质感叠层 */}
+            {!disableAnimation && (
+                <>
                     {/* 1. Grain/Noise Texture */}
                     <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light pointer-events-none fixed z-0"></div>
 
@@ -43,12 +21,6 @@ export function DeepVoidBackground({ children, className = '', disableAnimation 
                     <div className="absolute inset-0 pointer-events-none fixed z-0">
                         <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-50" style={{ transform: 'perspective(500px) rotateX(60deg) translateY(100px) scale(2)' }}></div>
                         <div className="absolute inset-0 bg-grid-pattern opacity-[0.03]"></div>
-                    </div>
-
-                    {/* 3. Ambient Glow Spots — 金色 → Nexora 白/青蓝 */}
-                    <div className="absolute inset-0 overflow-hidden pointer-events-none fixed z-0">
-                        <div className="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] rounded-full blur-[120px] mix-blend-screen animate-pulse-slow" style={{ background: 'rgba(200, 220, 240, 0.08)' }}></div>
-                        <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full blur-[120px] mix-blend-screen animate-pulse-slow" style={{ animationDelay: '2s', background: 'rgba(43, 232, 158, 0.04)' }}></div>
                     </div>
 
                     {/* 4. CRT/Scanline Overlay */}

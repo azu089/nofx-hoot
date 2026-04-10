@@ -1,6 +1,12 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package api
 
 import (
+	"nofx/hook"
+
 	"fmt"
 	"net/http"
 	"strings"
@@ -268,7 +274,7 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 
 	logger.Infof("✅ Position closed successfully: symbol=%s, side=%s, qty=%.6f, result=%v", req.Symbol, req.Side, posQty, result)
 
-	// [HOOT] Trigger reconcile on the running trader so the closed position
+	// Trigger reconcile on the running trader so the closed position
 	// surfaces in history immediately (instead of waiting up to 15 min for the
 	// next runCycle). Best-effort: silently no-op if trader isn't running.
 	if runningTrader, err := s.traderManager.GetTrader(traderID); err == nil && runningTrader != nil {
@@ -277,6 +283,28 @@ func (s *Server) handleClosePosition(c *gin.Context) {
 
 	// Record order to database (for chart markers and history)
 	s.recordClosePositionOrder(traderID, exchangeCfg.ID, exchangeCfg.ExchangeType, req.Symbol, req.Side, posQty, entryPrice, result)
+
+	// Best-effort exit price from exchange response (avgPrice is returned by most exchanges)
+	var hookExitPrice float64
+	if avg, ok := result["avgPrice"].(float64); ok && avg > 0 {
+		hookExitPrice = avg
+	} else if avg, ok := result["price"].(float64); ok && avg > 0 {
+		hookExitPrice = avg
+	}
+
+	// Notify upstream business platform for billing/audit. Fire-and-forget;
+	// must run AFTER recordClosePositionOrder so the event refers to durably stored state.
+	hook.Dispatch(hook.EventPositionClosed, hook.PositionClosedPayload{
+		UserID:     userID,
+		TraderID:   traderID,
+		Symbol:     req.Symbol,
+		Side:       req.Side,
+		Quantity:   posQty,
+		EntryPrice: entryPrice,
+		ExitPrice:  hookExitPrice,
+		ExitResult: result,
+		ExchangeID: exchangeCfg.ID,
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Position closed successfully",

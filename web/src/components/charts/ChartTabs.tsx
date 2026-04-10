@@ -172,7 +172,9 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
 
   const rootHeightClass = isFullscreen
     ? 'h-full'
-    : (typeof window !== 'undefined' && window.innerWidth < 768 ? 'min-h-[500px]' : 'min-h-[600px]')
+    : activeTab === 'equity'
+      ? ''
+      : (typeof window !== 'undefined' && window.innerWidth < 768 ? 'h-[500px]' : 'h-[600px]')
 
   const chartContent = (
     <div className={`nofx-glass relative z-10 w-full flex flex-col transition-all duration-300 ${rootHeightClass} ${isFullscreen ? 'force-desktop overflow-hidden' : ''}`}>
@@ -254,7 +256,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
                 <>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-black/40 border border-white/10 rounded text-[11px] font-bold text-nofx-text-main hover:border-nofx-gold/30 hover:text-nofx-gold transition-all"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-black/40 border border-white/10 rounded text-[11px] font-medium text-nofx-text-main hover:border-nofx-gold/30 hover:text-nofx-gold transition-all"
                   >
                     <span>{chartSymbol}</span>
                     <ChevronDown className={`w-3 h-3 text-nofx-text-muted transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
@@ -281,7 +283,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
                           const labels: Record<string, string> = { crypto: 'Crypto', stock: 'Stocks', forex: 'Forex', commodity: 'Commodities', index: 'Index' }
                           return (
                             <div key={category}>
-                              <div className="px-3 py-1.5 text-[9px] font-bold text-nofx-text-muted/60 bg-white/5 uppercase tracking-wider">{labels[category]}</div>
+                              <div className="px-3 py-1.5 text-[9px] font-medium text-nofx-text-muted/60 bg-white/5 uppercase tracking-wider">{labels[category]}</div>
                               {categorySymbols.map(s => (
                                 <button
                                   key={s.symbol}
@@ -300,7 +302,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
                   )}
                 </>
               ) : (
-                <span className="px-2.5 py-1 bg-black/40 border border-white/10 rounded text-[11px] font-bold text-nofx-text-main font-mono">{chartSymbol}</span>
+                <span className="px-2.5 py-1 bg-black/40 border border-white/10 rounded text-[11px] font-medium text-nofx-text-main font-mono">{chartSymbol}</span>
               )}
             </div>
 
@@ -338,7 +340,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
       </div>
 
       {/* Tab Content - Chart autosizes to this container */}
-      <div className="relative flex-1 bg-transparent overflow-hidden h-full min-h-0">
+      <div className={`relative bg-transparent min-h-0 ${activeTab === 'kline' ? 'flex-1 overflow-hidden' : ''}`}>
         <AnimatePresence mode="wait">
           {activeTab === 'equity' ? (
             <motion.div
@@ -347,7 +349,7 @@ export function ChartTabs({ traderId, selectedSymbol, updateKey, exchangeId }: C
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="h-full w-full absolute inset-0"
+              className="w-full"
             >
               <EquityChart traderId={traderId} embedded />
             </motion.div>

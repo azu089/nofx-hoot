@@ -897,8 +897,8 @@ function StandardProviderConfigForm({
       </div>
 
 
-      {/* Info Box */}
-      <div className="bubble-card p-4">
+      {/* Info — 裸浮文字，无气泡 */}
+      <div className="px-1">
         <div className="text-xs font-medium mb-2 flex items-center gap-1.5 text-white">
           <Brain className="w-3.5 h-3.5" />
           {t('information', language)}

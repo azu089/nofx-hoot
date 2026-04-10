@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package arena
 
 import (
@@ -45,9 +48,9 @@ func ExecuteToolCall(tc mcp.ToolCall, ctx *ToolContext) (string, error) {
 		return "", fmt.Errorf("failed to parse tool arguments: %w", err)
 	}
 
-	// 统一规范化 symbol/ticker 参数（Python 原版靠 vendor 做这件事；Go 版显式做）
-	// 处理 LLM 可能传入的各种格式：BTC / btcusdt / BTC_USDT / BTC-USDT-SWAP / BTCUSDT
-	// 全部规范化为 nofx 内部格式（BTCUSDT）
+	// Normalize symbol/ticker args before dispatch.
+	// Handles various LLM-generated formats: BTC / btcusdt / BTC_USDT / BTC-USDT-SWAP / BTCUSDT
+	// All forms are normalized to nofx internal format (BTCUSDT).
 	if mismatchErr := normalizeSymbolArgs(args, ctx); mismatchErr != "" {
 		// 如果 LLM 传的 symbol 与当前辩论周期的 symbol 不一致，返回明确提示
 		// 让 LLM 自行纠正（不中断辩论）
@@ -88,11 +91,11 @@ func ExecuteToolCall(tc mcp.ToolCall, ctx *ToolContext) (string, error) {
 //   - "BTC-USDT-SWAP" → "BTCUSDT"
 //   - "BTCUSDT" → "BTCUSDT"（保持）
 //
-// 如果规范化后与当前辩论周期的 ctx.Symbol 不一致，返回错误提示字符串，
-// 让 LLM 自行纠正 —— 这对应 Python 原版 build_instrument_context 里
-// "Use this exact ticker in every tool call" 的软约束。
+// If the normalized symbol does not match ctx.Symbol, an error string is returned
+// and used directly as the tool result so the LLM can self-correct.
+// This enforces the "Use this exact ticker in every tool call" constraint from buildInstrumentContext.
 //
-// 返回空字符串表示一切正常；非空字符串表示错误消息（直接作为 tool result 返回给 LLM）。
+// Returns empty string on success; non-empty string is the error message for the LLM.
 func normalizeSymbolArgs(args map[string]any, ctx *ToolContext) string {
 	// 两个可能的参数名：symbol（get_stock_data / get_indicators）和 ticker（其他工具）
 	for _, key := range []string{"symbol", "ticker"} {
@@ -123,8 +126,8 @@ func normalizeSymbolArgs(args map[string]any, ctx *ToolContext) string {
 // ============================================================================
 
 // execGetStockData 返回 OHLCV K 线数据（DataFrame 风格）
-// nofx 数据源：market.Data.TimeframeData["1h"/"4h"].Klines
-// Python 原版返回格式示例：
+// 数据源：market.Data.TimeframeData["1h"/"4h"].Klines
+// 返回格式示例：
 //
 //	## Price data for AAPL from 2024-01-01 to 2024-01-31
 //	Date        Open    High    Low     Close   Volume
@@ -181,15 +184,15 @@ func execGetStockData(args map[string]any, ctx *ToolContext) (string, error) {
 // ============================================================================
 
 // execGetIndicators 返回单个技术指标序列
-// Python 原版支持的指标名称 → nofx 数据字段映射：
+// Indicator name → nofx field mapping:
 //
-//	close_50_sma / close_200_sma → 不支持（nofx 没预计算 SMA）→ 返回提示
-//	close_10_ema → EMA20Values（近似，nofx 没有 EMA10）
-//	macd / macds / macdh → MACDValues（nofx 只有主 MACD 线）
-//	rsi → RSI14Values（默认用 14），或 RSI7Values
+//	close_50_sma / close_200_sma → unsupported (SMA not pre-computed) → returns hint
+//	close_10_ema → EMA20Values (approximation; EMA10 unavailable)
+//	macd / macds / macdh → MACDValues (main MACD line only)
+//	rsi → RSI14Values (default) or RSI7Values
 //	boll / boll_ub / boll_lb → BOLLMiddle / BOLLUpper / BOLLLower
 //	atr → ATR14
-//	vwma → 不支持
+//	vwma → unsupported
 func execGetIndicators(args map[string]any, ctx *ToolContext) (string, error) {
 	symbol, _ := args["symbol"].(string)
 	indicator, _ := args["indicator"].(string)
@@ -199,7 +202,7 @@ func execGetIndicators(args map[string]any, ctx *ToolContext) (string, error) {
 		lookBack = int(v)
 	}
 
-	// Python 原版支持逗号分隔多个指标，也对应处理
+	// Comma-separated indicator names are supported; split and process each.
 	indicators := strings.Split(indicator, ",")
 	var results []string
 	for _, ind := range indicators {
@@ -297,7 +300,7 @@ func formatSingleIndicator(symbol, indicator, currDate string, lookBack int, ctx
 }
 
 // selectIndicatorTimeframe 根据 look_back_days 选择初始时间框架
-// 对应 Python 原版 get_indicators 的语义：日期回望越长，用越大的时间框架
+// 回望越长用越大的时间框架，以保证数据点数量充足。
 func selectIndicatorTimeframe(lookBackDays int) string {
 	switch {
 	case lookBackDays <= 2:

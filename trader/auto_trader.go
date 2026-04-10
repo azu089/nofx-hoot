@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package trader
 
 import (
@@ -158,6 +162,7 @@ type AutoTrader struct {
 	costGuard             *CostGuard         // AI call cost guard (skip when no positions)
 	strategyID            string             // stable strategy primary key for per-strategy isolation
 	adaptiveState         *kernel.AdaptiveState // Rolling win-rate adaptive thresholds
+	lastAdaptiveFedExitSec int64                // Max exit_time (seconds) already fed to adaptiveState; in-memory, reset on restart
 	getEventSignals       func() []kernel.EventSignal // Injected event signal fetcher (avoids circular deps)
 	riskGuard             *RealtimeRiskGuard    // Real-time risk monitoring between cycles
 	arenaRunner           *arena.ArenaRunner    // Arena strategy runner (only when StrategyType == "arena")
@@ -337,6 +342,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	if config.StrategyConfig == nil {
 		return nil, fmt.Errorf("[%s] strategy not configured", config.Name)
 	}
+	config.StrategyConfig.NormalizeStrategyConfig()
 	strategyEngine := kernel.NewStrategyEngine(config.StrategyConfig)
 	logger.Infof("✓ [%s] Using strategy engine (strategy configuration loaded)", config.Name)
 
@@ -368,8 +374,31 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		openGate:              NewOpenGate(),
 		costGuard:             NewCostGuard(),
 		strategyID:            config.StrategyID,
-		adaptiveState:         kernel.NewAdaptiveState(kernel.DefaultAdaptiveConfig()),
-		// [HOOT CRITICAL-2] Initialize real-time risk guard.
+		adaptiveState: func() *kernel.AdaptiveState {
+			rc := config.StrategyConfig.RiskControl
+			cfg := kernel.AdaptiveConfigForMode(string(rc.Mode))
+			// User overrides from strategy config (if set)
+			if rc.AdaptiveWindowSize > 0 {
+				cfg.WindowSize = rc.AdaptiveWindowSize
+			}
+			if rc.AdaptiveTriggerWinRate > 0 {
+				cfg.TriggerWinRate = rc.AdaptiveTriggerWinRate
+			}
+			if rc.ConsecutiveLossesBeforeCooldown > 0 {
+				cfg.BaseCooldownThreshold = rc.ConsecutiveLossesBeforeCooldown
+			}
+			if rc.SymbolBlacklistMinTrades > 0 {
+				cfg.SymbolBlacklistMinTrades = rc.SymbolBlacklistMinTrades
+			}
+			if rc.SymbolBlacklistWinRateThreshold > 0 {
+				cfg.SymbolBlacklistWinRate = rc.SymbolBlacklistWinRateThreshold
+			}
+			if rc.SymbolBlacklistWindowHours > 0 {
+				cfg.SymbolBlacklistHours = rc.SymbolBlacklistWindowHours
+			}
+			return kernel.NewAdaptiveState(cfg)
+		}(),
+		// Initialize real-time risk guard.
 		// gridState is nil at construction time (set after InitializeGrid in Run()).
 		// maxExposureUSD=0 disables the exposure-limit check (relies on AI risk control instead).
 		riskGuard: NewRealtimeRiskGuard(trader, nil, config.BinanceTestnet, 0),
@@ -381,7 +410,7 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		arenaEngine := arena.NewArenaEngine(arenaCfg, at.mcpClient)
 		adapter := NewArenaTraderAdapter(at.trader, at.exchange)
 
-		// [HOOT CRITICAL-3] Build a real DataProvider instead of passing nil.
+		// Build a real DataProvider instead of passing nil.
 		// Resolve timeframes from strategy config (mirrors fetchMarketDataWithStrategy).
 		klinesCfg := config.StrategyConfig.Indicators.Klines
 		arenaDP := NewArenaDataProvider(
@@ -406,8 +435,8 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 			return nil
 		})
 
-		// [HOOT CRITICAL-4] Build a real GatekeeperFunc instead of passing nil.
-		// [N1] 构建持久化适配器（st 为 nil 时跳过）
+		// Build a real GatekeeperFunc instead of passing nil.
+		// 构建持久化适配器（st 为 nil 时跳过）
 		var recordSaver arena.ArenaRecordSaver
 		if st != nil {
 			recordSaver = NewArenaRecordSaverAdapter(st.ArenaRecord())
@@ -442,7 +471,7 @@ func (at *AutoTrader) Run() error {
 	at.monitorWg.Add(1)
 	defer at.monitorWg.Done()
 
-	// [HOOT CRITICAL-2] Start real-time risk guard with monitored symbols
+	// Start real-time risk guard with monitored symbols
 	if at.riskGuard != nil {
 		symbols := at.collectMonitoredSymbols()
 		if err := at.riskGuard.Start(symbols); err != nil {
@@ -610,7 +639,7 @@ func (at *AutoTrader) Stop() {
 		at.arenaRunner.Stop()
 	}
 
-	// [HOOT CRITICAL-2] Stop real-time risk guard
+	// Stop real-time risk guard
 	if at.riskGuard != nil {
 		at.riskGuard.Stop()
 	}
@@ -695,7 +724,7 @@ func (at *AutoTrader) runArenaCycle() error {
 	if at.arenaRunner == nil {
 		return fmt.Errorf("arena runner not initialized")
 	}
-	// [HOOT] Reconcile DB positions against exchange truth on every external
+	// Reconcile DB positions against exchange truth on every external
 	// arena tick. Arena's internal decision loop runs in its own goroutine and
 	// doesn't go through buildTradingContext, so this is the periodic safety net
 	// that surfaces externally-closed positions in history.

@@ -1,8 +1,13 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package trader
 
 import (
 	"encoding/json"
 	"fmt"
+	"nofx/hook"
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/market"
@@ -80,10 +85,11 @@ func (at *AutoTrader) runCycle() error {
 	// NOTE: Must be called BEFORE candidate coins check to ensure equity is always recorded
 	at.saveEquitySnapshot(ctx)
 
-	// [HOOT] Inject enhanced data into context
+	// Inject enhanced data into context
 	ctx.TraderID = at.id
 	ctx.StrategyConfig = at.config.StrategyConfig // 让 formatter 读取动态阈值配置
 	at.injectMarketRegime(ctx)                    // B1: Market regime detection per symbol
+	at.injectCoinglassSignals(ctx)                // B2: Coinglass funding/OI/LSR/liquidation signals
 	at.injectEventSignals(ctx)                    // B3: Event signal injection
 	at.syncPositionLifecycles(ctx)                // Lifecycle: register/advance positions
 	at.syncRiskGuardPositions(ctx)                // Sync positions to real-time risk guard
@@ -113,7 +119,7 @@ func (at *AutoTrader) runCycle() error {
 	logger.Infof("📊 Account equity: %.2f USDT | Available: %.2f USDT | Positions: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 
-	// [HOOT] Cost guard: skip AI call when no positions and in cooldown (env-driven, trader-level legacy guard)
+	// Cost guard: skip AI call when no positions and in cooldown (env-driven, trader-level legacy guard)
 	if at.costGuard != nil && at.costGuard.ShouldSkipAI(len(ctx.Positions)) {
 		record.Success = true
 		record.ExecutionLog = append(record.ExecutionLog, "Cost guard: skipped AI call (no positions, in cooldown)")
@@ -153,8 +159,12 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// 5. Use strategy engine to call AI for decision
-	logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine]")
-	aiDecision, err := kernel.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, "balanced")
+	strategyMode := at.strategyEngine.GetConfig().RiskControl.Mode
+	if strategyMode == "" {
+		strategyMode = "balanced"
+	}
+	logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine] mode=%s", strategyMode)
+	aiDecision, err := kernel.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, strategyMode)
 
 	if aiDecision != nil && aiDecision.AIRequestDurationMs > 0 {
 		record.AIRequestDurationMs = aiDecision.AIRequestDurationMs
@@ -180,6 +190,15 @@ func (at *AutoTrader) runCycle() error {
 		if chargeErr := at.store.AICharge().Record(at.id, at.aiModel, at.config.AIModel); chargeErr != nil {
 			logger.Warnf("⚠️ Failed to record AI charge: %v", chargeErr)
 		}
+		// Notify upstream business platform for billing/audit. Fire-and-forget.
+		// Cost is the same per-call estimate written to the local ai_charges row.
+		hook.Dispatch(hook.EventAIUsage, hook.AIUsagePayload{
+			UserID:   at.userID,
+			TraderID: at.id,
+			Model:    at.aiModel,
+			Provider: at.config.AIModel,
+			CostUSD:  store.GetModelPrice(at.aiModel),
+		})
 	}
 
 	if err != nil {
@@ -225,7 +244,7 @@ func (at *AutoTrader) runCycle() error {
 		return fmt.Errorf("failed to get AI decision: %w", err)
 	}
 
-	// [HOOT] Record successful AI call for cost guard cooldown
+	// Record successful AI call for cost guard cooldown
 	if at.costGuard != nil {
 		at.costGuard.RecordAICall()
 	}
@@ -284,13 +303,66 @@ func (at *AutoTrader) runCycle() error {
 	// 8. Sort decisions: ensure close positions first, then open positions (prevent position stacking overflow)
 	logger.Info(strings.Repeat("-", 70))
 
-	// [HOOT] Step D: Gatekeeper filtering (before sort, filter invalid candidates).
-	// Always runs when strategyEngine is set; gateFilterDecisions handles nil Signals internally.
-	if at.strategyEngine != nil {
+	// Step D: Rules Engine mode — candidate scoring + voting pipeline
+	// In "institutional" mode, AI decisions are treated as candidates that must
+	// pass Gatekeeper first, then be scored and voted on. If no candidate wins
+	// the vote (score too low or gap too small), the entire cycle becomes WAIT.
+	if strategyMode == "institutional" && at.strategyEngine != nil && len(aiDecision.Decisions) > 0 {
+		// D1: Convert decisions to candidates
+		candidates := make([]kernel.CandidateDecision, 0, len(aiDecision.Decisions))
+		for _, d := range aiDecision.Decisions {
+			candidates = append(candidates, kernel.CandidateFromDecision(d, "ai"))
+		}
+		logger.Infof("🏛️ [RulesEngine] %d AI candidates entering scoring pipeline", len(candidates))
+
+		// D2: Gatekeeper filter candidates
+		candidates = at.gateFilterCandidates(candidates, ctx)
+		logger.Infof("🏛️ [RulesEngine] %d candidates passed gatekeeper", len(candidates))
+
+		// D3: Score + Vote
+		rc := at.strategyEngine.GetConfig().RiskControl
+		minScore := 50.0
+		if at.adaptiveState != nil {
+			minScore = at.adaptiveState.EffectiveMinScore()
+		}
+		minGap := 5.0    // minimum score gap between top two to avoid ambiguity
+		// Static config as floor, not ceiling — never weaken adaptive tightening
+		if rc.MinScoreToTrade > minScore {
+			minScore = rc.MinScoreToTrade
+		}
+		if rc.MinScoreGapToTrade > 0 {
+			minGap = rc.MinScoreGapToTrade
+		}
+
+		voteResult := kernel.VoteCandidates(candidates, ctx.Signals, ctx.MarketDataMap, minScore, minGap)
+		logger.Infof("🏛️ [RulesEngine] Vote: wait=%v best=%.1f gap=%.1f", voteResult.Wait, voteResult.BestScore, voteResult.ScoreGap)
+		logger.Infof("🏛️ [RulesEngine] %s", voteResult.Explain)
+		record.ExecutionLog = append(record.ExecutionLog, voteResult.Explain)
+
+		if voteResult.Wait {
+			// Replace all decisions with a single wait
+			aiDecision.Decisions = []kernel.Decision{{
+				Action:    "wait",
+				Symbol:    "ALL",
+				Reasoning: fmt.Sprintf("rules engine vote: %s", voteResult.WaitReason),
+			}}
+			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("rules_engine_wait: %s", voteResult.WaitReason))
+		} else if voteResult.Winner != nil {
+			// Only execute the winning candidate
+			aiDecision.Decisions = []kernel.Decision{voteResult.Winner.ToDecision()}
+			record.ExecutionLog = append(record.ExecutionLog,
+				fmt.Sprintf("rules_engine_winner: %s %s score=%.1f gap=%.1f",
+					voteResult.Winner.Symbol, voteResult.Winner.Action, voteResult.BestScore, voteResult.ScoreGap))
+		}
+	} else if at.strategyEngine != nil {
+		// Non-institutional modes: existing Gatekeeper filter path
 		aiDecision.Decisions = at.gateFilterDecisions(aiDecision.Decisions, ctx)
 	}
 
-	// [HOOT] Step E: PositionManager — evaluate existing positions
+	// Gatekeeper filtering (legacy path kept for modes that don't use candidate pipeline above)
+	// This block is intentionally skipped when institutional mode already handled filtering above.
+
+	// Step E: PositionManager — evaluate existing positions
 	// 通过 InstitutionalPipeline 灰度合并 AI + PM 决策
 	// 默认 mode=off → 顺序模式（PM append 到 AI 末尾）
 	// shadow / partial / full 通过 strategy config 或 feature flag 灰度启用
@@ -374,7 +446,7 @@ func (at *AutoTrader) runCycle() error {
 			actionRecord.Success = true
 			record.ExecutionLog = append(record.ExecutionLog, fmt.Sprintf("✓ %s %s succeeded", d.Symbol, d.Action))
 
-			// [HOOT] Track close events for OpenGate
+			// Track close events for OpenGate
 			// sided cooldown 隔离
 			// 用 sideFromAction 正确识别 reduce_short / close_short
 			if isCloseAction(d.Action) {
@@ -446,7 +518,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		return nil, fmt.Errorf("failed to get positions: %w", err)
 	}
 
-	// [HOOT] Reconcile DB trader_positions against exchange truth BEFORE building
+	// Reconcile DB trader_positions against exchange truth BEFORE building
 	// the AI context. This ensures ctx.RecentOrders / ctx.TradingStats reflect
 	// reality (manual closes via nofx UI or exchange native UI get surfaced in
 	// history, ghost partial-close records get marked CLOSED).
@@ -605,6 +677,40 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 			logger.Infof("⚠️ [%s] Failed to get recent trades: %v", at.name, err)
 		} else {
 			logger.Infof("📊 [%s] Found %d recent closed trades for AI context", at.name, len(recentTrades))
+
+			// Feed newly-closed trades into the adaptive rolling window.
+			// recentTrades is exit_time DESC; iterate reverse to preserve chronological order.
+			// Watermark (lastAdaptiveFedExitSec) is in-memory — on restart, the first cycle
+			// naturally re-hydrates the window from DB, which mirrors the in-memory adaptiveState lifecycle.
+			if at.adaptiveState != nil && len(recentTrades) > 0 {
+				fed := 0
+				for i := len(recentTrades) - 1; i >= 0; i-- {
+					t := recentTrades[i]
+					if t.ExitTime <= 0 || t.ExitTime <= at.lastAdaptiveFedExitSec {
+						continue
+					}
+					isWin := t.RealizedPnL > 0
+					at.recordTradeOutcome(t.Symbol, isWin)
+					// Also feed OpenGate win/loss tracker for consecutive-loss cooldown
+					if at.openGate != nil {
+						rc := at.strategyEngine.GetConfig().RiskControl
+						if isWin {
+							at.openGate.RecordWin(at.id)
+						} else {
+							at.openGate.RecordLoss(at.id, rc)
+						}
+					}
+					at.lastAdaptiveFedExitSec = t.ExitTime
+					fed++
+				}
+				if fed > 0 {
+					logger.Infof("🎯 [%s] Fed %d trade outcomes to AdaptiveState (winrate=%.1f%%, blacklist=%d)",
+						at.name, fed,
+						at.adaptiveState.RollingWinRate()*100,
+						len(at.adaptiveState.BuildBlacklist()))
+				}
+			}
+
 			for _, trade := range recentTrades {
 				// Convert Unix timestamps to formatted strings for AI readability
 				entryTimeStr := ""
@@ -681,7 +787,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 		}
 	}
 
-	// 12. [HOOT] Pre-fill MarketDataMap so injectMarketRegime / syncPositionLifecycles
+	// 12. Pre-fill MarketDataMap so injectMarketRegime / syncPositionLifecycles
 	// / runPositionManagement / gateFilterDecisions all have market data available
 	// before GetFullDecisionWithStrategy is called. Failures are non-fatal (skip symbol).
 	at.prefillMarketDataMap(ctx, strategyConfig)
@@ -689,7 +795,7 @@ func (at *AutoTrader) buildTradingContext() (*kernel.Context, error) {
 	return ctx, nil
 }
 
-// prefillMarketDataMap populates ctx.MarketDataMap before the HOOT injection hooks run.
+// prefillMarketDataMap populates ctx.MarketDataMap before the injection hooks run.
 // This ensures injectMarketRegime / syncPositionLifecycles / runPositionManagement /
 // gateFilterDecisions all have live market data available.
 // Failures are non-fatal: the symbol is skipped, and GetFullDecisionWithStrategy will

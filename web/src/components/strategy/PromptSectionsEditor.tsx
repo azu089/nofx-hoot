@@ -102,83 +102,64 @@ export function PromptSectionsEditor({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-2 mb-4">
-        <FileText className="w-5 h-5 mt-0.5" style={{ color: '#a855f7' }} />
-        <div>
-          <h3 className="font-medium" style={{ color: '#EAECEF' }}>
-            {t('promptSections')}
-          </h3>
-          <p className="text-xs mt-1" style={{ color: '#848E9C' }}>
-            {t('promptSectionsDesc')}
-          </p>
+    <div className="space-y-1">
+      <div className="flex items-start gap-2 mb-3">
+        <FileText className="w-4 h-4 mt-0.5 text-emerald-400" />
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-medium text-nofx-text">{t('promptSections')}</h3>
+          <p className="text-xs mt-0.5 text-nofx-text-muted">{t('promptSectionsDesc')}</p>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div>
         {sections.map(({ key, label, desc }) => {
           const sectionKey = key as keyof PromptSectionsConfig
           const isExpanded = expandedSections[key]
           const value = getValue(sectionKey)
-          const isModified = currentConfig[sectionKey] !== undefined && currentConfig[sectionKey] !== defaultSections[sectionKey]
+          const isModified =
+            currentConfig[sectionKey] !== undefined &&
+            currentConfig[sectionKey] !== defaultSections[sectionKey]
 
           return (
-            <div
-              key={key}
-              className="rounded-lg overflow-hidden"
-              style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
-            >
+            <div key={key} className="fade-divider-b">
               <button
                 onClick={() => toggleSection(key)}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/5 transition-colors text-left"
+                className="w-full flex items-center justify-between py-3 bg-transparent focus:outline-none text-left"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
                   {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" style={{ color: '#848E9C' }} />
+                    <ChevronDown className="w-4 h-4 text-nofx-text-muted flex-shrink-0" />
                   ) : (
-                    <ChevronRight className="w-4 h-4" style={{ color: '#848E9C' }} />
+                    <ChevronRight className="w-4 h-4 text-nofx-text-muted flex-shrink-0" />
                   )}
-                  <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>
-                    {label}
-                  </span>
+                  <span className="text-sm text-nofx-text truncate">{label}</span>
                   {isModified && (
-                    <span
-                      className="px-1.5 py-0.5 text-[10px] rounded"
-                      style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7' }}
-                    >
+                    <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-400/15 text-emerald-400 flex-shrink-0">
                       {language === 'zh' ? '已修改' : 'Modified'}
                     </span>
                   )}
                 </div>
-                <span className="text-[10px]" style={{ color: '#848E9C' }}>
+                <span className="text-[10px] text-nofx-text-muted flex-shrink-0 ml-2">
                   {value.length} {t('chars')}
                 </span>
               </button>
 
               {isExpanded && (
-                <div className="px-3 pb-3">
-                  <p className="text-xs mb-2" style={{ color: '#848E9C' }}>
-                    {desc}
-                  </p>
+                <div className="pb-3">
+                  <p className="text-xs mb-2 text-nofx-text-muted">{desc}</p>
                   <textarea
                     value={value}
                     onChange={(e) => updateSection(sectionKey, e.target.value)}
                     disabled={disabled}
                     rows={6}
-                    className="w-full px-3 py-2 rounded-lg resize-y font-mono text-xs"
-                    style={{
-                      background: '#1E2329',
-                      border: '1px solid #2B3139',
-                      color: '#EAECEF',
-                      minHeight: '120px',
-                    }}
+                    className="w-full px-3 py-2 rounded-lg resize-y font-mono text-xs bg-transparent border border-emerald-400/30 focus:border-emerald-400/60 focus:outline-none text-nofx-text"
+                    style={{ minHeight: '120px' }}
                   />
                   <div className="flex justify-end mt-2">
                     <button
                       onClick={() => resetSection(sectionKey)}
                       disabled={disabled || !isModified}
-                      className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-white/5 disabled:opacity-30"
-                      style={{ color: '#848E9C' }}
+                      className="flex items-center gap-1 px-2 py-1 rounded text-xs text-nofx-text-muted hover:bg-white/5 disabled:opacity-30 transition-colors"
                     >
                       <RotateCcw className="w-3 h-3" />
                       {t('resetToDefault')}

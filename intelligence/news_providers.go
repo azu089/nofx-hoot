@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package intelligence
 
 // news_providers.go — Event data source providers.

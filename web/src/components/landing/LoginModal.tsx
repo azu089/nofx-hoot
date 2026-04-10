@@ -38,7 +38,7 @@ export default function LoginModal({ onClose, language }: LoginModalProps) {
           <X className="w-6 h-6" />
         </motion.button>
         <h2
-          className="text-2xl font-bold mb-6"
+          className="text-2xl font-medium mb-6"
           style={{ color: 'var(--brand-light-gray)' }}
         >
           {t('accessNofxPlatform', language)}
@@ -53,7 +53,7 @@ export default function LoginModal({ onClose, language }: LoginModalProps) {
               window.dispatchEvent(new PopStateEvent('popstate'))
               onClose()
             }}
-            className="block w-full px-6 py-3 rounded-lg font-semibold text-center"
+            className="block w-full px-6 py-3 rounded-lg font-medium text-center"
             style={{
               background: 'var(--brand-yellow)',
               color: 'var(--brand-black)',

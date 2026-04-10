@@ -69,7 +69,7 @@ export default function AgentGrid() {
                         <div className="flex items-center gap-2 text-nofx-gold font-mono text-xs mb-2 tracking-widest uppercase">
                             <Crosshair className="w-4 h-4" /> MARKET SELECT
                         </div>
-                        <h2 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter">
+                        <h2 className="text-4xl md:text-5xl font-medium text-white uppercase tracking-tighter">
                             STRATEGY <span className="text-transparent bg-clip-text bg-gradient-to-r from-nofx-gold to-white">UNITS</span>
                         </h2>
                     </div>
@@ -102,34 +102,34 @@ export default function AgentGrid() {
                                         </div>
                                         <div className="text-right">
                                             <div className="text-[10px] font-mono text-zinc-500 uppercase">Class</div>
-                                            <div className={`font-bold font-mono tracking-wider ${agent.color}`}>{agent.class}</div>
+                                            <div className={`font-medium font-mono tracking-wider ${agent.color}`}>{agent.class}</div>
                                         </div>
                                     </div>
 
                                     {/* Name & Desc */}
-                                    <h3 className="text-3xl font-bold text-white mb-2 tracking-tight group-hover:text-nofx-accent transition-colors">{agent.name}</h3>
+                                    <h3 className="text-3xl font-medium text-white mb-2 tracking-tight group-hover:text-nofx-accent transition-colors">{agent.name}</h3>
                                     <p className="text-zinc-500 text-sm mb-8 leading-relaxed h-10">{agent.desc}</p>
 
                                     {/* Stats Grid */}
                                     <div className="grid grid-cols-3 gap-px bg-zinc-800/50 border border-zinc-800 rounded overflow-hidden mb-8">
                                         <div className="bg-black/60 p-3 text-center group-hover:bg-zinc-900/60 transition-colors">
                                             <div className="text-[10px] text-zinc-500 uppercase font-mono mb-1">APY</div>
-                                            <div className="text-green-400 font-bold">{agent.apy}</div>
+                                            <div className="text-green-400 font-medium">{agent.apy}</div>
                                         </div>
                                         <div className="bg-black/60 p-3 text-center group-hover:bg-zinc-900/60 transition-colors">
                                             <div className="text-[10px] text-zinc-500 uppercase font-mono mb-1">Win %</div>
-                                            <div className="text-white font-bold">{agent.winRate}</div>
+                                            <div className="text-white font-medium">{agent.winRate}</div>
                                         </div>
                                         <div className="bg-black/60 p-3 text-center group-hover:bg-zinc-900/60 transition-colors">
                                             <div className="text-[10px] text-zinc-500 uppercase font-mono mb-1">Risk</div>
-                                            <div className={`${agent.color} font-bold`}>{agent.risk}</div>
+                                            <div className={`${agent.color} font-medium`}>{agent.risk}</div>
                                         </div>
                                     </div>
 
                                     {/* Action Btn */}
                                     <button
                                         onClick={handleInitialize}
-                                        className={`w-full py-4 text-xs font-bold font-mono uppercase tracking-[0.2em] border border-zinc-700 hover:border-${agent.color === 'text-nofx-gold' ? 'nofx-gold' : 'white'} hover:bg-white/5 transition-all flex items-center justify-center gap-2 group-hover:text-white cursor-pointer`}
+                                        className={`w-full py-4 text-xs font-medium font-mono uppercase tracking-[0.2em] border border-zinc-700 hover:border-${agent.color === 'text-nofx-gold' ? 'nofx-gold' : 'white'} hover:bg-white/5 transition-all flex items-center justify-center gap-2 group-hover:text-white cursor-pointer`}
                                     >
                                         <span className={agent.color}>[</span> INITIALIZE <span className={agent.color}>]</span>
                                     </button>

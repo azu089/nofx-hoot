@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package kernel
 
 // alpha_decay.go — Alpha decay detection model.

@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package kernel
 
 import (
@@ -150,6 +154,34 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 		return decision, fmt.Errorf("failed to parse AI response: %w", err)
 	}
 
+	// 6. Signal resonance filter — reject low-quality open proposals based on market signals
+	if decision != nil && ctx.Signals != nil && len(decision.Decisions) > 0 {
+		filtered := make([]Decision, 0, len(decision.Decisions))
+		for i := range decision.Decisions {
+			d := &decision.Decisions[i]
+			priceChange := 0.0
+			if md, ok := ctx.MarketDataMap[d.Symbol]; ok && md != nil {
+				priceChange = md.PriceChange1h / 100.0
+			}
+			verdict := CheckSignalResonance(*d, ctx.Signals, priceChange, variant)
+			if reason := ApplyFilterVerdict(d, verdict); reason != "" {
+				logger.Infof("🛡️ [SignalFilter] %s %s REJECTED — %s", d.Symbol, d.Action, reason)
+				continue
+			}
+			filtered = append(filtered, *d)
+		}
+		if len(filtered) == 0 && len(decision.Decisions) > 0 {
+			// All proposals rejected — emit explicit wait
+			filtered = append(filtered, Decision{
+				Action:    "wait",
+				Symbol:    "ALL",
+				Reasoning: "all trade proposals rejected by signal resonance filter",
+			})
+			logger.Infof("🛡️ [SignalFilter] All %d proposals rejected, forcing wait", len(decision.Decisions))
+		}
+		decision.Decisions = filtered
+	}
+
 	return decision, nil
 }
 
@@ -293,7 +325,7 @@ func extractDecisions(response string) ([]Decision, error) {
 	s = strings.TrimSpace(s)
 	s = fixMissingQuotes(s)
 
-	// [HOOT] Use four-layer JSON extractor for robust extraction
+	// Use four-layer JSON extractor for robust extraction
 	jsonContent, err := ExtractFirstJSON(s)
 	if err != nil {
 		// Safe fallback: AI didn't output structured JSON

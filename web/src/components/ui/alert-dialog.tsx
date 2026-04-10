@@ -76,7 +76,7 @@ const AlertDialogTitle = React.forwardRef<
   <AlertDialogPrimitive.Title
     ref={ref}
     className={cn(
-      'text-lg font-semibold text-[var(--text-primary)]',
+      'text-lg font-medium text-[var(--text-primary)]',
       className
     )}
     {...props}
@@ -104,7 +104,7 @@ const AlertDialogAction = React.forwardRef<
   <AlertDialogPrimitive.Action
     ref={ref}
     className={cn(
-      'inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--binance-yellow)] disabled:pointer-events-none disabled:opacity-50 bg-[var(--binance-yellow)] text-black hover:brightness-95 h-10 px-8 min-w-[140px] shadow-[0_10px_30px_rgba(240,185,11,0.35)]',
+      'btn-emerald inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/60 disabled:pointer-events-none h-10 px-8 min-w-[140px]',
       className
     )}
     {...props}
@@ -119,7 +119,7 @@ const AlertDialogCancel = React.forwardRef<
   <AlertDialogPrimitive.Cancel
     ref={ref}
     className={cn(
-      'inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--panel-border)] disabled:pointer-events-none disabled:opacity-50 border border-[var(--panel-border)] bg-transparent text-[var(--text-secondary)] hover:bg-white/5 h-10 px-8 min-w-[140px]',
+      'inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20 disabled:pointer-events-none disabled:opacity-50 border border-white/15 bg-transparent text-white/70 hover:text-white hover:bg-white/5 h-10 px-8 min-w-[140px]',
       className
     )}
     {...props}

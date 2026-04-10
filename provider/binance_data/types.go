@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package binance_data provides direct Binance Futures public market data,
 // replacing the deprecated nofxos.ai gateway. All endpoints used here are
 // public (no authentication required) and rate-limit safe for typical
@@ -84,7 +87,7 @@ type PriceRanking struct {
 type PriceRankingData = PriceRanking
 
 // ============================================================================
-// Funding rate / Long-Short ratio types (used by HOOT enrichment)
+// Funding rate / Long-Short ratio types (used by data enrichment)
 // ============================================================================
 
 // FundingRate is the latest perpetual funding rate for a symbol.

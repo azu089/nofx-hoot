@@ -191,10 +191,10 @@ export function StrategyMarketPage() {
                 <Database className="w-8 h-8 text-nofx-gold relative z-10" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold tracking-tighter text-white uppercase glitch-text" data-text={tr('title')}>
+                <h1 className="text-4xl font-medium tracking-tighter text-white uppercase glitch-text" data-text={tr('title')}>
                   {tr('title')}
                 </h1>
-                <p className="text-xs text-nofx-gold tracking-[0.3em] font-bold mt-1">
+                <p className="text-xs text-nofx-gold tracking-[0.3em] font-medium mt-1">
                 // {tr('subtitle')}
                 </p>
               </div>
@@ -233,7 +233,7 @@ export function StrategyMarketPage() {
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-4 py-2 text-xs font-mono uppercase tracking-wider transition-all relative overflow-hidden ${selectedCategory === cat
-                    ? 'text-black font-bold'
+                    ? 'text-black font-medium'
                     : 'text-zinc-500 hover:text-white'
                     }`}
                 >
@@ -276,7 +276,7 @@ export function StrategyMarketPage() {
                 <div className="absolute -inset-4 bg-red-500/10 rounded-full blur-xl animate-pulse"></div>
                 <Activity className="w-16 h-16 text-zinc-700 relative z-10" />
               </div>
-              <h3 className="text-xl font-bold text-zinc-300 font-mono tracking-tight mb-2">
+              <h3 className="text-xl font-medium text-zinc-300 font-mono tracking-tight mb-2">
                 [{tr('noStrategies')}]
               </h3>
               <p className="text-zinc-600 text-xs tracking-wide uppercase">{tr('noStrategiesDesc')}</p>
@@ -332,7 +332,7 @@ export function StrategyMarketPage() {
                         </div>
 
                         {/* Name and Description */}
-                        <h3 className={`text-lg font-bold mb-2 tracking-tight group-hover:${style.color} transition-colors uppercase truncate relative`}>
+                        <h3 className={`text-lg font-medium mb-2 tracking-tight group-hover:${style.color} transition-colors uppercase truncate relative`}>
                           {strategy.name}
                           <span className="absolute -bottom-1 left-0 w-8 h-[2px] bg-zinc-800 group-hover:bg-nofx-gold transition-colors"></span>
                         </h3>
@@ -374,11 +374,11 @@ export function StrategyMarketPage() {
                                   <div className="flex gap-3">
                                     <div className="flex flex-col">
                                       <span className="text-zinc-600 scale-90 origin-left">LEV</span>
-                                      <span className="text-zinc-300 font-bold">{strategy.config.risk_control.btc_eth_max_leverage || '-'}x</span>
+                                      <span className="text-zinc-300 font-medium">{strategy.config.risk_control.btc_eth_max_leverage || '-'}x</span>
                                     </div>
                                     <div className="flex flex-col">
                                       <span className="text-zinc-600 scale-90 origin-left">POS</span>
-                                      <span className="text-zinc-300 font-bold">{strategy.config.risk_control.max_positions || '-'}</span>
+                                      <span className="text-zinc-300 font-medium">{strategy.config.risk_control.max_positions || '-'}</span>
                                     </div>
                                   </div>
                                   <Activity size={12} className="text-zinc-700" />
@@ -398,7 +398,7 @@ export function StrategyMarketPage() {
                           {strategy.config_visible && strategy.config ? (
                             <button
                               onClick={() => handleCopyConfig(strategy)}
-                              className="w-full py-2.5 text-[10px] font-bold font-mono uppercase tracking-widest border border-zinc-700 bg-black hover:bg-zinc-900 text-zinc-300 hover:text-nofx-gold hover:border-nofx-gold transition-all flex items-center justify-center gap-2 group/btn"
+                              className="w-full py-2.5 text-[10px] font-medium font-mono uppercase tracking-widest border border-zinc-700 bg-black hover:bg-zinc-900 text-zinc-300 hover:text-nofx-gold hover:border-nofx-gold transition-all flex items-center justify-center gap-2 group/btn"
                             >
                               {copiedId === strategy.id ? (
                                 <>
@@ -413,7 +413,7 @@ export function StrategyMarketPage() {
                               )}
                             </button>
                           ) : (
-                            <button disabled className="w-full py-2.5 text-[10px] font-bold font-mono uppercase tracking-widest border border-zinc-800 bg-black text-zinc-700 cursor-not-allowed flex items-center justify-center gap-2">
+                            <button disabled className="w-full py-2.5 text-[10px] font-medium font-mono uppercase tracking-widest border border-zinc-800 bg-black text-zinc-700 cursor-not-allowed flex items-center justify-center gap-2">
                               <Shield size={12} />
                               {tr('hideConfig')}
                             </button>
@@ -441,7 +441,7 @@ export function StrategyMarketPage() {
                 <div className="relative px-8 py-4 bg-black border border-zinc-800 hover:border-nofx-gold/50 flex items-center gap-4 transition-all">
                   <Hexagon className="text-nofx-gold animate-spin-slow" size={24} />
                   <div className="text-left">
-                    <div className="text-sm font-bold text-white uppercase tracking-wider group-hover:text-nofx-gold transition-colors">{tr('shareYours')}</div>
+                    <div className="text-sm font-medium text-white uppercase tracking-wider group-hover:text-nofx-gold transition-colors">{tr('shareYours')}</div>
                     <div className="text-[10px] text-zinc-500 font-mono">CONTRIBUTE TO THE GLOBAL DATABASE</div>
                   </div>
                   <div className="w-[1px] h-8 bg-zinc-800 mx-2"></div>

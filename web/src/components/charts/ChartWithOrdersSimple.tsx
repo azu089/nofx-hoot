@@ -71,7 +71,7 @@ export function ChartWithOrdersSimple({
       <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid #2B3139' }}>
         <div className="flex items-center gap-3">
           <span className="text-xl">📈</span>
-          <h3 className="text-lg font-bold" style={{ color: '#EAECEF' }}>
+          <h3 className="text-lg font-medium" style={{ color: '#EAECEF' }}>
             {symbol} {interval} (测试模式)
           </h3>
         </div>
@@ -93,7 +93,7 @@ export function ChartWithOrdersSimple({
           <>
             <div className="p-4 rounded" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
               <div className="text-sm mb-2" style={{ color: '#848E9C' }}>币安K线数据</div>
-              <div className="text-2xl font-bold" style={{ color: '#0ECB81' }}>
+              <div className="text-2xl font-medium" style={{ color: '#0ECB81' }}>
                 {klineCount} 根K线
               </div>
             </div>
@@ -101,7 +101,7 @@ export function ChartWithOrdersSimple({
             {traderID && (
               <div className="p-4 rounded" style={{ background: '#1E2329', border: '1px solid #2B3139' }}>
                 <div className="text-sm mb-2" style={{ color: '#848E9C' }}>历史订单数据</div>
-                <div className="text-2xl font-bold" style={{ color: '#F0B90B' }}>
+                <div className="text-2xl font-medium" style={{ color: '#F0B90B' }}>
                   {orderCount} 笔订单
                 </div>
               </div>

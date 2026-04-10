@@ -29,6 +29,9 @@
   <a href="docs/i18n/vi/README.md">Tiếng Việt</a>
 </p>
 
+
+> **Enhanced Fork** — Improved risk control, AI management, and multi-strategy support. Based on [nofx](https://github.com/NoFxAiOS/nofx) (AGPL-3.0).
+
 ---
 
 NOFX is an open-source **autonomous** AI trading assistant. Unlike traditional AI tools that require you to manually configure models, manage API keys, and wire up data sources — NOFX's AI **perceives markets, selects models, and fetches data entirely on its own**. Zero human intervention. You set the strategy, the AI handles everything else.

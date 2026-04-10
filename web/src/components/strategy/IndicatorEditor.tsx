@@ -1,4 +1,5 @@
 import { Clock, Activity, TrendingUp, BarChart2, Info, Lock, ExternalLink, Zap, Check, AlertCircle, Key } from 'lucide-react'
+import { NumericInput } from './NumericInput'
 import type { IndicatorConfig } from '../../types'
 
 // Default NofxOS API Key
@@ -191,108 +192,21 @@ export function IndicatorEditor({
   return (
     <div className="space-y-5">
       {/* ============================================ */}
-      {/* NofxOS Data Provider - Top Configuration    */}
+      {/* Data Sources (Binance 数据源已替代 NofxOS)   */}
       {/* ============================================ */}
-      <div
-        className="rounded-lg overflow-hidden relative"
-        style={{
-          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 50%, rgba(236, 72, 153, 0.08) 100%)',
-          border: '1px solid rgba(139, 92, 246, 0.3)',
-        }}
-      >
-        {/* Decorative gradient line at top */}
-        <div
-          className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: 'linear-gradient(90deg, #6366f1, #a855f7, #ec4899)' }}
-        />
-
-        <div className="p-4">
+      <div className="relative fade-divider-b pb-5">
+        <div>
           {/* Header Row */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}
-              >
-                <Zap className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
-                  {t('nofxosTitle')}
-                </h3>
-                <span className="text-[10px]" style={{ color: '#848E9C' }}>
-                  {t('nofxosFeatures')}
-                </span>
-              </div>
-            </div>
-
-            {/* Status & API Docs */}
-            <div className="flex items-center gap-2">
-              {hasApiKey ? (
-                <span className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full" style={{ background: 'rgba(14, 203, 129, 0.15)', color: '#0ECB81' }}>
-                  <Check className="w-3 h-3" />
-                  {t('connected')}
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full" style={{ background: 'rgba(246, 70, 93, 0.15)', color: '#F6465D' }}>
-                  <AlertCircle className="w-3 h-3" />
-                  {t('notConfigured')}
-                </span>
-              )}
-              <a
-                href="https://nofxos.ai/api-docs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full transition-all hover:scale-[1.02]"
-                style={{
-                  background: 'rgba(139, 92, 246, 0.2)',
-                  color: '#a855f7',
-                }}
-              >
-                <ExternalLink className="w-3 h-3" />
-                {t('viewApiDocs')}
-              </a>
-            </div>
+          <div className="flex items-center gap-2 mb-3">
+            <Zap className="w-4 h-4 text-white/80" />
+            <h3 className="text-sm font-medium" style={{ color: '#EAECEF' }}>
+              {language === 'zh' ? '数据源' : 'Data Sources'}
+            </h3>
+            <span className="text-[10px]" style={{ color: '#848E9C' }}>
+              {t('nofxosFeatures')}
+            </span>
           </div>
 
-          {/* API Key Input */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#848E9C' }} />
-              <input
-                type="text"
-                value={config.nofxos_api_key || ''}
-                onChange={(e) => !disabled && onChange({ ...config, nofxos_api_key: e.target.value })}
-                disabled={disabled}
-                placeholder={t('apiKeyPlaceholder')}
-                className="w-full pl-9 pr-3 py-2 rounded-lg text-sm font-mono"
-                style={{
-                  background: 'rgba(30, 35, 41, 0.8)',
-                  border: hasApiKey ? '1px solid rgba(14, 203, 129, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
-                  color: '#EAECEF',
-                }}
-              />
-            </div>
-            {!disabled && !config.nofxos_api_key && (
-              <button
-                type="button"
-                onClick={() => onChange({ ...config, nofxos_api_key: DEFAULT_NOFXOS_API_KEY })}
-                className="px-3 py-2 rounded-lg text-xs font-medium transition-all hover:scale-[1.02]"
-                style={{
-                  background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-                  color: '#fff',
-                }}
-              >
-                {t('fillDefault')}
-              </button>
-            )}
-          </div>
-
-          {/* NofxOS Data Sources Grid */}
-          <div className="mt-4">
-            <div className="text-[10px] font-medium mb-2" style={{ color: '#848E9C' }}>
-              {t('nofxosDataSources')}
-            </div>
             <div className="grid grid-cols-2 gap-2">
               {/* Quant Data */}
               <div
@@ -385,7 +299,7 @@ export function IndicatorEditor({
                       onChange={(e) => !disabled && onChange({ ...config, oi_ranking_duration: e.target.value })}
                       disabled={disabled}
                       className="flex-1 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                     >
                       <option value="1h">1h</option>
                       <option value="4h">4h</option>
@@ -396,7 +310,7 @@ export function IndicatorEditor({
                       onChange={(e) => !disabled && onChange({ ...config, oi_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
                       className="w-14 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                     >
                       {[5, 10, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -445,7 +359,7 @@ export function IndicatorEditor({
                       onChange={(e) => !disabled && onChange({ ...config, netflow_ranking_duration: e.target.value })}
                       disabled={disabled}
                       className="flex-1 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                     >
                       <option value="1h">1h</option>
                       <option value="4h">4h</option>
@@ -456,7 +370,7 @@ export function IndicatorEditor({
                       onChange={(e) => !disabled && onChange({ ...config, netflow_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
                       className="w-14 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                     >
                       {[5, 10, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -505,7 +419,7 @@ export function IndicatorEditor({
                       onChange={(e) => !disabled && onChange({ ...config, price_ranking_duration: e.target.value })}
                       disabled={disabled}
                       className="flex-1 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                     >
                       <option value="1h">1h</option>
                       <option value="4h">4h</option>
@@ -517,7 +431,7 @@ export function IndicatorEditor({
                       onChange={(e) => !disabled && onChange({ ...config, price_ranking_limit: parseInt(e.target.value) })}
                       disabled={disabled}
                       className="w-14 px-2 py-1 rounded text-[10px]"
-                      style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                      style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                     >
                       {[5, 10, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
@@ -526,24 +440,14 @@ export function IndicatorEditor({
               </div>
             </div>
 
-            {/* Warning if features enabled but no API key */}
-            {hasNofxosEnabled && !hasApiKey && (
-              <div className="flex items-center gap-2 mt-3 p-2 rounded-lg" style={{ background: 'rgba(246, 70, 93, 0.1)', border: '1px solid rgba(246, 70, 93, 0.2)' }}>
-                <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#F6465D' }} />
-                <span className="text-[10px]" style={{ color: '#F6465D' }}>
-                  {language === 'zh' ? '请配置 API Key 以启用 NofxOS 数据源' : 'Please configure API Key to enable NofxOS data sources'}
-                </span>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
       {/* ============================================ */}
       {/* Section 1: Market Data (Required)           */}
       {/* ============================================ */}
-      <div className="rounded-lg overflow-hidden" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#1E2329', borderBottom: '1px solid #2B3139' }}>
+      <div className="fade-divider-b pb-5">
+        <div className="py-2 flex items-center gap-2">
           <BarChart2 className="w-4 h-4" style={{ color: '#F0B90B' }} />
           <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('marketData')}</span>
           <span className="text-xs" style={{ color: '#848E9C' }}>- {t('marketDataDesc')}</span>
@@ -551,7 +455,7 @@ export function IndicatorEditor({
 
         <div className="p-3 space-y-4">
           {/* Raw Klines - Required, Always On */}
-          <div className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'rgba(240, 185, 11, 0.08)', border: '1px solid rgba(240, 185, 11, 0.2)' }}>
+          <div className="flex items-center justify-between py-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(240, 185, 11, 0.15)' }}>
                 <TrendingUp className="w-4 h-4" style={{ color: '#F0B90B' }} />
@@ -584,21 +488,14 @@ export function IndicatorEditor({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px]" style={{ color: '#848E9C' }}>{t('klineCount')}:</span>
-                <input
-                  type="number"
+                <NumericInput
+                  integer
                   value={config.klines.primary_count}
-                  onChange={(e) =>
-                    !disabled &&
-                    onChange({
-                      ...config,
-                      klines: { ...config.klines, primary_count: parseInt(e.target.value) || 30 },
-                    })
-                  }
+                  onCommit={(v) => onChange({ ...config, klines: { ...config.klines, primary_count: v } })}
                   disabled={disabled}
                   min={10}
                   max={200}
-                  className="w-16 px-2 py-1 rounded text-xs text-center"
-                  style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                  className="w-16 px-2 py-1 rounded text-xs bg-transparent border border-emerald-400/30 focus:border-emerald-400/60 focus:outline-none text-nofx-text"
                 />
               </div>
             </div>
@@ -651,8 +548,8 @@ export function IndicatorEditor({
       {/* ============================================ */}
       {/* Section 2: Technical Indicators (Optional)  */}
       {/* ============================================ */}
-      <div className="rounded-lg overflow-hidden" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#1E2329', borderBottom: '1px solid #2B3139' }}>
+      <div className="rounded-lg overflow-hidden" style={{ background: 'transparent', border: 'none' }}>
+        <div className="px-3 py-2 flex items-center gap-2" style={{ background: 'transparent' }}>
           <Activity className="w-4 h-4" style={{ color: '#0ECB81' }} />
           <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('technicalIndicators')}</span>
           <span className="text-xs" style={{ color: '#848E9C' }}>- {t('technicalIndicatorsDesc')}</span>
@@ -711,7 +608,7 @@ export function IndicatorEditor({
                     disabled={disabled}
                     placeholder={defaultPeriods}
                     className="w-full px-2 py-1 rounded text-[10px] text-center"
-                    style={{ background: '#1E2329', border: '1px solid #2B3139', color: '#EAECEF' }}
+                    style={{ background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#EAECEF' }}
                   />
                 )}
               </div>
@@ -723,8 +620,8 @@ export function IndicatorEditor({
       {/* ============================================ */}
       {/* Section 3: Market Sentiment                 */}
       {/* ============================================ */}
-      <div className="rounded-lg overflow-hidden" style={{ background: '#0B0E11', border: '1px solid #2B3139' }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#1E2329', borderBottom: '1px solid #2B3139' }}>
+      <div className="rounded-lg overflow-hidden" style={{ background: 'transparent', border: 'none' }}>
+        <div className="px-3 py-2 flex items-center gap-2" style={{ background: 'transparent' }}>
           <TrendingUp className="w-4 h-4" style={{ color: '#22c55e' }} />
           <span className="text-sm font-medium" style={{ color: '#EAECEF' }}>{t('marketSentiment')}</span>
           <span className="text-xs" style={{ color: '#848E9C' }}>- {t('marketSentimentDesc')}</span>

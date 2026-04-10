@@ -1,7 +1,12 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 package trader
 
 import (
 	"fmt"
+	"nofx/hook"
 	"nofx/kernel"
 	"nofx/logger"
 	"nofx/market"
@@ -39,7 +44,7 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *kernel.Decision, actio
 func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📈 Open long: %s", decision.Symbol)
 
-	// [HOOT] Geometry validation: TP > Entry > SL, min R:R (pre-check with estimated entry)
+	// Geometry validation: TP > Entry > SL, min R:R (pre-check with estimated entry)
 	if decision.StopLoss > 0 && decision.TakeProfit > 0 {
 		minRR := at.strategyEngine.GetConfig().RiskControl.MinRiskRewardRatio
 		estimatedEntry := decision.StopLoss + (decision.TakeProfit-decision.StopLoss)/3
@@ -186,7 +191,7 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *kernel.Decision, actio
 func (at *AutoTrader) executeOpenShortWithRecord(decision *kernel.Decision, actionRecord *store.DecisionAction) error {
 	logger.Infof("  📉 Open short: %s", decision.Symbol)
 
-	// [HOOT] Geometry validation: SL > Entry > TP, min R:R (pre-check with estimated entry)
+	// Geometry validation: SL > Entry > TP, min R:R (pre-check with estimated entry)
 	if decision.StopLoss > 0 && decision.TakeProfit > 0 {
 		minRR := at.strategyEngine.GetConfig().RiskControl.MinRiskRewardRatio
 		estimatedEntry := decision.StopLoss - (decision.StopLoss-decision.TakeProfit)/3
@@ -389,6 +394,19 @@ func (at *AutoTrader) executeCloseLongWithRecord(decision *kernel.Decision, acti
 	// Record order to database and poll for confirmation
 	at.recordAndConfirmOrder(order, decision.Symbol, "close_long", quantity, marketData.CurrentPrice, 0, entryPrice)
 
+	// Notify upstream platform for billing/audit (fire-and-forget, same contract as manual close)
+	hook.Dispatch(hook.EventPositionClosed, hook.PositionClosedPayload{
+		UserID:     at.userID,
+		TraderID:   at.id,
+		Symbol:     decision.Symbol,
+		Side:       "LONG",
+		Quantity:   quantity,
+		EntryPrice: entryPrice,
+		ExitPrice:  marketData.CurrentPrice,
+		ExitResult: order,
+		ExchangeID: at.exchangeID,
+	})
+
 	logger.Infof("  ✓ Position closed successfully")
 	return nil
 }
@@ -452,6 +470,19 @@ func (at *AutoTrader) executeCloseShortWithRecord(decision *kernel.Decision, act
 
 	// Record order to database and poll for confirmation
 	at.recordAndConfirmOrder(order, decision.Symbol, "close_short", quantity, marketData.CurrentPrice, 0, entryPrice)
+
+	// Notify upstream platform for billing/audit (fire-and-forget, same contract as manual close)
+	hook.Dispatch(hook.EventPositionClosed, hook.PositionClosedPayload{
+		UserID:     at.userID,
+		TraderID:   at.id,
+		Symbol:     decision.Symbol,
+		Side:       "SHORT",
+		Quantity:   quantity,
+		EntryPrice: entryPrice,
+		ExitPrice:  marketData.CurrentPrice,
+		ExitResult: order,
+		ExchangeID: at.exchangeID,
+	})
 
 	logger.Infof("  ✓ Position closed successfully")
 	return nil

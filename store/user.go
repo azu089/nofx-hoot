@@ -112,6 +112,15 @@ func (s *UserStore) UpdatePassword(userID, passwordHash string) error {
 	}).Error
 }
 
+// UpdateEmail updates the email of an existing user, used by the upstream
+// shadow-user sync path when the upstream platform changes the canonical email for a user.
+func (s *UserStore) UpdateEmail(userID, email string) error {
+	return s.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"email":      email,
+		"updated_at": time.Now().UTC(),
+	}).Error
+}
+
 // EnsureAdmin ensures admin user exists
 func (s *UserStore) EnsureAdmin() error {
 	var count int64

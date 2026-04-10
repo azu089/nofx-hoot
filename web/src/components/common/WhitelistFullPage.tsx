@@ -52,7 +52,7 @@ export function WhitelistFullPage({ onBack }: WhitelistFullPageProps) {
             </div>
 
             {/* Title */}
-            <h1 className="text-2xl font-bold mb-2 tracking-widest text-white uppercase glitch-text">
+            <h1 className="text-2xl font-medium mb-2 tracking-widest text-white uppercase glitch-text">
               <span className="text-red-500">RESTRICTED</span> ACCESS
             </h1>
 
@@ -70,7 +70,7 @@ export function WhitelistFullPage({ onBack }: WhitelistFullPageProps) {
               <div className="flex items-start gap-3">
                 <Lock className="w-4 h-4 text-red-500 mt-0.5" />
                 <div>
-                  <h3 className="text-xs font-bold text-red-400 uppercase mb-1">Authorization Protocol</h3>
+                  <h3 className="text-xs font-medium text-red-400 uppercase mb-1">Authorization Protocol</h3>
                   <p className="text-[10px] text-zinc-500 leading-tight">
                     Access is rolled out in batches. If you believe this is an error, please verify your credentials or contact system administrators.
                   </p>
@@ -82,7 +82,7 @@ export function WhitelistFullPage({ onBack }: WhitelistFullPageProps) {
             <div className="space-y-3">
               <button
                 onClick={handleBackToLogin}
-                className="w-full flex items-center justify-center gap-2 py-3 border border-zinc-700 bg-black hover:bg-zinc-900 hover:border-red-500 hover:text-red-500 text-zinc-400 transition-all text-xs font-bold tracking-widest uppercase group"
+                className="w-full flex items-center justify-center gap-2 py-3 border border-zinc-700 bg-black hover:bg-zinc-900 hover:border-red-500 hover:text-red-500 text-zinc-400 transition-all text-xs font-medium tracking-widest uppercase group"
               >
                 <ArrowLeft className="w-3 h-3 group-hover:-translate-x-1 transition-transform" />
                 RETURN TO LOGIN

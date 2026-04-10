@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // kernel/atr_threshold.go — ATR 自适应止盈阈值
 //
 // 设计:

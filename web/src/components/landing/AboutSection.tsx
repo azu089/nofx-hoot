@@ -55,7 +55,7 @@ export default function AboutSection({ language }: AboutSectionProps) {
               </span>
             </motion.div>
 
-            <h2 className="text-4xl lg:text-5xl font-bold mb-6" style={{ color: '#EAECEF' }}>
+            <h2 className="text-4xl lg:text-5xl font-medium mb-6" style={{ color: '#EAECEF' }}>
               {t('whatIsNofx', language)}
             </h2>
 
@@ -85,7 +85,7 @@ export default function AboutSection({ language }: AboutSectionProps) {
                     <feature.icon className="w-5 h-5" style={{ color: '#F0B90B' }} />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold" style={{ color: '#EAECEF' }}>
+                    <div className="text-sm font-medium" style={{ color: '#EAECEF' }}>
                       {feature.title}
                     </div>
                     <div className="text-xs" style={{ color: '#5E6673' }}>

@@ -209,7 +209,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
              style={{ background: 'rgba(240, 185, 11, 0.1)' }}>
           <BarChart3 className="w-10 h-10" style={{ color: '#F0B90B', opacity: 0.6 }} />
         </div>
-        <div className="text-lg font-bold mb-2" style={{ color: '#EAECEF' }}>
+        <div className="text-lg font-medium mb-2" style={{ color: '#EAECEF' }}>
           {t('noHistoricalData', language)}
         </div>
         <div className="text-sm text-center max-w-xs" style={{ color: '#848E9C' }}>
@@ -293,7 +293,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
                     </span>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-bold mono flex items-center gap-1"
+                    <div className="text-sm font-medium mono flex items-center gap-1"
                          style={{ color: isPositive ? '#0ECB81' : '#F6465D' }}>
                       {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                       {isPositive ? '+' : ''}{pnlPct.toFixed(2)}%
@@ -372,7 +372,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
                     style={{ color: '#EAECEF' }}>
                 {trader.trader_name}
               </span>
-              <span className="text-xs font-bold mono"
+              <span className="text-xs font-medium mono"
                     style={{ color: trader.currentPnl >= 0 ? '#0ECB81' : '#F6465D' }}>
                 {trader.currentPnl >= 0 ? '+' : ''}{trader.currentPnl.toFixed(2)}%
               </span>
@@ -526,7 +526,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
           <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#848E9C' }}>
             {t('leader', language)}
           </div>
-          <div className="text-sm font-bold truncate" style={{ color: '#F0B90B' }}>
+          <div className="text-sm font-medium truncate" style={{ color: '#F0B90B' }}>
             {leader?.trader_name || '-'}
           </div>
         </div>
@@ -534,7 +534,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
           <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#848E9C' }}>
             {t('leadPnL', language) || 'Lead PnL'}
           </div>
-          <div className="text-sm font-bold mono"
+          <div className="text-sm font-medium mono"
                style={{ color: (leader?.currentPnl || 0) >= 0 ? '#0ECB81' : '#F6465D' }}>
             {(leader?.currentPnl || 0) >= 0 ? '+' : ''}{(leader?.currentPnl || 0).toFixed(2)}%
           </div>
@@ -543,7 +543,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
           <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#848E9C' }}>
             {t('currentGap', language)}
           </div>
-          <div className="text-sm font-bold mono" style={{ color: '#60a5fa' }}>
+          <div className="text-sm font-medium mono" style={{ color: '#60a5fa' }}>
             {gap}%
           </div>
         </div>
@@ -551,7 +551,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
           <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#848E9C' }}>
             {t('dataPoints', language)}
           </div>
-          <div className="text-sm font-bold mono" style={{ color: '#8b5cf6' }}>
+          <div className="text-sm font-medium mono" style={{ color: '#8b5cf6' }}>
             {displayData.length}
           </div>
         </div>

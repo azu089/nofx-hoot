@@ -1,3 +1,7 @@
+// Modified by nofx contributors (2025-2026)
+// Original: https://github.com/NoFxAiOS/nofx
+// License: AGPL-3.0
+
 // Package store provides unified database storage layer
 // All database operations should go through this package
 package store
@@ -172,9 +176,9 @@ func (s *Store) initTables() error {
 	if err := s.ArenaRecord().InitTables(); err != nil {
 		return fmt.Errorf("failed to initialize arena record tables: %w", err)
 	}
-	// HOOT: run incremental migrations for new columns + backfill
+	// run incremental migrations for new columns + backfill
 	if err := RunMigrations(s.gdb); err != nil {
-		logger.Warnf("⚠️ HOOT migrations warning: %v", err)
+		logger.Warnf("⚠️ migrations warning: %v", err)
 	}
 	return nil
 }

@@ -53,7 +53,7 @@ export default function HowItWorksSection({ language }: HowItWorksSectionProps) 
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
-          <h2 className="text-4xl lg:text-5xl font-bold mb-4" style={{ color: '#EAECEF' }}>
+          <h2 className="text-4xl lg:text-5xl font-medium mb-4" style={{ color: '#EAECEF' }}>
             {t('howToStart', language)}
           </h2>
           <p className="text-lg" style={{ color: '#848E9C' }}>
@@ -104,12 +104,12 @@ export default function HowItWorksSection({ language }: HowItWorksSectionProps) 
                   <div className="flex-grow">
                     <div className="flex items-center gap-3 mb-2">
                       <span
-                        className="text-sm font-mono font-bold"
+                        className="text-sm font-mono font-medium"
                         style={{ color: '#F0B90B' }}
                       >
                         {step.number}
                       </span>
-                      <h3 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+                      <h3 className="text-xl font-medium" style={{ color: '#EAECEF' }}>
                         {step.title}
                       </h3>
                     </div>
@@ -153,7 +153,7 @@ export default function HowItWorksSection({ language }: HowItWorksSectionProps) 
             <AlertTriangle className="w-6 h-6" style={{ color: '#F0B90B' }} />
           </div>
           <div>
-            <div className="font-semibold mb-2" style={{ color: '#F0B90B' }}>
+            <div className="font-medium mb-2" style={{ color: '#F0B90B' }}>
               {t('importantRiskWarning', language)}
             </div>
             <p className="text-sm leading-relaxed" style={{ color: '#5E6673' }}>

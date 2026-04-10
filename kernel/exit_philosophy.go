@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // kernel/exit_philosophy.go — 退出哲学模板
 //
 // 三种退出哲学:

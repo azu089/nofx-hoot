@@ -89,7 +89,7 @@ function StatCard({
       </div>
       <div className="flex items-baseline gap-1">
         <span
-          className="text-xl font-bold font-mono"
+          className="text-xl font-medium font-mono"
           style={{ color: color || '#EAECEF' }}
         >
           {value}
@@ -120,7 +120,7 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
   return (
     <div className="row-divider flex items-center justify-between p-3 rounded-lg transition-all duration-200 hover:bg-white/5">
       <div className="flex items-center gap-3">
-        <span className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+        <span className="font-mono font-medium" style={{ color: '#EAECEF' }}>
           {(stat.symbol || '').replace('USDT', '')}
         </span>
         <span className="text-xs" style={{ color: '#848E9C' }}>
@@ -132,7 +132,7 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
           <div className="text-xs" style={{ color: '#848E9C' }}>
             Win Rate
           </div>
-          <div className="font-mono font-semibold" style={{ color: winRateColor }}>
+          <div className="font-mono font-medium" style={{ color: winRateColor }}>
             {winRate.toFixed(1)}%
           </div>
         </div>
@@ -140,7 +140,7 @@ function SymbolStatsRow({ stat }: { stat: SymbolStats }) {
           <div className="text-xs" style={{ color: '#848E9C' }}>
             P&L
           </div>
-          <div className="font-mono font-semibold" style={{ color: pnlColor }}>
+          <div className="font-mono font-medium" style={{ color: pnlColor }}>
             {totalPnl >= 0 ? '+' : ''}
             {formatNumber(totalPnl)}
           </div>
@@ -165,7 +165,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xl">{isLong ? '📈' : '📉'}</span>
         <span
-          className="font-bold uppercase"
+          className="font-medium uppercase"
           style={{ color: iconColor }}
         >
           {stat.side || 'Unknown'}
@@ -176,7 +176,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
           <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
             {t('positionHistory.trades', language)}
           </div>
-          <div className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+          <div className="font-mono font-medium" style={{ color: '#EAECEF' }}>
             {tradeCount}
           </div>
         </div>
@@ -185,7 +185,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
             {t('positionHistory.winRate', language)}
           </div>
           <div
-            className="font-mono font-semibold"
+            className="font-mono font-medium"
             style={{
               color:
                 winRate >= 60
@@ -202,7 +202,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
           <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
             {t('positionHistory.totalPnL', language)}
           </div>
-          <div className="font-mono font-semibold" style={{ color: pnlColor }}>
+          <div className="font-mono font-medium" style={{ color: pnlColor }}>
             {totalPnl >= 0 ? '+' : ''}
             {formatNumber(totalPnl)}
           </div>
@@ -211,7 +211,7 @@ function DirectionStatsCard({ stat, language }: { stat: DirectionStats; language
           <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
             {t('positionHistory.avgPnL', language)}
           </div>
-          <div className="font-mono font-semibold" style={{ color: avgPnl >= 0 ? '#0ECB81' : '#F6465D' }}>
+          <div className="font-mono font-medium" style={{ color: avgPnl >= 0 ? '#0ECB81' : '#F6465D' }}>
             {avgPnl >= 0 ? '+' : ''}
             {formatNumber(avgPnl)}
           </div>
@@ -255,11 +255,11 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
       {/* Symbol */}
       <td className="py-3 px-4">
         <div className="flex items-center gap-2">
-          <span className="font-mono font-semibold" style={{ color: '#EAECEF' }}>
+          <span className="font-mono font-medium" style={{ color: '#EAECEF' }}>
             {(position.symbol || '').replace('USDT', '')}
           </span>
           <span
-            className="px-2 py-0.5 rounded text-xs font-semibold uppercase"
+            className="px-2 py-0.5 rounded text-xs font-medium uppercase"
             style={{
               background: `${sideColor}22`,
               color: sideColor,
@@ -293,7 +293,7 @@ function PositionRow({ position }: { position: HistoricalPosition }) {
 
       {/* P&L */}
       <td className="py-3 px-4 text-right">
-        <div className="font-mono font-semibold" style={{ color: pnlColor }}>
+        <div className="font-mono font-medium" style={{ color: pnlColor }}>
           {isProfitable ? '+' : ''}
           {formatNumber(realizedPnl)}
         </div>
@@ -497,7 +497,7 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
         }}
       >
         <div className="text-4xl mb-4">📊</div>
-        <div className="text-lg font-semibold mb-2" style={{ color: '#EAECEF' }}>
+        <div className="text-lg font-medium mb-2" style={{ color: '#EAECEF' }}>
           {t('positionHistory.noHistory', language)}
         </div>
         <div style={{ color: '#848E9C' }}>
@@ -572,12 +572,6 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
             metricKey="sharpe_ratio"
             language={language}
           />
-        </div>
-      )}
-
-      {/* Overall Stats - Row 2: Advanced Metrics */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
           <StatCard
             icon="🔻"
             title={t('positionHistory.maxDrawdown', language)}
@@ -629,7 +623,7 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
         <div className="nofx-glass p-4">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">🏅</span>
-            <span className="font-semibold" style={{ color: '#EAECEF' }}>
+            <span className="font-medium" style={{ color: '#EAECEF' }}>
               {t('positionHistory.symbolPerformance', language)}
             </span>
           </div>
@@ -735,55 +729,55 @@ export function PositionHistory({ traderId, enabled = true }: PositionHistoryPro
             <thead>
               <tr className="fade-divider-b">
                 <th
-                  className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-left text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.symbol', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.entry', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.exit', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.qty', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.value', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.pnl', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.fee', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-center text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-center text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.duration', language)}
                 </th>
                 <th
-                  className="py-3 px-4 text-right text-xs font-semibold uppercase tracking-wider"
+                  className="py-3 px-4 text-right text-xs font-medium uppercase tracking-wider"
                   style={{ color: '#848E9C' }}
                 >
                   {t('positionHistory.closedAt', language)}

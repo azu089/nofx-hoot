@@ -16,7 +16,7 @@ export default function BrandHero() {
         <section className="relative w-full min-h-screen bg-nofx-bg text-nofx-text overflow-hidden flex flex-col pt-16">
 
             {/* Top Marquee */}
-            <div className="w-full bg-nofx-gold text-black font-bold py-2 border-y border-black z-20">
+            <div className="w-full bg-nofx-gold text-black font-medium py-2 border-y border-black z-20">
                 <Marquee speed={40}>
                     <span className="mx-8 text-sm md:text-base uppercase tracking-widest">NOFX AI TRADING • AUTOMATED WEALTH • DECENTRALIZED INTELLIGENCE • PUNK ETHOS •</span>
                     <span className="mx-8 text-sm md:text-base uppercase tracking-widest">NOFX AI TRADING • AUTOMATED WEALTH • DECENTRALIZED INTELLIGENCE • PUNK ETHOS •</span>
@@ -32,7 +32,7 @@ export default function BrandHero() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.8, ease: "circOut" }}
                     >
-                        <h1 className="text-6xl md:text-8xl lg:text-[7rem] font-black leading-[0.9] tracking-tighter mb-6">
+                        <h1 className="text-6xl md:text-8xl lg:text-[7rem] font-medium leading-[0.9] tracking-tighter mb-6">
                             AI TRADING<br />
                             <span className="text-nofx-gold">EVOLVED</span>
                         </h1>
@@ -41,13 +41,13 @@ export default function BrandHero() {
                             Autonomous trading agents. High-frequency execution.
                             <br />
                             Institutional-grade strategies for the
-                            <span className="text-white font-bold ml-2 bg-nofx-accent px-2 py-0.5">DEGENERATES</span>.
+                            <span className="text-white font-medium ml-2 bg-nofx-accent px-2 py-0.5">DEGENERATES</span>.
                         </p>
 
                         <div className="flex flex-wrap gap-4">
                             <button
                                 onClick={handleScroll}
-                                className="bg-nofx-gold text-black text-lg font-black px-8 py-4 uppercase tracking-wider hover:bg-white hover:scale-105 transition-all flex items-center gap-2 clip-path-slant"
+                                className="bg-nofx-gold text-black text-lg font-medium px-8 py-4 uppercase tracking-wider hover:bg-white hover:scale-105 transition-all flex items-center gap-2 clip-path-slant"
                                 style={{ clipPath: 'polygon(0 0, 100% 0, 95% 100%, 0% 100%)' }}
                             >
                                 Start Trading <ArrowRight className="w-6 h-6" />
@@ -57,7 +57,7 @@ export default function BrandHero() {
                                 href={OFFICIAL_LINKS.github}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="border-2 border-white/20 text-white text-lg font-bold px-8 py-4 uppercase tracking-wider hover:bg-white/10 hover:border-white transition-all flex items-center gap-2"
+                                className="border-2 border-white/20 text-white text-lg font-medium px-8 py-4 uppercase tracking-wider hover:bg-white/10 hover:border-white transition-all flex items-center gap-2"
                             >
                                 <Github className="w-5 h-5" /> Source
                             </a>

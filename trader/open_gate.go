@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package trader
 
 import (
@@ -115,6 +118,15 @@ func (g *OpenGate) RecordWin(traderKey string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.consecutiveLosses[traderKey] = 0
+}
+
+// IsInConsecutiveLossCooldown returns true when the trader is currently in
+// a consecutive-loss lockout period.
+func (g *OpenGate) IsInConsecutiveLossCooldown(traderKey string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	expiry, ok := g.lossLockUntil[traderKey]
+	return ok && time.Now().Before(expiry)
 }
 
 // CanPossiblyOpen is a fast pre-check: returns false only when opening is impossible

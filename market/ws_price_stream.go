@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package market
 
 // ws_price_stream.go — WebSocket real-time price stream.

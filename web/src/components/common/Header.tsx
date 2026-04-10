@@ -19,7 +19,7 @@ export function Header({ simple = false }: HeaderProps) {
               <img src="/icons/nofx.svg" alt="NoFx Logo" className="w-8 h-8" />
             </div>
             <div>
-              <h1 className="text-xl font-bold" style={{ color: '#EAECEF' }}>
+              <h1 className="text-xl font-medium" style={{ color: '#EAECEF' }}>
                 {t('appTitle', language)}
               </h1>
               {!simple && (
@@ -37,7 +37,7 @@ export function Header({ simple = false }: HeaderProps) {
           >
             <button
               onClick={() => setLanguage('zh')}
-              className="px-3 py-1.5 rounded text-xs font-semibold transition-all"
+              className="px-3 py-1.5 rounded text-xs font-medium transition-all"
               style={
                 language === 'zh'
                   ? { background: '#F0B90B', color: '#000' }
@@ -48,7 +48,7 @@ export function Header({ simple = false }: HeaderProps) {
             </button>
             <button
               onClick={() => setLanguage('en')}
-              className="px-3 py-1.5 rounded text-xs font-semibold transition-all"
+              className="px-3 py-1.5 rounded text-xs font-medium transition-all"
               style={
                 language === 'en'
                   ? { background: '#F0B90B', color: '#000' }
@@ -59,7 +59,7 @@ export function Header({ simple = false }: HeaderProps) {
             </button>
             <button
               onClick={() => setLanguage('id')}
-              className="px-3 py-1.5 rounded text-xs font-semibold transition-all"
+              className="px-3 py-1.5 rounded text-xs font-medium transition-all"
               style={
                 language === 'id'
                   ? { background: '#F0B90B', color: '#000' }

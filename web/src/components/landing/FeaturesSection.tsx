@@ -77,7 +77,7 @@ export default function FeaturesSection({ language }: FeaturesSectionProps) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
-          <h2 className="text-4xl lg:text-5xl font-bold mb-4" style={{ color: '#EAECEF' }}>
+          <h2 className="text-4xl lg:text-5xl font-medium mb-4" style={{ color: '#EAECEF' }}>
             {t('whyChooseNofx', language)}
           </h2>
           <p className="text-lg max-w-2xl mx-auto" style={{ color: '#848E9C' }}>
@@ -141,7 +141,7 @@ export default function FeaturesSection({ language }: FeaturesSectionProps) {
 
               {/* Text */}
               <h3
-                className="text-xl font-bold mb-3"
+                className="text-xl font-medium mb-3"
                 style={{ color: '#EAECEF' }}
               >
                 {feature.title}
@@ -184,7 +184,7 @@ export default function FeaturesSection({ language }: FeaturesSectionProps) {
               }}
             >
               <div
-                className="text-2xl font-bold mb-1"
+                className="text-2xl font-medium mb-1"
                 style={{
                   background: 'linear-gradient(135deg, #F0B90B 0%, #FCD535 100%)',
                   WebkitBackgroundClip: 'text',

@@ -434,7 +434,8 @@ export function TraderConfigModal({
                 </div>
               </div>
 
-              {/* Competition visibility */}
+              {/* Competition visibility — 竞技场页面已隐藏，配置入口一并隐藏 */}
+              {false && (
               <div>
                 <label className="text-xs text-white block mb-2">
                   {t('competitionDisplay', language)}
@@ -467,6 +468,7 @@ export function TraderConfigModal({
                     {t('hiddenInCompetition', language)}
                 </p>
               </div>
+              )}
 
               {/* Initial Balance (Edit mode only) */}
               {isEditMode && (

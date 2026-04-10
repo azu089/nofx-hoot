@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package portfolio
 
 // portfolio_manager.go — Portfolio-level risk monitoring and allocation.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package trader
 
 // auto_trader_hoot.go — HOOT integration helpers for the main trading loop.
@@ -296,6 +299,59 @@ func (at *AutoTrader) runPositionManagement(ctx *kernel.Context) []kernel.Decisi
 
 // ─── Gatekeeper Filtering ───────────────────────────────────────────────────
 
+// buildGatekeeperConfig creates a GatekeeperConfig from strategy config + adaptive state.
+// Centralises all adaptive overrides so both gateFilterDecisions and gateFilterCandidates
+// use the same config. This is where AdaptiveState's tightened thresholds take effect.
+func (at *AutoTrader) buildGatekeeperConfig(ctx *kernel.Context) kernel.GatekeeperConfig {
+	if at.strategyEngine == nil {
+		return kernel.DefaultGatekeeperConfig()
+	}
+	rc := at.strategyEngine.GetConfig().RiskControl
+	gateCfg := kernel.DefaultGatekeeperConfig()
+
+	// Static config values as baseline
+	gateCfg.MinRiskRewardRatio = rc.MinRiskRewardRatio
+	gateCfg.MinConfidence = rc.MinConfidence
+	gateCfg.StrategyMode = string(rc.Mode)
+	gateCfg.TraderID = at.id
+	gateCfg.MinHoldSeconds = at.strategyEngine.GetConfig().MinHoldSeconds
+
+	// Adaptive overrides: use tightened values when system is underperforming
+	if at.adaptiveState != nil {
+		gateCfg.SymbolBlacklist = at.adaptiveState.BuildBlacklist()
+		if effConf := at.adaptiveState.EffectiveMinConfidence(); effConf > gateCfg.MinConfidence {
+			gateCfg.MinConfidence = effConf
+		}
+		if effRR := at.adaptiveState.EffectiveMinRR(); effRR > gateCfg.MinRiskRewardRatio {
+			gateCfg.MinRiskRewardRatio = effRR
+		}
+		effCooldown := at.adaptiveState.EffectiveCooldown()
+		if at.openGate != nil {
+			gateCfg.InCooldown = at.openGate.IsInConsecutiveLossCooldown(at.id)
+		}
+		gateCfg.MaxConsecutiveLosses = effCooldown
+	}
+
+	// PositionMap: lifecycle fallback for min-hold tracking
+	if ctx != nil && len(ctx.Positions) > 0 {
+		posMap := make(map[string]*kernel.PositionInfo, len(ctx.Positions))
+		for i := range ctx.Positions {
+			p := &ctx.Positions[i]
+			posMap[p.Symbol] = p
+		}
+		gateCfg.PositionMap = posMap
+	}
+
+	// Signal timeframe
+	if cfg := at.strategyEngine.GetConfig(); cfg.Indicators.Klines.PrimaryTimeframe != "" {
+		gateCfg.SignalTimeframe = cfg.Indicators.Klines.PrimaryTimeframe
+	} else {
+		gateCfg.SignalTimeframe = "1h"
+	}
+
+	return gateCfg
+}
+
 // gateFilterDecisions runs the Gatekeeper on all decisions and filters out rejected ones.
 // Safe to call even when ctx.Signals is nil — a zero-value MarketSignals is used as fallback.
 func (at *AutoTrader) gateFilterDecisions(decisions []kernel.Decision, ctx *kernel.Context) []kernel.Decision {
@@ -315,32 +371,8 @@ func (at *AutoTrader) gateFilterDecisions(decisions []kernel.Decision, ctx *kern
 		ctx.Signals = kernel.NewMarketSignals()
 	}
 
-	// Build GatekeeperConfig from strategy config
-	rc := at.strategyEngine.GetConfig().RiskControl
-	gateCfg := kernel.DefaultGatekeeperConfig()
-	gateCfg.MinRiskRewardRatio = rc.MinRiskRewardRatio
-	gateCfg.MinConfidence = rc.MinConfidence
-	gateCfg.TraderID = at.id
-	gateCfg.MinHoldSeconds = at.strategyEngine.GetConfig().MinHoldSeconds
-
-	// PositionMap: lifecycle 丢失时的 held 时间 fallback 来源（重启场景）
-	if len(ctx.Positions) > 0 {
-		posMap := make(map[string]*kernel.PositionInfo, len(ctx.Positions))
-		for i := range ctx.Positions {
-			p := &ctx.Positions[i]
-			posMap[p.Symbol] = p
-		}
-		gateCfg.PositionMap = posMap
-	}
-
-	primaryTF := "1h"
-	if at.strategyEngine != nil {
-		cfg := at.strategyEngine.GetConfig()
-		if cfg.Indicators.Klines.PrimaryTimeframe != "" {
-			primaryTF = cfg.Indicators.Klines.PrimaryTimeframe
-		}
-	}
-	gateCfg.SignalTimeframe = primaryTF
+	// Build GatekeeperConfig from strategy config, with adaptive overrides
+	gateCfg := at.buildGatekeeperConfig(ctx)
 
 	// Convert decisions to CandidateDecisions for Gatekeeper
 	candidates := make([]kernel.CandidateDecision, len(decisions))
@@ -364,6 +396,29 @@ func (at *AutoTrader) gateFilterDecisions(decisions []kernel.Decision, ctx *kern
 	}
 
 	return filtered
+}
+
+// gateFilterCandidates runs Gatekeeper on CandidateDecision slice directly.
+// Used by the Rules Engine (institutional) pipeline where decisions are already
+// in candidate form. Returns only candidates that passed.
+func (at *AutoTrader) gateFilterCandidates(candidates []kernel.CandidateDecision, ctx *kernel.Context) []kernel.CandidateDecision {
+	if len(candidates) == 0 || ctx == nil || at.strategyEngine == nil {
+		return candidates
+	}
+	if ctx.Signals == nil {
+		ctx.Signals = kernel.NewMarketSignals()
+	}
+
+	gateCfg := at.buildGatekeeperConfig(ctx)
+
+	gated := kernel.GateAll(candidates, ctx.Signals, ctx.MarketDataMap, gateCfg)
+	var passed []kernel.CandidateDecision
+	for _, c := range gated {
+		if c.GatekeeperPassed {
+			passed = append(passed, c)
+		}
+	}
+	return passed
 }
 
 // ─── Risk Guard Integration ─────────────────────────────────────────────────

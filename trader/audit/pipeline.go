@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 // Package audit 提供结构化决策审计管道
 //
 // 设计目标:

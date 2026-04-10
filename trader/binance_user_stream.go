@@ -1,3 +1,6 @@
+// Copyright (c) 2026 nofx contributors
+// License: AGPL-3.0
+
 package trader
 
 // binance_user_stream.go — Binance Futures WebSocket user data stream.
