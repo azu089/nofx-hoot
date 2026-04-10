@@ -275,7 +275,7 @@ export default function EcosystemPage() {
           <h1 className="text-2xl font-bold text-white mb-3">生态中心</h1>
           <p className="text-[#94A3B8] mb-8">敬请期待，即将上线</p>
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/trading')}
             className="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
           >
             返回首页

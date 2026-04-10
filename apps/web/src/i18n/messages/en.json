@@ -521,7 +521,8 @@
     "aiResearch": "AI Research",
     "aiTrading": "AI Trading",
     "aiSettings": "LLM API KEY",
-    "installApp": "Install App"
+    "installApp": "Install App",
+    "positions": "Positions"
   },
   "airdrop": {
     "register": "Registration Bonus",
@@ -2343,6 +2344,170 @@
         "contrarian": "Contrarian Analyst",
         "risk_manager": "Risk Manager"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "nofx Preview",
+    "subtitle": "HOOT business layer proxying nofx trading core (development preview, not a public entry)",
+    "traderSelect": "Select Trader",
+    "accountCard": {
+      "title": "Account Snapshot"
+    },
+    "positionsCard": {
+      "title": "Open Positions",
+      "symbol": "Symbol",
+      "side": "Side",
+      "size": "Size",
+      "entryPrice": "Entry",
+      "unrealized": "Unrealized PnL"
+    },
+    "decisionsCard": {
+      "title": "Latest Decisions"
+    },
+    "empty": {
+      "noTraders": "No traders created in nofx yet",
+      "selectTrader": "Select a trader first",
+      "noPositions": "No open positions",
+      "noDecisions": "No decisions yet"
+    },
+    "errors": {
+      "tradersFailed": "Failed to load traders",
+      "accountFailed": "Failed to load account",
+      "positionsFailed": "Failed to load positions",
+      "decisionsFailed": "Failed to load decisions"
+    }
+  },
+  "nofxDashboard": {
+    "title": "nofx Dashboard",
+    "subtitle": "Live view of the AI trading core",
+    "switchToLegacy": "Switch to legacy",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "Equity",
+      "dailyPnl": "Daily PnL",
+      "totalPnl": "Total PnL",
+      "winRate": "Win Rate"
+    },
+    "equity": {
+      "title": "Equity Curve (7 days)"
+    },
+    "positions": {
+      "title": "Open Positions",
+      "symbol": "Symbol",
+      "side": "Side",
+      "size": "Size",
+      "entry": "Entry",
+      "unrealized": "Unrealized PnL"
+    },
+    "empty": {
+      "noTraders": "No traders created yet",
+      "selectTrader": "Select a trader first",
+      "noEquity": "No equity data",
+      "noPositions": "No open positions"
+    },
+    "errors": {
+      "tradersFailed": "Failed to load traders",
+      "equityFailed": "Failed to load equity curve",
+      "positionsFailed": "Failed to load positions"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI Trading",
+    "subtitle": "Manage Traders, strategies, models and exchanges in the nofx core",
+    "readOnlyBadge": "Read-only preview (writes coming in P6b-2)",
+    "switchToLegacy": "Switch to legacy",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "Strategy",
+      "model": "AI Model",
+      "status": "Status",
+      "actions": "Actions",
+      "running": "Running",
+      "stopped": "Stopped",
+      "empty": "No traders yet"
+    },
+    "strategies": {
+      "title": "Strategies",
+      "empty": "No strategies",
+      "active": "Active"
+    },
+    "models": {
+      "title": "AI Models",
+      "empty": "No AI models configured"
+    },
+    "exchanges": {
+      "title": "Exchanges",
+      "empty": "No exchange accounts"
+    },
+    "actions": {
+      "start": "Start",
+      "stop": "Stop",
+      "delete": "Delete",
+      "createTrader": "Create Trader"
+    },
+    "createCard": {
+      "title": "Create / Configure",
+      "body": "Creating traders, AI key configuration and exchange bindings will land in P6b-2 with HOOT subscription gating and confirmation dialogs."
+    },
+    "errors": {
+      "tradersFailed": "Failed to load traders",
+      "strategiesFailed": "Failed to load strategies",
+      "modelsFailed": "Failed to load AI models",
+      "exchangesFailed": "Failed to load exchanges"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "Positions",
+    "subtitle": "Live positions from the nofx trading core",
+    "readOnlyBadge": "Read-only preview (manual close coming in P6b-2)",
+    "switchToLegacy": "Switch to legacy",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "Account Summary"
+    },
+    "openCard": {
+      "title": "Open Positions",
+      "countSuffix": "open"
+    },
+    "cols": {
+      "symbol": "Symbol",
+      "side": "Side",
+      "size": "Size",
+      "entry": "Entry",
+      "unrealized": "Unrealized PnL",
+      "actions": "Actions"
+    },
+    "actions": {
+      "close": "Close"
+    },
+    "empty": {
+      "noTraders": "No traders created yet",
+      "selectTrader": "Select a trader first",
+      "noPositions": "No open positions"
+    },
+    "errors": {
+      "tradersFailed": "Failed to load traders",
+      "accountFailed": "Failed to load account",
+      "positionsFailed": "Failed to load positions"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

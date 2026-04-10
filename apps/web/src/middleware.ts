@@ -25,18 +25,13 @@ const PUBLIC_PREFIXES = [
 
 // 需要用户认证的路由前缀
 const USER_PROTECTED_PREFIXES = [
-  '/dashboard',
   '/wallet',
   '/trading',
-  '/ai',
   '/settings',
   '/profile',
-  '/strategies',
   '/referral',
   '/subscription',
   '/ecosystem',
-  '/exchanges',
-  '/airdrop',
   '/notifications',
   '/about',
   '/help',

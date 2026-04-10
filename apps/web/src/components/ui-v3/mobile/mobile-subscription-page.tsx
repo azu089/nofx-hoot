@@ -117,15 +117,15 @@ export function MobileSubscriptionPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
+    <div className="min-h-screen text-white pb-20">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label="返回"
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
@@ -137,30 +137,30 @@ export function MobileSubscriptionPage({
       <div className="px-4 pt-4 space-y-4">
         {/* Pro 推荐卡片 (放在顶部) */}
         <div className={cn(
-          "relative rounded-2xl overflow-hidden border shadow-[0_8px_32px_rgba(0,0,0,0.5)]",
+          "relative rounded-2xl overflow-hidden border",
           isPro
-            ? 'bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border-cyan-500/30'
-            : 'bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border-cyan-500/30'
+            ? 'bg-gradient-to-br from-emerald-500/10 to-blue-500/10 border-emerald-500/30'
+            : 'bg-gradient-to-br from-emerald-500/10 to-blue-500/10 border-emerald-500/30'
         )}>
           {/* 推荐标签 */}
-          <div className="absolute top-0 right-0 px-2.5 py-1 bg-cyan-500 text-white text-[10px] font-bold rounded-bl-lg">
+          <div className="absolute top-0 right-0 px-2.5 py-1 bg-emerald-500 text-white text-[10px] font-bold rounded-bl-lg">
             推荐
           </div>
 
           <div className="p-4">
             {/* 头部 */}
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#06B6D4] to-[#0891B2] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-600 flex items-center justify-center">
                 <Crown className="w-5 h-5 text-white" />
               </div>
               <div>
                 <h3 className="text-base font-semibold">Pro 专业版</h3>
-                <p className="text-xs text-cyan-400">解锁全部功能</p>
+                <p className="text-xs text-emerald-400">解锁全部功能</p>
               </div>
             </div>
 
             {/* 计费周期切换 */}
-            <div className="flex gap-1 p-1 bg-[#0A0A0F] rounded-xl mb-3">
+            <div className="flex gap-1 p-1 bg-[#05090E] rounded-xl mb-3">
               {(['monthly', 'quarterly', 'yearly'] as BillingCycle[]).map((cycle) => {
                 const labels: Record<BillingCycle, string> = {
                   monthly: '月付',
@@ -175,7 +175,7 @@ export function MobileSubscriptionPage({
                     className={cn(
                       "flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all",
                       billingCycle === cycle
-                        ? 'bg-[#06B6D4] text-white'
+                        ? 'bg-emerald-400 text-white'
                         : 'text-[#9090A0]'
                     )}
                   >
@@ -205,7 +205,7 @@ export function MobileSubscriptionPage({
             <div className="space-y-2 mb-4">
               {proFeatures.map((feature, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                   <span className="text-xs text-white">{feature.text}</span>
                 </div>
               ))}
@@ -214,7 +214,7 @@ export function MobileSubscriptionPage({
             {/* 操作按钮 */}
             {isPro ? (
               <div className="space-y-2">
-                <div className="w-full py-2.5 rounded-xl text-sm font-medium text-center bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                <div className="w-full py-2.5 rounded-xl text-sm font-medium text-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   当前计划 — Pro
                 </div>
                 {currentPeriodEnd && (
@@ -225,7 +225,7 @@ export function MobileSubscriptionPage({
                 <button
                   type="button"
                   onClick={handleUpgrade}
-                  className="w-full py-2 rounded-xl text-xs font-medium bg-[#1A1A24] text-[#94A3B8] hover:bg-[#1E1E2E]"
+                  className="w-full py-2 rounded-xl text-xs font-medium bg-white/5 text-[#94A3B8] hover:bg-white/5"
                 >
                   续费 {selectedPlan?.name}
                 </button>
@@ -234,7 +234,7 @@ export function MobileSubscriptionPage({
               <button
                 type="button"
                 onClick={handleUpgrade}
-                className="w-full py-2.5 rounded-xl text-sm font-medium bg-cyan-500 hover:bg-cyan-600 text-white transition-all flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 rounded-xl text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition-all flex items-center justify-center gap-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 升级到 Pro — ${selectedPlan?.price}
@@ -245,15 +245,15 @@ export function MobileSubscriptionPage({
 
         {/* Free 卡片 */}
         <div className={cn(
-          "rounded-2xl overflow-hidden border shadow-[0_8px_32px_rgba(0,0,0,0.5)]",
+          "rounded-2xl overflow-hidden border",
           !isPro
-            ? 'bg-[#12121A]/30 border-[#06B6D4]/20'
-            : 'bg-[#12121A]/30 border-[#1E1E2E]'
+            ? 'bg-[#0B1520]/30 border-emerald-400/20'
+            : 'bg-[#0B1520]/30 border-white/10'
         )}>
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1A1A24] flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
                   <Shield className="w-5 h-5 text-gray-400" />
                 </div>
                 <div>
@@ -279,8 +279,8 @@ export function MobileSubscriptionPage({
             <div className={cn(
               "w-full py-2.5 rounded-xl text-sm font-medium text-center",
               !isPro
-                ? 'bg-[#1E1E2E] text-[#94A3B8]'
-                : 'bg-[#1A1A24] text-[#64748B]'
+                ? 'bg-white/5 text-[#94A3B8]'
+                : 'bg-white/5 text-[#64748B]'
             )}>
               {!isPro ? '当前计划' : '免费版'}
             </div>
@@ -290,9 +290,9 @@ export function MobileSubscriptionPage({
         {/* 常见问题 */}
         <div className="pt-2">
           <h2 className="text-base font-semibold text-white mb-3">常见问题</h2>
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl overflow-hidden">
+          <div className="bubble-card relative rounded-xl overflow-hidden">
             {faqs.map((faq, index) => (
-              <div key={index} className={index < faqs.length - 1 ? 'border-b border-[#1E1E2E]' : ''}>
+              <div key={index} className={index < faqs.length - 1 ? 'border-b border-white/10' : ''}>
                 <button
                   type="button"
                   onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
@@ -300,7 +300,7 @@ export function MobileSubscriptionPage({
                 >
                   <span className="text-sm font-medium text-white pr-4">{faq.question}</span>
                   {expandedFaq === index
-                    ? <ChevronUp className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    ? <ChevronUp className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                     : <ChevronDown className="w-4 h-4 text-[#64748B] flex-shrink-0" />
                   }
                 </button>
@@ -323,9 +323,9 @@ export function MobileSubscriptionPage({
             onClick={handleCloseSheet}
           />
 
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl animate-slide-up">
+          <div className="relative w-full bg-[#0B1520] rounded-t-3xl border-t border-white/10 shadow-2xl animate-slide-up">
             <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-[#1E1E2E] rounded-full" />
+              <div className="w-10 h-1 bg-white/5 rounded-full" />
             </div>
 
             <div className="p-6 pb-8">
@@ -336,7 +336,7 @@ export function MobileSubscriptionPage({
                 <button
                   onClick={handleCloseSheet}
                   disabled={isProcessing}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1A1A24] transition-colors disabled:opacity-50"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors disabled:opacity-50"
                   aria-label="关闭"
                 >
                   <X className="w-5 h-5 text-[#94A3B8]" />
@@ -344,7 +344,7 @@ export function MobileSubscriptionPage({
               </div>
 
               {/* 套餐信息 */}
-              <div className="bg-[#1A1A24] rounded-xl p-4 mb-4">
+              <div className="bg-white/5 rounded-xl p-4 mb-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="text-base font-semibold text-white mb-1">{selectedPlan.name}</div>
@@ -365,9 +365,9 @@ export function MobileSubscriptionPage({
               </div>
 
               {/* USDT 余额 */}
-              <div className="flex items-center justify-between bg-[#1A1A24] rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between bg-white/5 rounded-xl p-4 mb-6">
                 <div className="flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-cyan-400" />
+                  <Wallet className="w-4 h-4 text-emerald-400" />
                   <span className="text-sm text-[#94A3B8]">USDT 余额</span>
                 </div>
                 <span className="text-base font-semibold text-white">${usdtBalance}</span>
@@ -397,7 +397,7 @@ export function MobileSubscriptionPage({
                 type="button"
                 onClick={handleConfirmSubscribe}
                 disabled={isProcessing || isSuccess || parseFloat(usdtBalance) < parseFloat(selectedPlan.price)}
-                className="w-full py-3.5 rounded-xl text-base font-medium transition-all bg-cyan-500 hover:bg-cyan-600 text-white disabled:bg-[#1E1E2E] disabled:text-[#94A3B8] disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl text-base font-medium transition-all bg-emerald-500 hover:bg-emerald-600 text-white disabled:bg-white/5 disabled:text-[#94A3B8] disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isProcessing ? (
                   <>

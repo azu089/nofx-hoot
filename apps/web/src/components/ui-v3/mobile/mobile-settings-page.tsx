@@ -230,15 +230,15 @@ export function MobileSettingsPage({
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-6">
+    <div className="min-h-screen pb-6">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label={tCommon('back')}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
@@ -249,8 +249,8 @@ export function MobileSettingsPage({
 
       <div className="px-4 pt-4 space-y-4">
         {/* 账户设置 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="divide-y divide-[#1E1E2E]/50">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="divide-y divide-white/10/50">
             {/* 修改用户名 */}
             <button
               type="button"
@@ -279,8 +279,8 @@ export function MobileSettingsPage({
               className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-cyan-500/10 rounded-xl flex items-center justify-center">
-                  <Lock className="w-4 h-4 text-cyan-500" />
+                <div className="w-9 h-9 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                  <Lock className="w-4 h-4 text-emerald-500" />
                 </div>
                 <span className="text-sm text-white">{t('changePassword')}</span>
               </div>
@@ -290,8 +290,8 @@ export function MobileSettingsPage({
             {/* 绑定邮箱 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-cyan-500/10 rounded-xl flex items-center justify-center">
-                  <Mail className="w-4 h-4 text-cyan-500" />
+                <div className="w-9 h-9 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                  <Mail className="w-4 h-4 text-emerald-500" />
                 </div>
                 <div>
                   <span className="text-sm text-white">{tAuth('email')}</span>
@@ -304,19 +304,19 @@ export function MobileSettingsPage({
         </div>
 
         {/* 账户绑定 - 赚取 HOOT */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#1E1E2E]/50 flex items-center justify-between">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/10/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Link2 className="w-4 h-4 text-[#9090A0]" />
               <span className="text-sm text-white">{t('accountBinding')}</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
-              <Gift className="w-3.5 h-3.5 text-[#06B6D4]" />
-              <span className="text-[#06B6D4]">{t('bindToEarn')}</span>
+              <Gift className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-emerald-400">{t('bindToEarn')}</span>
             </div>
           </div>
 
-          <div className="divide-y divide-[#1E1E2E]/50">
+          <div className="divide-y divide-white/10/50">
             {/* 绑定 Telegram */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
@@ -328,7 +328,7 @@ export function MobileSettingsPage({
                   {bindingStatus.telegram?.bound ? (
                     <p className="text-xs text-[#22C55E]">@{bindingStatus.telegram.username || 'user'}</p>
                   ) : (
-                    <p className="text-xs text-[#06B6D4]">+{BIND_REWARDS.telegram} HOOT</p>
+                    <p className="text-xs text-emerald-400">+{BIND_REWARDS.telegram} HOOT</p>
                   )}
                 </div>
               </div>
@@ -351,15 +351,15 @@ export function MobileSettingsPage({
             {/* 绑定钱包 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#06B6D4]/20 flex items-center justify-center">
-                  <Wallet className="w-4 h-4 text-[#06B6D4]" />
+                <div className="w-9 h-9 rounded-xl bg-emerald-400/15 flex items-center justify-center">
+                  <Wallet className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div>
                   <span className="text-sm text-white">{t('web3Wallet')}</span>
                   {bindingStatus.wallet?.bound ? (
                     <p className="text-xs text-[#22C55E]">{bindingStatus.wallet.address?.slice(0, 6)}...{bindingStatus.wallet.address?.slice(-4)}</p>
                   ) : (
-                    <p className="text-xs text-[#06B6D4]">+{BIND_REWARDS.wallet} HOOT</p>
+                    <p className="text-xs text-emerald-400">+{BIND_REWARDS.wallet} HOOT</p>
                   )}
                 </div>
               </div>
@@ -372,7 +372,7 @@ export function MobileSettingsPage({
                 <button
                   type="button"
                   onClick={onBindWallet}
-                  className="px-3 py-1.5 text-xs font-medium bg-[#06B6D4] hover:bg-[#0891B2] text-white rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium bg-emerald-400 hover:bg-emerald-500 text-white rounded-lg transition-colors"
                 >
                   {t('bindNow')}
                 </button>
@@ -382,15 +382,15 @@ export function MobileSettingsPage({
             {/* 邮箱验证 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#8B5CF6]/20 flex items-center justify-center">
-                  <Mail className="w-4 h-4 text-[#8B5CF6]" />
+                <div className="w-9 h-9 rounded-xl bg-emerald-400/15 flex items-center justify-center">
+                  <Mail className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div>
                   <span className="text-sm text-white">{tAuth('verifyEmail')}</span>
                   {bindingStatus.email?.verified ? (
                     <p className="text-xs text-[#22C55E]">{bindingStatus.email.address}</p>
                   ) : (
-                    <p className="text-xs text-[#06B6D4]">+{BIND_REWARDS.email} HOOT</p>
+                    <p className="text-xs text-emerald-400">+{BIND_REWARDS.email} HOOT</p>
                   )}
                 </div>
               </div>
@@ -403,7 +403,7 @@ export function MobileSettingsPage({
                 <button
                   type="button"
                   onClick={openEmailBindModal}
-                  className="px-3 py-1.5 text-xs font-medium bg-[#8B5CF6] hover:bg-[#7C3AED] text-white rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors"
                 >
                   {t('bindNow')}
                 </button>
@@ -413,12 +413,12 @@ export function MobileSettingsPage({
         </div>
 
         {/* 偏好设置 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="divide-y divide-[#1E1E2E]/50">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="divide-y divide-white/10/50">
             {/* 语言 */}
             <div className="flex items-center justify-between p-4 relative">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-[#1A1A24] rounded-xl flex items-center justify-center">
+                <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center">
                   <Globe className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm text-white">{t('language')}</span>
@@ -427,14 +427,14 @@ export function MobileSettingsPage({
                 <button
                   type="button"
                   onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-[#1A1A24] border border-[#1E1E2E] hover:bg-[#2A2A3A] rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg transition-colors"
                 >
                   <span className="text-base">{localeNames[locale]?.flag}</span>
                   <span className="text-sm text-white">{localeNames[locale]?.name}</span>
                   <ChevronDown className={`w-4 h-4 text-[#94A3B8] transition-transform ${showLanguageDropdown ? 'rotate-180' : ''}`} />
                 </button>
                 {showLanguageDropdown && (
-                  <div className="absolute right-0 mt-2 w-44 max-h-[280px] overflow-y-auto bg-[#1A1A24] border border-[#1E1E2E] rounded-lg shadow-xl z-50">
+                  <div className="absolute right-0 mt-2 w-44 max-h-[280px] overflow-y-auto bg-white/5 border border-white/10 rounded-lg shadow-xl z-50">
                     {languages.map(lang => (
                       <button
                         key={lang.code}
@@ -443,8 +443,8 @@ export function MobileSettingsPage({
                           setLocale(lang.code); // 真实切换语言，会触发页面刷新
                           setShowLanguageDropdown(false);
                         }}
-                        className={`w-full px-3 py-2.5 text-left text-sm hover:bg-[#2A2A3A] transition-colors flex items-center gap-2 ${
-                          locale === lang.code ? 'text-cyan-400 bg-cyan-500/10' : 'text-white'
+                        className={`w-full px-3 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-2 ${
+                          locale === lang.code ? 'text-emerald-400 bg-emerald-500/10' : 'text-white'
                         }`}
                       >
                         <span className="text-base">{lang.flag}</span>
@@ -460,7 +460,7 @@ export function MobileSettingsPage({
             {/* 主题 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-[#1A1A24] rounded-xl flex items-center justify-center">
+                <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center">
                   <Palette className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm text-white">{t('theme')}</span>
@@ -477,8 +477,8 @@ export function MobileSettingsPage({
                     onClick={() => setTheme(item.value)}
                     className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                       theme === item.value
-                        ? "bg-cyan-500 text-white"
-                        : "bg-[#1A1A24] text-[#94A3B8]"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-white/5 text-[#94A3B8]"
                     }`}
                   >
                     {item.label}
@@ -490,7 +490,7 @@ export function MobileSettingsPage({
             {/* 推送通知 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-[#1A1A24] rounded-xl flex items-center justify-center">
+                <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center">
                   <Bell className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm text-white">{t('pushNotifications')}</span>
@@ -504,7 +504,7 @@ export function MobileSettingsPage({
             {/* 邮件通知 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-[#1A1A24] rounded-xl flex items-center justify-center">
+                <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center">
                   <Mail className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm text-white">{t('emailNotifications')}</span>
@@ -518,7 +518,7 @@ export function MobileSettingsPage({
             {/* 交易提醒 */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-[#1A1A24] rounded-xl flex items-center justify-center">
+                <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center">
                   <Bell className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm text-white">{t('tradingAlerts')}</span>
@@ -539,14 +539,14 @@ export function MobileSettingsPage({
             className="absolute inset-0 bg-black/80"
             onClick={() => setIsPasswordModalOpen(false)}
           />
-          <div className="relative w-full max-w-md bg-[#12121A] rounded-2xl p-5">
+          <div className="relative w-full max-w-md bg-[#0B1520] rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-white">{t('changePassword')}</h2>
               <button
                 type="button"
                 onClick={() => setIsPasswordModalOpen(false)}
                 aria-label={tCommon('cancel')}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1A1A24]"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5"
               >
                 <X className="w-5 h-5 text-[#94A3B8]" />
               </button>
@@ -556,34 +556,34 @@ export function MobileSettingsPage({
                 type="password"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
-                className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-cyan-500/50"
+                className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-emerald-500/50"
                 placeholder={t('currentPassword')}
               />
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-cyan-500/50"
+                className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-emerald-500/50"
                 placeholder={t('newPassword')}
               />
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-cyan-500/50"
+                className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-emerald-500/50"
                 placeholder={t('confirmNewPassword')}
               />
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsPasswordModalOpen(false)}
-                  className="flex-1 py-3 rounded-xl border border-[#1E1E2E] text-sm text-white font-medium hover:bg-[#1A1A24]"
+                  className="flex-1 py-3 rounded-xl border border-white/10 text-sm text-white font-medium hover:bg-white/5"
                 >
                   {tCommon('cancel')}
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 rounded-xl bg-cyan-500 text-sm text-white font-medium hover:bg-cyan-600"
+                  className="flex-1 py-3 rounded-xl bg-emerald-500 text-sm text-white font-medium hover:bg-emerald-600"
                 >
                   {tCommon('save')}
                 </button>
@@ -600,14 +600,14 @@ export function MobileSettingsPage({
             className="absolute inset-0 bg-black/80"
             onClick={() => setIsUsernameModalOpen(false)}
           />
-          <div className="relative w-full max-w-md bg-[#12121A] rounded-2xl p-5">
+          <div className="relative w-full max-w-md bg-[#0B1520] rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-white">{tAuth('username')}</h2>
               <button
                 type="button"
                 onClick={() => setIsUsernameModalOpen(false)}
                 aria-label={tCommon('cancel')}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1A1A24]"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5"
               >
                 <X className="w-5 h-5 text-[#94A3B8]" />
               </button>
@@ -618,7 +618,7 @@ export function MobileSettingsPage({
                   type="text"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
-                  className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
+                  className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
                   placeholder={tAuth('usernamePlaceholder')}
                   minLength={3}
                   maxLength={20}
@@ -628,7 +628,7 @@ export function MobileSettingsPage({
                 <button
                   type="button"
                   onClick={() => setIsUsernameModalOpen(false)}
-                  className="flex-1 py-3 rounded-xl border border-[#1E1E2E] text-sm text-white font-medium hover:bg-[#1A1A24]"
+                  className="flex-1 py-3 rounded-xl border border-white/10 text-sm text-white font-medium hover:bg-white/5"
                 >
                   {tCommon('cancel')}
                 </button>
@@ -652,7 +652,7 @@ export function MobileSettingsPage({
             className="absolute inset-0 bg-black/80"
             onClick={() => setIsEmailBindModalOpen(false)}
           />
-          <div className="relative w-full max-w-md bg-[#12121A] rounded-2xl p-5">
+          <div className="relative w-full max-w-md bg-[#0B1520] rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-white">
                 {emailBindStep === 1 ? t('bindEmail') : tAuth('verifyEmail')}
@@ -661,7 +661,7 @@ export function MobileSettingsPage({
                 type="button"
                 onClick={() => setIsEmailBindModalOpen(false)}
                 aria-label="关闭"
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1A1A24]"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5"
               >
                 <X className="w-5 h-5 text-[#94A3B8]" />
               </button>
@@ -674,7 +674,7 @@ export function MobileSettingsPage({
                   type="email"
                   value={emailBindEmail}
                   onChange={(e) => setEmailBindEmail(e.target.value)}
-                  className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
+                  className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
                   placeholder={t('enterEmailAddress')}
                   autoComplete="email"
                 />
@@ -682,7 +682,7 @@ export function MobileSettingsPage({
                   type="password"
                   value={emailBindPassword}
                   onChange={(e) => setEmailBindPassword(e.target.value)}
-                  className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
+                  className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
                   placeholder={t('setPasswordHint')}
                   autoComplete="new-password"
                 />
@@ -690,14 +690,14 @@ export function MobileSettingsPage({
                   <button
                     type="button"
                     onClick={() => setIsEmailBindModalOpen(false)}
-                    className="flex-1 py-3 rounded-xl border border-[#1E1E2E] text-sm text-white font-medium hover:bg-[#1A1A24]"
+                    className="flex-1 py-3 rounded-xl border border-white/10 text-sm text-white font-medium hover:bg-white/5"
                   >
                     {tCommon('cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={emailBindLoading || !emailBindEmail || !emailBindPassword}
-                    className="flex-1 py-3 rounded-xl bg-[#8B5CF6] text-sm text-white font-medium hover:bg-[#7C3AED] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 rounded-xl bg-emerald-500 text-sm text-white font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {emailBindLoading ? tCommon('loading') : t('sendCode')}
                   </button>
@@ -712,7 +712,7 @@ export function MobileSettingsPage({
                   maxLength={6}
                   value={emailBindCode}
                   onChange={(e) => setEmailBindCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white text-center tracking-[0.5em] placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
+                  className="w-full bg-[#05090E] border border-white/10 rounded-xl px-4 py-3 text-sm text-white text-center tracking-[0.5em] placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
                   placeholder={tCommon('enterEmailCode')}
                   autoComplete="one-time-code"
                 />
@@ -721,14 +721,14 @@ export function MobileSettingsPage({
                     type="button"
                     onClick={handleResendCode}
                     disabled={emailBindCountdown > 0}
-                    className="flex-1 py-3 rounded-xl border border-[#1E1E2E] text-sm text-[#94A3B8] font-medium hover:bg-[#1A1A24] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 rounded-xl border border-white/10 text-sm text-[#94A3B8] font-medium hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {emailBindCountdown > 0 ? t('resendAfter', { seconds: emailBindCountdown }) : t('resendCode')}
                   </button>
                   <button
                     type="submit"
                     disabled={emailBindLoading || emailBindCode.length !== 6}
-                    className="flex-1 py-3 rounded-xl bg-[#8B5CF6] text-sm text-white font-medium hover:bg-[#7C3AED] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 rounded-xl bg-emerald-500 text-sm text-white font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {emailBindLoading ? tCommon('loading') : tCommon('confirm')}
                   </button>

@@ -62,9 +62,9 @@ const alertColors: Record<string, { bg: string; border: string; icon: string }> 
     icon: 'text-[#22C55E]'
   },
   tip: {
-    bg: 'bg-cyan-500/10',
-    border: 'border-cyan-500/30',
-    icon: 'text-cyan-500'
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+    icon: 'text-emerald-500'
   }
 }
 
@@ -78,15 +78,15 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
   // 如果文章不存在，显示错误状态
   if (!article) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] pb-20">
+      <div className="min-h-screen pb-20">
         {/* 顶部导航 */}
-        <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+        <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
           <div className="flex items-center justify-between px-4 h-14">
             <button
               type="button"
               onClick={onBack}
               aria-label={t('back')}
-              className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-white" />
             </button>
@@ -105,7 +105,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
           <button
             type="button"
             onClick={onBack}
-            className="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium rounded-xl transition-colors"
+            className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-xl transition-colors"
           >
             {t('backToHelp')}
           </button>
@@ -131,7 +131,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
             <ul key={elements.length} className="space-y-2 mb-3">
               {currentList.map((item, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className="text-cyan-500 mt-1">•</span>
+                  <span className="text-emerald-500 mt-1">•</span>
                   <span className="flex-1 text-[#94A3B8]">{item}</span>
                 </li>
               ))}
@@ -142,7 +142,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
             <ol key={elements.length} className="space-y-2 mb-3">
               {currentList.map((item, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className="text-cyan-500 font-medium mt-0.5">{i + 1}.</span>
+                  <span className="text-emerald-500 font-medium mt-0.5">{i + 1}.</span>
                   <span className="flex-1 text-[#94A3B8]">{item}</span>
                 </li>
               ))}
@@ -222,7 +222,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
       return (
         <div
           key={index}
-          className={`glass-border-glow relative ${alertColor.bg} backdrop-blur-[72px] border ${alertColor.border} rounded-2xl p-4`}
+          className={`bubble-card relative ${alertColor.bg} border ${alertColor.border} rounded-2xl p-4`}
         >
           <div className="flex items-start gap-3 mb-3">
             <div className={`w-8 h-8 ${alertColor.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
@@ -239,10 +239,10 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
     return (
       <div
         key={index}
-        className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4"
+        className="bubble-card relative rounded-2xl p-4"
       >
         <div className="flex items-start gap-3 mb-3">
-          <span className="text-cyan-500 font-semibold text-sm">{index + 1}.</span>
+          <span className="text-emerald-500 font-semibold text-sm">{index + 1}.</span>
           <h3 className="text-sm font-semibold text-white flex-1">{sectionTitle}</h3>
         </div>
         <div className="pl-6">{renderContent(sectionContent)}</div>
@@ -256,21 +256,21 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
     .slice(0, 3)
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-20">
+    <div className="min-h-screen pb-20">
       {/* 顶部粘性导航 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center gap-3 px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label={t('back')}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors flex-shrink-0"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Icon className="w-4 h-4 text-cyan-500" />
+            <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Icon className="w-4 h-4 text-emerald-500" />
             </div>
             <h1 className="text-base font-semibold text-white truncate">{title}</h1>
           </div>
@@ -284,11 +284,11 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
 
         {/* 相关文章推荐 */}
         {relatedArticles.length > 0 && (
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#1E1E2E]/50">
+          <div className="bubble-card relative rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10/50">
               <span className="text-sm font-medium text-white">{t('relatedArticles')}</span>
             </div>
-            <div className="divide-y divide-[#1E1E2E]/50">
+            <div className="divide-y divide-white/10/50">
               {relatedArticles.map(([relatedSlug, relatedArticle]) => {
                 const RelatedIcon = articleIcons[relatedSlug] || BookOpen
                 const relatedTitle = locale === 'en' ? relatedArticle.titleEn : relatedArticle.titleZh
@@ -301,8 +301,8 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
                     onClick={() => onNavigate?.(`/help/${relatedSlug}`)}
                     className="w-full flex items-start gap-3 p-4 hover:bg-white/5 transition-colors text-left"
                   >
-                    <div className="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <RelatedIcon className="w-5 h-5 text-cyan-500" />
+                    <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <RelatedIcon className="w-5 h-5 text-emerald-500" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-medium text-white mb-1">{relatedTitle}</h4>

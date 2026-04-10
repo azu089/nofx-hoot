@@ -148,14 +148,14 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-6">
+    <div className="min-h-screen pb-6">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
             aria-label={tCommon('back')}
           >
             <ArrowLeft className="w-5 h-5 text-white" />
@@ -172,7 +172,7 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
             type="button"
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0}
-            className="w-10 h-10 flex items-center justify-center text-cyan-400 disabled:opacity-50"
+            className="w-10 h-10 flex items-center justify-center text-emerald-400 disabled:opacity-50"
             aria-label={t('markAllRead')}
           >
             <CheckCheck className="w-5 h-5" />
@@ -186,7 +186,7 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
           <button
             type="button"
             onClick={() => setShowFilter(!showFilter)}
-            className="glass-border-glow relative w-full bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl overflow-hidden px-4 py-3 flex items-center justify-between"
+            className="bubble-card relative w-full rounded-xl overflow-hidden px-4 py-3 flex items-center justify-between"
           >            <div className="flex items-center gap-2">
               <span className="text-sm text-[#94A3B8]">{t('filter')}</span>
               <span className="text-sm font-medium text-white">{currentFilter?.label}</span>
@@ -196,7 +196,7 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
           </button>
 
           {showFilter && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-30">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-xl z-30">
               {filterOptions.map((option) => (
                 <button
                   key={option.value}
@@ -204,8 +204,8 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
                   onClick={() => handleFilterSelect(option.value as 'all' | NotificationType)}
                   className={`w-full px-4 py-3 text-left text-sm transition-colors ${
                     activeTab === option.value
-                      ? 'bg-cyan-500/10 text-cyan-400'
-                      : 'text-white hover:bg-[#12121A]'
+                      ? 'bg-emerald-500/10 text-emerald-400'
+                      : 'text-white hover:bg-[#0B1520]'
                   }`}
                 >
                   {option.label}
@@ -217,13 +217,13 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
 
         {/* 通知列表 */}
         {filteredNotifications.length === 0 ? (
-          <div className="glass-border-glow relative flex flex-col items-center justify-center py-12 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
+          <div className="bubble-card relative flex flex-col items-center justify-center py-12 rounded-2xl overflow-hidden">
             <AlertCircle className="w-10 h-10 text-[#94A3B8] mb-3" />
             <p className="text-[#94A3B8] text-sm">{t('noNotifications')}</p>
           </div>
         ) : (
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-            <div className="divide-y divide-[#1E1E2E]/50">
+          <div className="bubble-card relative rounded-2xl overflow-hidden">
+            <div className="divide-y divide-white/10/50">
               {filteredNotifications.map((notification) => {
                 const config = typeConfig[notification.type] || typeConfig.system
                 const Icon = config.icon
@@ -233,11 +233,11 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
                   <div
                     key={notification.id}
                     onClick={() => handleToggleExpand(notification.id)}
-                    className="p-4 cursor-pointer active:bg-[#1A1A24]/50 transition-colors"
+                    className="p-4 cursor-pointer active:bg-white/5/50 transition-colors"
                   >
                     <div className="flex gap-3">
-                      <div className="flex-shrink-0 w-9 h-9 bg-cyan-500/10 rounded-xl flex items-center justify-center">
-                        <Icon className="w-4 h-4 text-cyan-400" />
+                      <div className="flex-shrink-0 w-9 h-9 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                        <Icon className="w-4 h-4 text-emerald-400" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">

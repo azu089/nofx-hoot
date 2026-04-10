@@ -22,7 +22,10 @@ import {
   Loader2,
 } from 'lucide-react'
 import Image from 'next/image'
-import { useFeaturedStrategies, formatReturn, getRiskDisplay } from '@/hooks/useStrategies'
+// 策略 hooks 已随旧页面删除；landing 策略展示区改为静态占位
+const useFeaturedStrategies = () => ({ data: [] as { id: string; name: string; monthlyReturn: number; riskLevel: string; description: string; subscriberCount: number; return30d?: string }[], isLoading: false });
+const formatReturn = (v: unknown) => String(v ?? '—');
+const getRiskDisplay = (_v: unknown) => ({ text: '—', color: '', label: '—' });
 import { useTranslations } from '@/i18n/provider'
 import { LanguageSelector } from '@/components/ui-v3/shared/language-selector'
 

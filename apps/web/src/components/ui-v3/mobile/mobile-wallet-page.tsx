@@ -715,68 +715,41 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-20">
-      {/* Header - 标题 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-center px-4 h-14">
-          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
-        </div>
-      </div>
-
-      {/* 主 Tab 切换 */}
-      <div className="px-4 pt-4">
-        <div className="glass-border-glow flex gap-2 p-1 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setMainTab("wallet")}
-            aria-label="钱包"
-            className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-              mainTab === "wallet"
-                ? "bg-[#06B6D4] text-white shadow-lg shadow-[#06B6D4]/20"
-                : "text-[#94A3B8] hover:text-white"
-            }`}
-          >
-            钱包
-          </button>
-          <button
-            type="button"
-            onClick={() => setMainTab("api")}
-            aria-label={t('api')}
-            className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-              mainTab === "api"
-                ? "bg-[#06B6D4] text-white shadow-lg shadow-[#06B6D4]/20"
-                : "text-[#94A3B8] hover:text-white"
-            }`}
-          >
-            {t('api')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMainTab("ecosystem")}
-            aria-label={t('ecosystem')}
-            className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
-              mainTab === "ecosystem"
-                ? "bg-[#06B6D4] text-white shadow-lg shadow-[#06B6D4]/20"
-                : "text-[#94A3B8] hover:text-white"
-            }`}
-          >
-            {t('ecosystem')}
-          </button>
+    <div className="min-h-screen pb-20">
+      {/* 主 Tab 切换 — 对齐 nofx segmented control */}
+      <div className="px-3 pt-3">
+        <div className="bubble-card grid grid-cols-3 p-1 !rounded-full">
+          {([
+            { key: 'wallet' as MainTab, label: t('title') },
+            { key: 'api' as MainTab, label: t('api') },
+            { key: 'ecosystem' as MainTab, label: t('ecosystem') },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setMainTab(tab.key)}
+              aria-label={tab.label}
+              className={`relative overflow-hidden flex items-center justify-center py-2.5 rounded-full text-sm font-medium transition-all ${
+                mainTab === tab.key
+                  ? 'text-white'
+                  : 'text-[#94A3B8] hover:text-white hover:bg-emerald-400/10'
+              }`}
+              style={mainTab === tab.key ? {
+                background: 'radial-gradient(ellipse 70% 65% at 50% 105%, rgba(59,221,149,0.32) 0%, rgba(59,221,149,0.16) 35%, rgba(59,221,149,0.05) 65%, transparent 100%)',
+                boxShadow: 'inset 1px 0 0 0 rgba(255,255,255,0.28), inset -1px 0 0 0 rgba(255,255,255,0.28)',
+              } : undefined}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* 钱包 Tab 内容 */}
       {mainTab === "wallet" && (
-        <div className="px-4 pt-4 space-y-4">
-          {/* 资产卡片 - 呼吸光感效果 */}
-          <div className="glow-card relative overflow-hidden bg-gradient-to-br from-[#12121A]/80 to-[#1A1A24]/80 rounded-2xl p-6 border border-cyan-500/10 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
-            {/* 顶部高光线 */}
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent" />
-            {/* 内发光效果 */}
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.06] via-transparent to-transparent pointer-events-none" />
-            {/* 呼吸光晕 */}
-            <div className="absolute -top-20 -right-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl animate-[pulse_2s_ease-in-out_infinite_1s]" />
+        <div className="px-3 pt-3 space-y-4">
+          {/* 资产卡片 - Nexora 玻璃气泡 */}
+          <div className="bubble-card relative overflow-hidden p-6">
             <div className="relative z-10">
               <p className="text-sm text-[#94A3B8] mb-1">{t('totalAssets')}</p>
               <div className="flex items-baseline gap-3 mb-4">
@@ -792,7 +765,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={() => onNavigate?.('/wallet/deposit')}
                   aria-label={t('deposit')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
+                  className="btn-emerald flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm active:scale-[0.97] select-none"
                 >
                   <ArrowUpRight className="w-4 h-4" />
                   {t('deposit')}
@@ -801,7 +774,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={() => onNavigate?.('/wallet/withdraw')}
                   aria-label={t('withdraw')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-white/5 border border-white/10 hover:border-emerald-400/60 active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
                 >
                   <ArrowDownLeft className="w-4 h-4" />
                   {t('withdraw')}
@@ -810,7 +783,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={() => onNavigate?.('/wallet/exchange')}
                   aria-label={t('exchange')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-white/5 border border-white/10 hover:border-emerald-400/60 active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
                 >
                   <ArrowLeftRight className="w-4 h-4" />
                   {t('exchange')}
@@ -819,23 +792,23 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
             </div>
           </div>
 
-          {/* 子 Tab + 内容区 - glass card */}
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
+          {/* 子 Tab + 内容区 - Nexora 玻璃气泡 */}
+          <div className="bubble-card relative overflow-hidden">
           {/* 子 Tab 切换 */}
-          <div className="flex gap-6 border-b border-[#1E1E2E] px-4 pt-4">
+          <div className="flex gap-6 border-b border-white/10 px-4 pt-4">
             <button
               type="button"
               onClick={() => setWalletSubTab("assets")}
               aria-label={t('assetDetails')}
               className={`pb-3 text-sm font-medium transition-colors relative ${
                 walletSubTab === "assets"
-                  ? "text-[#06B6D4]"
+                  ? "text-emerald-400"
                   : "text-[#94A3B8] hover:text-white"
               }`}
             >
               {t('assetDetails')}
               {walletSubTab === "assets" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400" />
               )}
             </button>
             <button
@@ -844,33 +817,29 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               aria-label={t('historyBills')}
               className={`pb-3 text-sm font-medium transition-colors relative ${
                 walletSubTab === "history"
-                  ? "text-[#06B6D4]"
+                  ? "text-emerald-400"
                   : "text-[#94A3B8] hover:text-white"
               }`}
             >
               {t('historyBills')}
               {walletSubTab === "history" && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400" />
               )}
             </button>
           </div>
 
           {/* 资产明细列表 */}
           {walletSubTab === "assets" && (
-            <div className="space-y-3 p-4">
+            <div className="px-4 py-2">
               {assets.map((asset, index) => (
                 <div
                   key={index}
-                  className={`bg-[#12121A] rounded-xl p-4 border transition-colors ${
-                    asset.locked
-                      ? 'border-[#F59E0B]/30'
-                      : 'border-[#1E1E2E] hover:border-[#06B6D4]/30'
-                  }`}
+                  className="row-divider px-2 py-4 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     {/* 左侧：图标 + 名称 */}
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+                      <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center overflow-hidden relative">
                         {asset.icon ? (
                           <Image
                             src={asset.icon}
@@ -880,7 +849,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             className="object-contain"
                           />
                         ) : (
-                          <span className="text-xs font-bold text-[#06B6D4]">{asset.symbol.charAt(0)}</span>
+                          <span className="text-xs font-bold text-emerald-400">{asset.symbol.charAt(0)}</span>
                         )}
                       </div>
                       <div>
@@ -906,9 +875,9 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
                   {/* 释放进度条 */}
                   {asset.locked && asset.releaseProgress !== undefined && (
-                    <div className="mt-3 pt-3 border-t border-[#1E1E2E]">
+                    <div className="mt-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex-1 h-1.5 bg-[#1A1A24] rounded-full overflow-hidden">
+                        <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-gradient-to-r from-[#F59E0B] to-[#D97706] rounded-full"
                             style={{ width: `${asset.releaseProgress}%` }}
@@ -939,17 +908,17 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       setShowAssetFilter(false)
                       setShowDatePicker(false)
                     }}
-                    className={`flex items-center gap-1.5 px-3 py-2 bg-[#12121A] border rounded-lg text-sm transition-colors ${
+                    className={`flex items-center gap-1.5 px-3 py-2 bg-[#0B1520] border rounded-lg text-sm transition-colors ${
                       txTypeFilter !== 'all'
-                        ? 'border-[#06B6D4] text-[#06B6D4]'
-                        : 'border-[#1E1E2E] text-[#94A3B8] hover:border-[#06B6D4]'
+                        ? 'border-emerald-400 text-emerald-400'
+                        : 'border-white/10 text-[#94A3B8] hover:border-emerald-400'
                     }`}
                   >
                     <span>{getTypeLabel(txTypeFilter)}</span>
                     <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTypeFilter ? 'rotate-180' : ''}`} />
                   </button>
                   {showTypeFilter && (
-                    <div className="absolute top-full left-0 mt-1 w-32 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-lg shadow-lg z-50 overflow-hidden">
+                    <div className="absolute top-full left-0 mt-1 w-32 bg-[#0B1520]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-lg z-50 overflow-hidden">
                       {typeFilterOptions.map((option) => (
                         <button
                           key={option.value}
@@ -960,8 +929,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                           }}
                           className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
                             txTypeFilter === option.value
-                              ? 'bg-[#06B6D4]/10 text-[#06B6D4]'
-                              : 'text-white hover:bg-[#1E1E2E]'
+                              ? 'bg-emerald-400/10 text-emerald-400'
+                              : 'text-white hover:bg-white/5'
                           }`}
                         >
                           {option.label}
@@ -980,17 +949,17 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       setShowTypeFilter(false)
                       setShowDatePicker(false)
                     }}
-                    className={`flex items-center gap-1.5 px-3 py-2 bg-[#12121A] border rounded-lg text-sm transition-colors ${
+                    className={`flex items-center gap-1.5 px-3 py-2 bg-[#0B1520] border rounded-lg text-sm transition-colors ${
                       txAssetFilter !== 'all'
-                        ? 'border-[#06B6D4] text-[#06B6D4]'
-                        : 'border-[#1E1E2E] text-[#94A3B8] hover:border-[#06B6D4]'
+                        ? 'border-emerald-400 text-emerald-400'
+                        : 'border-white/10 text-[#94A3B8] hover:border-emerald-400'
                     }`}
                   >
                     <span>{getAssetLabel(txAssetFilter)}</span>
                     <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAssetFilter ? 'rotate-180' : ''}`} />
                   </button>
                   {showAssetFilter && (
-                    <div className="absolute top-full left-0 mt-1 w-32 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-lg shadow-lg z-50 overflow-hidden">
+                    <div className="absolute top-full left-0 mt-1 w-32 bg-[#0B1520]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-lg z-50 overflow-hidden">
                       {assetFilterOptions.map((option) => (
                         <button
                           key={option.value}
@@ -1001,8 +970,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                           }}
                           className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
                             txAssetFilter === option.value
-                              ? 'bg-[#06B6D4]/10 text-[#06B6D4]'
-                              : 'text-white hover:bg-[#1E1E2E]'
+                              ? 'bg-emerald-400/10 text-emerald-400'
+                              : 'text-white hover:bg-white/5'
                           }`}
                         >
                           {option.label}
@@ -1021,20 +990,20 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       setShowTypeFilter(false)
                       setShowAssetFilter(false)
                     }}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-[#12121A] border border-[#06B6D4] rounded-lg text-sm text-[#06B6D4] transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-[#0B1520] border border-emerald-400 rounded-lg text-sm text-emerald-400 transition-colors"
                   >
                     <Calendar className="w-3.5 h-3.5" />
                     <span className="text-xs">{dateRange.start.slice(5)} ~ {dateRange.end.slice(5)}</span>
                   </button>
                   {showDatePicker && (
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-                      <div className="w-full max-w-md bg-[#12121A] rounded-t-2xl p-4 pb-24 space-y-4 animate-in slide-in-from-bottom">
+                      <div className="w-full max-w-md bg-[#0B1520] rounded-t-2xl p-4 pb-24 space-y-4 animate-in slide-in-from-bottom">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-semibold text-white">{t('startDate')} ~ {t('endDate')}</h3>
                           <button
                             type="button"
                             onClick={() => setShowDatePicker(false)}
-                            className="p-1 rounded-lg hover:bg-[#1E1E2E]"
+                            className="p-1 rounded-lg hover:bg-white/5"
                           >
                             <X className="w-5 h-5 text-[#94A3B8]" />
                           </button>
@@ -1047,7 +1016,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               type="date"
                               value={dateRange.start}
                               onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                              className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500/50 focus:outline-none"
+                              className="w-full bg-[#05090E] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-emerald-500/50 focus:outline-none"
                             />
                           </div>
                           <div>
@@ -1057,7 +1026,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               type="date"
                               value={dateRange.end}
                               onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                              className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500/50 focus:outline-none"
+                              className="w-full bg-[#05090E] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:border-emerald-500/50 focus:outline-none"
                             />
                           </div>
                         </div>
@@ -1079,7 +1048,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                                   end: end.toISOString().split('T')[0]
                                 })
                               }}
-                              className="flex-1 py-2 text-xs bg-[#1E1E2E] hover:bg-[#2A2A3A] text-[#94A3B8] rounded-lg transition-colors"
+                              className="flex-1 py-2 text-xs bg-white/5 hover:bg-white/10 text-[#94A3B8] rounded-lg transition-colors"
                             >
                               {preset.label}
                             </button>
@@ -1088,7 +1057,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         <button
                           type="button"
                           onClick={() => setShowDatePicker(false)}
-                          className="w-full py-3 bg-[#06B6D4] text-white rounded-xl font-medium hover:bg-[#0891B2] transition-colors"
+                          className="w-full py-3 bg-emerald-400 text-white rounded-xl font-medium hover:bg-emerald-500 transition-colors"
                         >
                           {t('confirm')}
                         </button>
@@ -1120,11 +1089,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   return (
                     <div
                       key={tx.id}
-                      className="bg-[#12121A] rounded-xl p-4 border border-[#1E1E2E] hover:bg-[#12121A]/80 transition-colors"
+                      className="bg-[#0B1520] rounded-xl p-4 border border-white/10 hover:bg-[#0B1520]/80 transition-colors"
                     >
                       <div className="flex items-center gap-3">
                         {/* 代币图标 */}
-                        <div className="w-10 h-10 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative flex-shrink-0">
+                        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center overflow-hidden relative flex-shrink-0">
                           {assetIcon ? (
                             <Image
                               src={assetIcon}
@@ -1134,7 +1103,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               className="object-contain"
                             />
                           ) : (
-                            <span className="text-xs font-bold text-[#06B6D4]">
+                            <span className="text-xs font-bold text-emerald-400">
                               {tx.asset.charAt(0)}
                             </span>
                           )}
@@ -1177,7 +1146,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       </div>
 
                       {/* 时间 */}
-                      <p className="text-xs text-[#94A3B8] flex items-center gap-1 mt-3 pt-3 border-t border-[#1E1E2E]">
+                      <p className="text-xs text-[#94A3B8] flex items-center gap-1 mt-3 pt-3 border-t border-white/10">
                         <Calendar className="w-3 h-3" />
                         {tx.time}
                       </p>
@@ -1189,7 +1158,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               {/* 空状态 */}
               {filteredTransactions.length === 0 && (
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 rounded-full bg-[#12121A] flex items-center justify-center mx-auto mb-4">
+                  <div className="w-16 h-16 rounded-full bg-[#0B1520] flex items-center justify-center mx-auto mb-4">
                     <FileText className="w-8 h-8 text-[#94A3B8]" />
                   </div>
                   <p className="text-[#94A3B8]">
@@ -1209,13 +1178,13 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       {mainTab === "api" && (
         <div className="px-4 pt-4 space-y-4">
           {/* CEX / DEX 子标签切换 */}
-          <div className="glass-border-glow flex gap-2 p-1 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
+          <div className="bubble-card flex gap-2 p-1 overflow-hidden">
             <button
               type="button"
               onClick={() => setApiSubTab('cex')}
               className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
                 apiSubTab === 'cex'
-                  ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                  ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400'
                   : 'text-[#94A3B8] hover:text-white'
               }`}
             >
@@ -1226,7 +1195,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               onClick={() => setApiSubTab('dex')}
               className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
                 apiSubTab === 'dex'
-                  ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                  ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400'
                   : 'text-[#94A3B8] hover:text-white'
               }`}
             >
@@ -1239,7 +1208,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
             type="button"
             onClick={() => apiSubTab === 'cex' ? handleOpenAdd() : setShowAddDexModal(true)}
             aria-label={apiSubTab === 'cex' ? t('addApi') : tDex('addWallet')}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-400 hover:bg-emerald-500 text-white rounded-xl font-medium transition-colors"
           >
             <Plus className="w-5 h-5" />
             {apiSubTab === 'cex' ? t('addApi') : tDex('addWallet')}
@@ -1249,7 +1218,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           {apiSubTab === 'cex' && (
             <>
               {apiKeys.length === 0 ? (
-                <div className="p-8 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
+                <div className="p-8 rounded-xl bg-[#0B1520] border border-white/10 text-center">
                   <Key className="w-12 h-12 text-[#94A3B8] mx-auto mb-3" />
                   <p className="text-[#94A3B8]">{t('noApiKey')}</p>
                   <p className="text-[#94A3B8] text-sm mt-1">{t('clickToAdd')}</p>
@@ -1259,14 +1228,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   {apiKeys.map((apiItem) => (
                     <div
                       key={apiItem.id}
-                      className={`bg-[#12121A] rounded-xl p-4 border transition-colors ${
-                        apiItem.status === 'error' ? 'border-[#F43F5E]/30' : 'border-[#1E1E2E]'
+                      className={`bg-[#0B1520] rounded-xl p-4 border transition-colors ${
+                        apiItem.status === 'error' ? 'border-[#F43F5E]/30' : 'border-white/10'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden relative ${
-                            apiItem.status === 'error' ? 'bg-[#F43F5E]/10' : 'bg-[#1E1E2E]'
+                            apiItem.status === 'error' ? 'bg-[#F43F5E]/10' : 'bg-white/5'
                           }`}>
                             {apiItem.icon ? (
                               <Image src={apiItem.icon} alt={apiItem.name} fill sizes="40px" className={`object-contain ${apiItem.status === 'error' ? 'opacity-50' : ''}`} />
@@ -1278,7 +1247,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             <div className="flex items-center gap-2">
                               <h3 className="font-medium text-white">{apiItem.name}</h3>
                               {apiItem.isLoading ? (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#3B82F6]/20 text-[#3B82F6]">
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-emerald-400/15 text-emerald-400">
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                 </span>
                               ) : apiItem.status === 'error' ? (
@@ -1286,7 +1255,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                                   <AlertTriangle className="w-3 h-3" />
                                 </span>
                               ) : (
-                                <CheckCircle className="w-4 h-4 text-[#10B981]" />
+                                <CheckCircle className="w-4 h-4 text-emerald-400" />
                               )}
                             </div>
                             {apiItem.isLoading ? (
@@ -1297,17 +1266,17 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             ) : apiItem.status === 'error' && apiItem.error ? (
                               <p className="text-xs text-[#F43F5E]">{apiItem.error}</p>
                             ) : (
-                              <p className="text-lg font-bold text-[#10B981]">
+                              <p className="text-lg font-bold text-emerald-400">
                                 ${apiItem.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                               </p>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => handleVerify(apiItem)} aria-label={t('verify')} className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors">
+                          <button type="button" onClick={() => handleVerify(apiItem)} aria-label={t('verify')} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
                             <RefreshCw className="w-4 h-4 text-[#94A3B8]" />
                           </button>
-                          <button type="button" onClick={() => handleOpenEdit(apiItem)} aria-label={t('edit')} className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors">
+                          <button type="button" onClick={() => handleOpenEdit(apiItem)} aria-label={t('edit')} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
                             <Edit2 className="w-4 h-4 text-[#94A3B8]" />
                           </button>
                           <button type="button" onClick={() => handleOpenDelete(apiItem)} aria-label={t('delete')} className="p-2 hover:bg-[#F43F5E]/10 rounded-lg transition-colors">
@@ -1326,7 +1295,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           {apiSubTab === 'dex' && (
             <>
               {dexWallets.length === 0 ? (
-                <div className="p-8 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
+                <div className="p-8 rounded-xl bg-[#0B1520] border border-white/10 text-center">
                   <Wallet className="w-12 h-12 text-[#94A3B8] mx-auto mb-3" />
                   <p className="text-[#94A3B8]">{tDex('noWallets')}</p>
                   <p className="text-[#94A3B8] text-sm mt-1">{tDex('noWalletsHint')}</p>
@@ -1336,10 +1305,10 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   {dexWallets.map((wallet) => {
                     const dexInfo = supportedDexExchanges.find(e => e.id === wallet.exchange)
                     return (
-                      <div key={wallet.id} className="bg-[#12121A] rounded-xl p-4 border border-[#1E1E2E]">
+                      <div key={wallet.id} className="bg-[#0B1520] rounded-xl p-4 border border-white/10">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
                               {dexInfo?.logo ? (
                                 <Image src={dexInfo.logo} alt={dexInfo.name} fill sizes="40px" className="object-contain" />
                               ) : (
@@ -1350,7 +1319,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               <div className="flex items-center gap-2">
                                 <h3 className="font-medium text-white">{wallet.label}</h3>
                                 {wallet.isActive ? (
-                                  <CheckCircle className="w-4 h-4 text-[#10B981]" />
+                                  <CheckCircle className="w-4 h-4 text-emerald-400" />
                                 ) : (
                                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F43F5E]/20 text-[#F43F5E]">
                                     <AlertTriangle className="w-3 h-3" />
@@ -1363,7 +1332,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: ['api-keys'] })} aria-label={t('verify')} className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors">
+                            <button type="button" onClick={() => queryClient.invalidateQueries({ queryKey: ['api-keys'] })} aria-label={t('verify')} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
                               <RefreshCw className="w-4 h-4 text-[#94A3B8]" />
                             </button>
                             <button type="button" onClick={() => handleOpenDeleteDex(wallet)} aria-label={t('delete')} className="p-2 hover:bg-[#F43F5E]/10 rounded-lg transition-colors">
@@ -1438,12 +1407,12 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           }}
         >
           <div
-            className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-[#12121A] rounded-t-3xl overflow-hidden mobile-sheet"
+            className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-[#0B1520] rounded-t-3xl overflow-hidden mobile-sheet"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 拖动指示器 */}
             <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-[#3A3A4A] rounded-full" />
+              <div className="w-10 h-1 bg-white/20 rounded-full" />
             </div>
 
             <div className="px-5 pb-24 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
@@ -1462,7 +1431,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     setSelectedExchange(null)
                     setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
                   }}
-                  className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors -mr-2"
+                  className="p-2 hover:bg-white/5 rounded-lg transition-colors -mr-2"
                 >
                   <X className="w-5 h-5 text-[#94A3B8]" />
                 </button>
@@ -1475,9 +1444,9 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     key={exchange.id}
                     type="button"
                     onClick={() => setSelectedExchange(exchange.id)}
-                    className="p-4 rounded-xl bg-[#1E1E2E] hover:bg-[#2A2A3A] transition-colors text-center"
+                    className="p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-center"
                   >
-                    <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] flex items-center justify-center overflow-hidden relative">
+                    <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#0B1520] flex items-center justify-center overflow-hidden relative">
                       <Image src={exchange.logo} alt={exchange.name} fill className="object-contain" />
                     </div>
                     <span className="text-xs text-white">{exchange.name}</span>
@@ -1490,7 +1459,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   href={supportedExchanges.find(e => e.id === selectedExchange)?.guideUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-[#06B6D4] text-sm hover:underline"
+                  className="flex items-center gap-2 text-emerald-400 text-sm hover:underline"
                 >
                   <ExternalLink className="w-4 h-4" />
                   {t('howToGetApiKey')}
@@ -1512,7 +1481,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     }}
                     autoComplete="off"
                     placeholder={t('enterApiKey')}
-                    className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                    className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                   />
                 </div>
 
@@ -1533,7 +1502,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       }}
                       autoComplete="off"
                       placeholder={t('enterSecretKey')}
-                      className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                      className="w-full px-4 py-3 pr-12 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                     />
                     <button
                       type="button"
@@ -1563,7 +1532,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       }}
                       autoComplete="off"
                       placeholder={t('enterPassphrase')}
-                      className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                      className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                     />
                   </div>
                 )}
@@ -1584,11 +1553,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     }}
                     autoComplete="off"
                     placeholder={t('labelPlaceholder')}
-                    className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                    className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                   />
                 </div>
 
-                <div className="p-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A]">
+                <div className="p-3 rounded-lg bg-white/5 border border-white/10">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-white">{t('ipWhitelist')}</p>
@@ -1597,7 +1566,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     <button
                       type="button"
                       onClick={() => handleCopy('47.89.192.xxx')}
-                      className="flex items-center gap-1 text-[#06B6D4] text-sm"
+                      className="flex items-center gap-1 text-emerald-400 text-sm"
                     >
                       {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       {copied ? t('copied') : t('copy')}
@@ -1607,9 +1576,9 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                 </div>
 
                 {/* 安全提示 */}
-                <div className="p-3 rounded-lg bg-[#12121A] border-l-4 border-l-[#06B6D4] border border-[#1E1E2E]">
+                <div className="p-3 rounded-lg bg-[#0B1520] border-l-4 border-l-emerald-400 border border-white/10">
                   <div className="flex items-start gap-2">
-                    <Shield className="w-4 h-4 text-[#06B6D4] mt-0.5 flex-shrink-0" />
+                    <Shield className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
                     <ul className="text-[#94A3B8] text-xs space-y-1">
                       <li>• {t('securityTip1')}</li>
                       <li>• {t('securityTip2')}</li>
@@ -1626,7 +1595,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       setSelectedExchange(null)
                       setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
                     }}
-                    className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
+                    className="flex-1 py-3.5 border border-white/10 text-[#94A3B8] rounded-xl hover:bg-white/5 transition-colors font-medium"
                   >
                     {tCommon('cancel')}
                   </button>
@@ -1634,7 +1603,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     type="button"
                     onClick={handleAddApiKey}
                     disabled={createApiKeyMutation.isPending || !formData.apiKey || !formData.secretKey}
-                    className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {createApiKeyMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                     {t('verifyAndBind')}
@@ -1657,18 +1626,18 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           }}
         >
           <div
-            className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-[#12121A] rounded-t-3xl overflow-hidden mobile-sheet"
+            className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-[#0B1520] rounded-t-3xl overflow-hidden mobile-sheet"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 拖动指示器 */}
             <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-[#3A3A4A] rounded-full" />
+              <div className="w-10 h-1 bg-white/20 rounded-full" />
             </div>
 
             <div className="px-5 pb-24 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                  <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
                     {selectedApiKey.icon ? (
                       <Image src={selectedApiKey.icon} alt={selectedApiKey.name} fill className="object-contain" />
                     ) : (
@@ -1687,7 +1656,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     setShowEditModal(false)
                     setSelectedApiKey(null)
                   }}
-                  className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors -mr-2"
+                  className="p-2 hover:bg-white/5 rounded-lg transition-colors -mr-2"
                 >
                   <X className="w-5 h-5 text-[#94A3B8]" />
                 </button>
@@ -1695,7 +1664,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
               <div className="space-y-4">
               {/* 绑定信息卡片 */}
-              <div className="p-4 rounded-xl bg-[#0A0A0F] border border-[#1E1E2E] space-y-3">
+              <div className="p-4 rounded-xl bg-[#05090E] border border-white/10 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-[#94A3B8]">API Key</p>
@@ -1707,11 +1676,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   </div>
                 </div>
                 {selectedApiKey.permissions && selectedApiKey.permissions.length > 0 && (
-                  <div className="pt-3 border-t border-[#1E1E2E]">
+                  <div className="pt-3 border-t border-white/10">
                     <p className="text-xs text-[#94A3B8] mb-2">{t('authorizedPermissions')}</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedApiKey.permissions.map((perm, i) => (
-                        <span key={i} className="px-2 py-1 text-xs rounded-md bg-[#1E1E2E] text-[#10B981]">
+                        <span key={i} className="px-2 py-1 text-xs rounded-md bg-white/5 text-emerald-400">
                           {perm}
                         </span>
                       ))}
@@ -1728,7 +1697,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   value={editFormData.apiKey}
                   onChange={(e) => setEditFormData({ ...editFormData, apiKey: e.target.value })}
                   placeholder={t('enterNewApiKey')}
-                  className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                 />
               </div>
 
@@ -1741,7 +1710,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     value={editFormData.secretKey}
                     onChange={(e) => setEditFormData({ ...editFormData, secretKey: e.target.value })}
                     placeholder={t('enterNewSecretKey')}
-                    className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                    className="w-full px-4 py-3 pr-12 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                   />
                   <button
                     type="button"
@@ -1764,7 +1733,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     onChange={(e) => setEditFormData({ ...editFormData, passphrase: e.target.value })}
                     placeholder="输入新的 Passphrase"
                     autoComplete="off"
-                    className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                    className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                   />
                 </div>
               )}
@@ -1777,7 +1746,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   value={editFormData.label}
                   onChange={(e) => setEditFormData({ ...editFormData, label: e.target.value })}
                   placeholder={t('labelPlaceholder')}
-                  className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400"
                 />
               </div>
 
@@ -1788,7 +1757,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     setShowEditModal(false)
                     setSelectedApiKey(null)
                   }}
-                  className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
+                  className="flex-1 py-3.5 border border-white/10 text-[#94A3B8] rounded-xl hover:bg-white/5 transition-colors font-medium"
                 >
                   {tCommon('cancel')}
                 </button>
@@ -1796,7 +1765,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={handleConfirmEdit}
                   disabled={updateApiKeyMutation.isPending}
-                  className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white rounded-xl transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {updateApiKeyMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                   {t('saveChanges')}
@@ -1818,7 +1787,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           }}
         >
           <div
-            className="w-full max-w-sm bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-5 mobile-dialog"
+            className="w-full max-w-sm bg-[#0B1520] border border-white/10 rounded-2xl p-5 mobile-dialog"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center">
@@ -1831,8 +1800,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                 {t('deleteApiConfirm', { name: selectedApiKey.name })}
               </p>
 
-              <div className="flex items-center gap-3 p-3 mb-4 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
-                <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+              <div className="flex items-center gap-3 p-3 mb-4 rounded-xl bg-white/5/50 border border-white/10">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden relative">
                   {selectedApiKey.icon ? (
                     <Image src={selectedApiKey.icon} alt={selectedApiKey.name} fill className="object-contain" />
                   ) : (
@@ -1859,7 +1828,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     setShowDeleteModal(false)
                     setSelectedApiKey(null)
                   }}
-                  className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
+                  className="flex-1 py-3.5 border border-white/10 text-[#94A3B8] rounded-xl hover:bg-white/5 transition-colors font-medium"
                 >
                   {tCommon('cancel')}
                 </button>
@@ -1888,15 +1857,15 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           }}
         >
           <div
-            className="w-full max-w-sm bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-5 max-h-[80vh] overflow-y-auto mobile-dialog"
+            className="w-full max-w-sm bg-[#0B1520] border border-white/10 rounded-2xl p-5 max-h-[80vh] overflow-y-auto mobile-dialog"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center">
               {/* Loading 状态 */}
               {verifyStatus === 'loading' && (
                 <>
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#06B6D4]/10 flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 text-[#06B6D4] animate-spin" />
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-400/10 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
                   </div>
                   <h3 className="text-xl font-bold text-white mb-2">{t('verifying')}</h3>
                   <p className="text-[#94A3B8] text-sm">{t('verifyingConnection', { name: selectedApiKey.name })}</p>
@@ -1918,10 +1887,10 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   ) : (
                     /* 完全成功：绿色成功状态 */
                     <>
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#10B981]/10 flex items-center justify-center">
-                        <CheckCircle className="w-8 h-8 text-[#10B981]" />
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-400/10 flex items-center justify-center">
+                        <CheckCircle className="w-8 h-8 text-emerald-400" />
                       </div>
-                      <h3 className="text-xl font-bold text-[#10B981] mb-2">{t('verifySuccess')}</h3>
+                      <h3 className="text-xl font-bold text-emerald-400 mb-2">{t('verifySuccess')}</h3>
                       <p className="text-[#94A3B8] text-sm mb-5">{t('verifySuccessMessage')}</p>
                     </>
                   )}
@@ -1929,8 +1898,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   {/* 验证详情 */}
                   <div className="space-y-3 text-left">
                     {/* 交易所信息 */}
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden relative">
                         {selectedApiKey.icon ? (
                           <Image src={selectedApiKey.icon} alt={selectedApiKey.exchange} fill className="object-contain" />
                         ) : (
@@ -1945,11 +1914,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
                     {/* 权限列表（余额获取失败时隐藏：权限来自 fallback 逻辑，不可靠） */}
                     {!verifyResult.balanceFetchError && (
-                      <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
+                      <div className="p-3 rounded-xl bg-white/5 border border-white/10">
                         <p className="text-[#94A3B8] text-xs mb-2">{t('apiPermissions')}</p>
                         <div className="flex flex-wrap gap-2">
                           {verifyResult.permissions?.map((perm, index) => (
-                            <span key={index} className="px-2.5 py-1 rounded-lg bg-[#10B981]/10 text-[#10B981] text-xs font-medium">
+                            <span key={index} className="px-2.5 py-1 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-medium">
                               {perm}
                             </span>
                           ))}
@@ -1958,14 +1927,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     )}
 
                     {/* 资产列表 */}
-                    <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/10">
                       {/* 总资产 */}
-                      <div className="flex justify-between items-center mb-3 pb-3 border-b border-[#2A2A3A]">
+                      <div className="flex justify-between items-center mb-3 pb-3 border-b border-white/10">
                         <span className="text-[#94A3B8] text-sm">{t('totalAssetValue')}</span>
                         {verifyResult.balanceFetchError ? (
                           <span className="text-sm text-[#F59E0B] font-medium">获取失败，请稍后重试</span>
                         ) : (
-                          <span className="text-xl font-bold font-mono text-[#10B981]">
+                          <span className="text-xl font-bold font-mono text-emerald-400">
                             ${(verifyResult.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         )}
@@ -2024,7 +1993,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   </div>
 
                   {/* 可能的解决方案 */}
-                  <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-left">
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-left">
                     <p className="text-[#94A3B8] text-xs mb-2">{t('checkFollowing')}</p>
                     <ul className="text-[#94A3B8] text-xs space-y-1.5">
                       <li>• {t('checkApiKeySecret')}</li>
@@ -2044,7 +2013,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   setSelectedApiKey(null)
                   setVerifyResult(null)
                 }}
-                className="w-full mt-5 py-3.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] text-white rounded-xl transition-colors font-medium"
+                className="w-full mt-5 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl transition-colors font-medium"
               >
                 {t('close')}
               </button>
@@ -2063,11 +2032,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           }}
         >
           <div
-            className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-[#12121A] rounded-t-3xl overflow-hidden mobile-sheet"
+            className="absolute bottom-0 left-0 right-0 max-h-[85vh] bg-[#0B1520] rounded-t-3xl overflow-hidden mobile-sheet"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center pt-3 pb-2">
-              <div className="w-10 h-1 bg-[#3A3A4A] rounded-full" />
+              <div className="w-10 h-1 bg-white/20 rounded-full" />
             </div>
 
             <div className="px-5 pb-24 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
@@ -2086,7 +2055,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     setSelectedDexExchange(null)
                     setDexFormData({ walletAddress: '', privateKey: '', label: '', lighterApiKeyPrivateKey: '', lighterApiKeyIndex: 0, asterSignerAddress: '', isTestnet: false })
                   }}
-                  className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors -mr-2"
+                  className="p-2 hover:bg-white/5 rounded-lg transition-colors -mr-2"
                 >
                   <X className="w-5 h-5 text-[#94A3B8]" />
                 </button>
@@ -2099,9 +2068,9 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       key={dex.id}
                       type="button"
                       onClick={() => setSelectedDexExchange(dex.id)}
-                      className="p-4 rounded-xl bg-[#1E1E2E] hover:bg-[#2A2A3A] transition-colors text-center"
+                      className="p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-center"
                     >
-                      <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] flex items-center justify-center overflow-hidden relative">
+                      <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#0B1520] flex items-center justify-center overflow-hidden relative">
                         <Image src={dex.logo} alt={dex.name} fill className="object-contain" />
                       </div>
                       <span className="text-xs text-white">{dex.name}</span>
@@ -2118,7 +2087,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         <input id="m-dex-hl-wallet" type="text" value={dexFormData.walletAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
                           placeholder="0x..."
-                          className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                       </div>
                       <div>
                         <label htmlFor="m-dex-hl-pk" className="text-sm text-[#94A3B8] block mb-1">{tDex('hyperliquid.agentPrivateKey')} *</label>
@@ -2126,7 +2095,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                           <input id="m-dex-hl-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
                             onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
                             placeholder="Hyperliquid Agent Wallet 私钥"
-                            className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                            className="w-full px-4 py-3 pr-12 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                           <button type="button" onClick={() => setShowDexPrivateKey(!showDexPrivateKey)}
                             title={showDexPrivateKey ? t('hideSecret') : t('showSecret')}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8]">
@@ -2146,7 +2115,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         <input id="m-dex-lt-wallet" type="text" value={dexFormData.walletAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
                           placeholder="0x..."
-                          className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                       </div>
                       <div>
                         <label htmlFor="m-dex-lt-pk" className="text-sm text-[#94A3B8] block mb-1">{tDex('lighter.walletPrivateKey')} *</label>
@@ -2154,7 +2123,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                           <input id="m-dex-lt-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
                             onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
                             placeholder="钱包私钥（0x...）"
-                            className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                            className="w-full px-4 py-3 pr-12 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                           <button type="button" onClick={() => setShowDexPrivateKey(!showDexPrivateKey)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8]">
                             {showDexPrivateKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -2166,13 +2135,13 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         <input id="m-dex-lt-apk" type="password" value={dexFormData.lighterApiKeyPrivateKey}
                           onChange={(e) => setDexFormData({ ...dexFormData, lighterApiKeyPrivateKey: e.target.value })}
                           placeholder="Lighter API Key 私钥（40字节 hex）"
-                          className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                       </div>
                       <div>
                         <label htmlFor="m-dex-lt-idx" className="text-sm text-[#94A3B8] block mb-1">{tDex('lighter.apiKeyIndex')}</label>
                         <input id="m-dex-lt-idx" type="number" min={0} max={255} value={dexFormData.lighterApiKeyIndex}
                           onChange={(e) => setDexFormData({ ...dexFormData, lighterApiKeyIndex: parseInt(e.target.value) || 0 })}
-                          className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white focus:outline-none focus:border-[#06B6D4]" />
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-emerald-400" />
                         <p className="text-xs text-[#64748B] mt-1">{tDex('lighter.apiKeyIndexHint')}</p>
                       </div>
                     </>
@@ -2186,14 +2155,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         <input id="m-dex-ast-user" type="text" value={dexFormData.walletAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
                           placeholder="0x... 主钱包地址"
-                          className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                       </div>
                       <div>
                         <label htmlFor="m-dex-ast-signer" className="text-sm text-[#94A3B8] block mb-1">{tDex('aster.signerWallet')}</label>
                         <input id="m-dex-ast-signer" type="text" value={dexFormData.asterSignerAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, asterSignerAddress: e.target.value })}
                           placeholder={tDex('aster.signerWalletPlaceholder')}
-                          className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                          className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                       </div>
                       <div>
                         <label htmlFor="m-dex-ast-pk" className="text-sm text-[#94A3B8] block mb-1">{tDex('aster.signerPrivateKey')} *</label>
@@ -2201,7 +2170,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                           <input id="m-dex-ast-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
                             onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
                             placeholder="签名钱包的私钥"
-                            className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                            className="w-full px-4 py-3 pr-12 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                           <button type="button" onClick={() => setShowDexPrivateKey(!showDexPrivateKey)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8]">
                             {showDexPrivateKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -2217,26 +2186,26 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     <input id="m-dex-label" type="text" value={dexFormData.label}
                       onChange={(e) => setDexFormData({ ...dexFormData, label: e.target.value })}
                       placeholder={`${tDex('myWallet')} ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name || ''}`}
-                      className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
+                      className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-[#64748B] focus:outline-none focus:border-emerald-400" />
                   </div>
 
                   {/* 测试网开关 */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A]">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
                     <div>
                       <p className="text-sm font-medium text-white">{tDex('testnetMode')}</p>
                       <p className="text-xs text-[#64748B]">{tDex('testnetHint')}</p>
                     </div>
                     <button type="button"
                       onClick={() => setDexFormData({ ...dexFormData, isTestnet: !dexFormData.isTestnet })}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${dexFormData.isTestnet ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}>
+                      className={`relative w-11 h-6 rounded-full transition-colors ${dexFormData.isTestnet ? 'bg-emerald-400' : 'bg-white/10'}`}>
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${dexFormData.isTestnet ? 'translate-x-[18px]' : 'translate-x-0'}`} />
                     </button>
                   </div>
 
                   {/* 安全提示 */}
-                  <div className="p-3 rounded-lg bg-[#12121A] border-l-4 border-l-[#06B6D4] border border-[#1E1E2E]">
+                  <div className="p-3 rounded-lg bg-[#0B1520] border-l-4 border-l-emerald-400 border border-white/10">
                     <div className="flex items-start gap-2">
-                      <Shield className="w-4 h-4 text-[#06B6D4] mt-0.5 flex-shrink-0" />
+                      <Shield className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
                       <p className="text-[#94A3B8] text-xs">
                         {tDex('securityNotice')}
                       </p>
@@ -2252,7 +2221,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         setSelectedDexExchange(null)
                         setDexFormData({ walletAddress: '', privateKey: '', label: '', lighterApiKeyPrivateKey: '', lighterApiKeyIndex: 0, asterSignerAddress: '', isTestnet: false })
                       }}
-                      className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
+                      className="flex-1 py-3.5 border border-white/10 text-[#94A3B8] rounded-xl hover:bg-white/5 transition-colors font-medium"
                     >
                       {tCommon('cancel')}
                     </button>
@@ -2260,7 +2229,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       type="button"
                       onClick={handleSubmitAddDex}
                       disabled={createDexMutation.isPending}
-                      className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="flex-1 py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {createDexMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                       {tDex('connectWallet')}
@@ -2280,7 +2249,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           onClick={() => { setShowDeleteDexModal(false); setSelectedDexWallet(null) }}
         >
           <div
-            className="w-full max-w-sm bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-5 mobile-dialog"
+            className="w-full max-w-sm bg-[#0B1520] border border-white/10 rounded-2xl p-5 mobile-dialog"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center">
@@ -2293,8 +2262,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                 {tDex('deleteConfirm')}
               </p>
 
-              <div className="flex items-center gap-3 p-3 mb-4 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
-                <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+              <div className="flex items-center gap-3 p-3 mb-4 rounded-xl bg-white/5/50 border border-white/10">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden relative">
                   {exchangeLogos[selectedDexWallet.exchange] ? (
                     <Image src={exchangeLogos[selectedDexWallet.exchange]} alt={selectedDexWallet.exchange} fill className="object-contain" />
                   ) : (
@@ -2320,7 +2289,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                 <button
                   type="button"
                   onClick={() => { setShowDeleteDexModal(false); setSelectedDexWallet(null) }}
-                  className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
+                  className="flex-1 py-3.5 border border-white/10 text-[#94A3B8] rounded-xl hover:bg-white/5 transition-colors font-medium"
                 >
                   {tCommon('cancel')}
                 </button>

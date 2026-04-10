@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "Posisi"
   },
   "airdrop": {
     "register": "Hadiah pendaftaran",
@@ -2357,6 +2358,170 @@
         "contrarian": "Analis Kontrarian",
         "risk_manager": "Manajer Risiko"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "Pratinjau nofx",
+    "subtitle": "Lapisan komersial HOOT mem-proxy ke inti perdagangan nofx (pratinjau pengembangan, bukan pintu masuk resmi)",
+    "traderSelect": "Pilih Trader",
+    "accountCard": {
+      "title": "Snapshot Akun"
+    },
+    "positionsCard": {
+      "title": "Posisi Saat Ini",
+      "symbol": "Simbol",
+      "side": "Arah",
+      "size": "Ukuran",
+      "entryPrice": "Harga Masuk",
+      "unrealized": "PnL Belum Direalisasi"
+    },
+    "decisionsCard": {
+      "title": "Keputusan Terbaru"
+    },
+    "empty": {
+      "noTraders": "Belum ada Trader di nofx",
+      "selectTrader": "Pilih Trader terlebih dahulu",
+      "noPositions": "Tidak ada posisi terbuka",
+      "noDecisions": "Belum ada keputusan"
+    },
+    "errors": {
+      "tradersFailed": "Gagal memuat daftar Trader",
+      "accountFailed": "Gagal memuat akun",
+      "positionsFailed": "Gagal memuat posisi",
+      "decisionsFailed": "Gagal memuat keputusan"
+    }
+  },
+  "nofxDashboard": {
+    "title": "Dashboard nofx",
+    "subtitle": "Tampilan langsung inti perdagangan AI",
+    "switchToLegacy": "Beralih ke versi lama",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "Ekuitas",
+      "dailyPnl": "PnL Hari Ini",
+      "totalPnl": "PnL Total",
+      "winRate": "Win Rate"
+    },
+    "equity": {
+      "title": "Kurva Ekuitas (7 hari)"
+    },
+    "positions": {
+      "title": "Posisi Terbuka",
+      "symbol": "Simbol",
+      "side": "Arah",
+      "size": "Ukuran",
+      "entry": "Harga Masuk",
+      "unrealized": "PnL Belum Direalisasi"
+    },
+    "empty": {
+      "noTraders": "Belum ada Trader",
+      "selectTrader": "Pilih Trader dulu",
+      "noEquity": "Tidak ada data ekuitas",
+      "noPositions": "Tidak ada posisi"
+    },
+    "errors": {
+      "tradersFailed": "Gagal memuat Trader",
+      "equityFailed": "Gagal memuat kurva ekuitas",
+      "positionsFailed": "Gagal memuat posisi"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI Trading",
+    "subtitle": "Kelola Trader, strategi, model, dan bursa di inti nofx",
+    "readOnlyBadge": "Pratinjau baca-saja (tulis di P6b-2)",
+    "switchToLegacy": "Beralih ke versi lama",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "Strategi",
+      "model": "Model AI",
+      "status": "Status",
+      "actions": "Aksi",
+      "running": "Berjalan",
+      "stopped": "Berhenti",
+      "empty": "Belum ada Trader"
+    },
+    "strategies": {
+      "title": "Strategi",
+      "empty": "Tidak ada strategi",
+      "active": "Aktif"
+    },
+    "models": {
+      "title": "Model AI",
+      "empty": "Belum ada model AI"
+    },
+    "exchanges": {
+      "title": "Bursa",
+      "empty": "Belum ada akun bursa"
+    },
+    "actions": {
+      "start": "Mulai",
+      "stop": "Hentikan",
+      "delete": "Hapus",
+      "createTrader": "Buat Trader"
+    },
+    "createCard": {
+      "title": "Buat / Konfigurasi",
+      "body": "Membuat Trader, konfigurasi AI Key, dan binding bursa akan tersedia di P6b-2 dengan gate langganan HOOT dan dialog konfirmasi."
+    },
+    "errors": {
+      "tradersFailed": "Gagal memuat Trader",
+      "strategiesFailed": "Gagal memuat strategi",
+      "modelsFailed": "Gagal memuat model AI",
+      "exchangesFailed": "Gagal memuat bursa"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "Posisi",
+    "subtitle": "Posisi langsung dari inti perdagangan nofx",
+    "readOnlyBadge": "Pratinjau baca-saja (tutup manual di P6b-2)",
+    "switchToLegacy": "Beralih ke versi lama",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "Ringkasan Akun"
+    },
+    "openCard": {
+      "title": "Posisi Terbuka",
+      "countSuffix": "posisi"
+    },
+    "cols": {
+      "symbol": "Simbol",
+      "side": "Arah",
+      "size": "Ukuran",
+      "entry": "Harga Masuk",
+      "unrealized": "PnL Belum Direalisasi",
+      "actions": "Aksi"
+    },
+    "actions": {
+      "close": "Tutup"
+    },
+    "empty": {
+      "noTraders": "Belum ada Trader",
+      "selectTrader": "Pilih Trader dulu",
+      "noPositions": "Tidak ada posisi terbuka"
+    },
+    "errors": {
+      "tradersFailed": "Gagal memuat Trader",
+      "accountFailed": "Gagal memuat akun",
+      "positionsFailed": "Gagal memuat posisi"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

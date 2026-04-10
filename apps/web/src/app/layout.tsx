@@ -52,7 +52,7 @@ export default async function RootLayout({
         <meta name="theme-color" content="#06B6D4" />
       </head>
       <body
-        className="font-sans antialiased bg-[#0A0A0F] text-[#F8F8FC]"
+        className="font-sans antialiased nofx-body-bg text-[#F8F8FC]"
         suppressHydrationWarning
       >
         <Providers initialAuthenticated={hasAuthToken}>{children}</Providers>

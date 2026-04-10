@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "Vị thế"
   },
   "airdrop": {
     "register": "Thưởng đăng ký",
@@ -2358,6 +2359,170 @@
         "contrarian": "Nhà phân tích ngược chiều",
         "risk_manager": "Quản lý rủi ro"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "Xem trước nofx",
+    "subtitle": "Lớp thương mại HOOT proxy đến nhân giao dịch nofx (xem trước phát triển, không phải lối vào chính thức)",
+    "traderSelect": "Chọn Trader",
+    "accountCard": {
+      "title": "Tổng quan tài khoản"
+    },
+    "positionsCard": {
+      "title": "Vị thế hiện tại",
+      "symbol": "Cặp",
+      "side": "Hướng",
+      "size": "Khối lượng",
+      "entryPrice": "Giá vào",
+      "unrealized": "PnL chưa thực hiện"
+    },
+    "decisionsCard": {
+      "title": "Quyết định mới nhất"
+    },
+    "empty": {
+      "noTraders": "Chưa có Trader nào trong nofx",
+      "selectTrader": "Vui lòng chọn một Trader trước",
+      "noPositions": "Không có vị thế mở",
+      "noDecisions": "Chưa có quyết định"
+    },
+    "errors": {
+      "tradersFailed": "Không tải được danh sách Trader",
+      "accountFailed": "Không tải được tài khoản",
+      "positionsFailed": "Không tải được vị thế",
+      "decisionsFailed": "Không tải được quyết định"
+    }
+  },
+  "nofxDashboard": {
+    "title": "nofx Dashboard",
+    "subtitle": "Xem trực tiếp nhân giao dịch AI",
+    "switchToLegacy": "Chuyển sang bản cũ",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "Tổng vốn",
+      "dailyPnl": "PnL hôm nay",
+      "totalPnl": "Tổng PnL",
+      "winRate": "Tỉ lệ thắng"
+    },
+    "equity": {
+      "title": "Đường vốn (7 ngày)"
+    },
+    "positions": {
+      "title": "Vị thế đang mở",
+      "symbol": "Cặp",
+      "side": "Hướng",
+      "size": "Khối lượng",
+      "entry": "Giá vào",
+      "unrealized": "PnL chưa thực hiện"
+    },
+    "empty": {
+      "noTraders": "Chưa có Trader",
+      "selectTrader": "Vui lòng chọn Trader",
+      "noEquity": "Không có dữ liệu vốn",
+      "noPositions": "Không có vị thế"
+    },
+    "errors": {
+      "tradersFailed": "Không tải được Trader",
+      "equityFailed": "Không tải được đường vốn",
+      "positionsFailed": "Không tải được vị thế"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "Giao dịch AI",
+    "subtitle": "Quản lý Trader, chiến lược, mô hình và sàn trong nhân nofx",
+    "readOnlyBadge": "Xem chỉ đọc (ghi sẽ có ở P6b-2)",
+    "switchToLegacy": "Chuyển sang bản cũ",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "Chiến lược",
+      "model": "Mô hình AI",
+      "status": "Trạng thái",
+      "actions": "Thao tác",
+      "running": "Đang chạy",
+      "stopped": "Đã dừng",
+      "empty": "Chưa có Trader"
+    },
+    "strategies": {
+      "title": "Chiến lược",
+      "empty": "Không có chiến lược",
+      "active": "Đang hoạt động"
+    },
+    "models": {
+      "title": "Mô hình AI",
+      "empty": "Chưa cấu hình mô hình AI"
+    },
+    "exchanges": {
+      "title": "Sàn",
+      "empty": "Chưa có tài khoản sàn"
+    },
+    "actions": {
+      "start": "Bắt đầu",
+      "stop": "Dừng",
+      "delete": "Xóa",
+      "createTrader": "Tạo Trader"
+    },
+    "createCard": {
+      "title": "Tạo / Cấu hình",
+      "body": "Tạo Trader, cấu hình AI Key và liên kết sàn sẽ có trong P6b-2 cùng với cổng đăng ký HOOT và hộp thoại xác nhận."
+    },
+    "errors": {
+      "tradersFailed": "Không tải được Trader",
+      "strategiesFailed": "Không tải được chiến lược",
+      "modelsFailed": "Không tải được mô hình AI",
+      "exchangesFailed": "Không tải được sàn"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "Vị thế",
+    "subtitle": "Vị thế trực tiếp từ nhân giao dịch nofx",
+    "readOnlyBadge": "Xem chỉ đọc (đóng thủ công ở P6b-2)",
+    "switchToLegacy": "Chuyển sang bản cũ",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "Tóm tắt tài khoản"
+    },
+    "openCard": {
+      "title": "Vị thế đang mở",
+      "countSuffix": "vị thế"
+    },
+    "cols": {
+      "symbol": "Cặp",
+      "side": "Hướng",
+      "size": "Khối lượng",
+      "entry": "Giá vào",
+      "unrealized": "PnL chưa thực hiện",
+      "actions": "Thao tác"
+    },
+    "actions": {
+      "close": "Đóng"
+    },
+    "empty": {
+      "noTraders": "Chưa có Trader",
+      "selectTrader": "Chọn Trader trước",
+      "noPositions": "Không có vị thế mở"
+    },
+    "errors": {
+      "tradersFailed": "Không tải được Trader",
+      "accountFailed": "Không tải được tài khoản",
+      "positionsFailed": "Không tải được vị thế"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

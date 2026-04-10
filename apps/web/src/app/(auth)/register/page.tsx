@@ -22,7 +22,7 @@ export default function RegisterPage() {
   // 已登录跳转到仪表盘
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/profile');
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -54,7 +54,7 @@ export default function RegisterPage() {
     try {
       const result = await walletLoginHook(address);
       walletLogin(result.accessToken, result.user, result.refreshToken);
-      router.push('/dashboard');
+      router.push('/profile');
     } catch (err) {
       const message = err instanceof Error ? err.message : '钱包注册失败，请重试';
       toast.error(message);
@@ -76,7 +76,7 @@ export default function RegisterPage() {
     if (tgWebApp?.initData) {
       try {
         await telegramWebAppLogin(tgWebApp.initData);
-        router.push('/dashboard');
+        router.push('/profile');
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Telegram 登录失败，请重试');
       }

@@ -13,7 +13,7 @@ export default function Home() {
   // 已认证（TG 自动登录成功 或 已有 token）→ 直接跳到仪表盘
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace('/dashboard')
+      router.replace('/profile')
     }
   }, [isLoading, isAuthenticated, router])
 
@@ -50,7 +50,7 @@ export default function Home() {
       onRegister={() => router.push('/register')}
       onStartTrading={() => router.push('/register')}
       onWatchDemo={() => router.push('/login')}
-      onViewStrategies={() => router.push('/strategies')}
+      onViewStrategies={() => router.push('/ai')}
     />
   )
 }

@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "Pozisyonlar"
   },
   "airdrop": {
     "register": "Kayıt ödülü",
@@ -2357,6 +2358,170 @@
         "contrarian": "Karşı Analist",
         "risk_manager": "Risk Yöneticisi"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "nofx Önizleme",
+    "subtitle": "HOOT iş katmanı, nofx ticaret çekirdeğine proxy yapar (geliştirme önizlemesi, resmi giriş değil)",
+    "traderSelect": "Trader Seç",
+    "accountCard": {
+      "title": "Hesap Anlık Görüntüsü"
+    },
+    "positionsCard": {
+      "title": "Açık Pozisyonlar",
+      "symbol": "Sembol",
+      "side": "Yön",
+      "size": "Miktar",
+      "entryPrice": "Giriş Fiyatı",
+      "unrealized": "Gerçekleşmemiş PnL"
+    },
+    "decisionsCard": {
+      "title": "Son Kararlar"
+    },
+    "empty": {
+      "noTraders": "nofx üzerinde henüz Trader yok",
+      "selectTrader": "Önce bir Trader seçin",
+      "noPositions": "Açık pozisyon yok",
+      "noDecisions": "Karar yok"
+    },
+    "errors": {
+      "tradersFailed": "Trader listesi yüklenemedi",
+      "accountFailed": "Hesap bilgisi yüklenemedi",
+      "positionsFailed": "Pozisyonlar yüklenemedi",
+      "decisionsFailed": "Kararlar yüklenemedi"
+    }
+  },
+  "nofxDashboard": {
+    "title": "nofx Panosu",
+    "subtitle": "AI ticaret çekirdeğinin canlı görünümü",
+    "switchToLegacy": "Eski sürüme geç",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "Öz sermaye",
+      "dailyPnl": "Günlük PnL",
+      "totalPnl": "Toplam PnL",
+      "winRate": "Kazanma oranı"
+    },
+    "equity": {
+      "title": "Öz sermaye eğrisi (7 gün)"
+    },
+    "positions": {
+      "title": "Açık pozisyonlar",
+      "symbol": "Sembol",
+      "side": "Yön",
+      "size": "Miktar",
+      "entry": "Giriş",
+      "unrealized": "Gerçekleşmemiş PnL"
+    },
+    "empty": {
+      "noTraders": "Henüz Trader yok",
+      "selectTrader": "Önce bir Trader seçin",
+      "noEquity": "Öz sermaye verisi yok",
+      "noPositions": "Açık pozisyon yok"
+    },
+    "errors": {
+      "tradersFailed": "Trader yüklenemedi",
+      "equityFailed": "Öz sermaye eğrisi yüklenemedi",
+      "positionsFailed": "Pozisyonlar yüklenemedi"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI Ticaret",
+    "subtitle": "nofx çekirdeğindeki Trader, strateji, model ve borsaları yönetin",
+    "readOnlyBadge": "Salt okunur önizleme (yazma P6b-2)",
+    "switchToLegacy": "Eski sürüme geç",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "Strateji",
+      "model": "AI Modeli",
+      "status": "Durum",
+      "actions": "İşlemler",
+      "running": "Çalışıyor",
+      "stopped": "Durdu",
+      "empty": "Henüz Trader yok"
+    },
+    "strategies": {
+      "title": "Stratejiler",
+      "empty": "Strateji yok",
+      "active": "Aktif"
+    },
+    "models": {
+      "title": "AI Modelleri",
+      "empty": "AI modeli yapılandırılmadı"
+    },
+    "exchanges": {
+      "title": "Borsalar",
+      "empty": "Borsa hesabı yok"
+    },
+    "actions": {
+      "start": "Başlat",
+      "stop": "Durdur",
+      "delete": "Sil",
+      "createTrader": "Trader Oluştur"
+    },
+    "createCard": {
+      "title": "Oluştur / Yapılandır",
+      "body": "Trader oluşturma, AI Key yapılandırması ve borsa bağlamaları, HOOT abonelik kapısı ve onay diyalogları ile P6b-2 de gelecek."
+    },
+    "errors": {
+      "tradersFailed": "Trader yüklenemedi",
+      "strategiesFailed": "Stratejiler yüklenemedi",
+      "modelsFailed": "AI modelleri yüklenemedi",
+      "exchangesFailed": "Borsalar yüklenemedi"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "Pozisyonlar",
+    "subtitle": "nofx ticaret çekirdeğinden canlı pozisyonlar",
+    "readOnlyBadge": "Salt okunur önizleme (manuel kapatma P6b-2)",
+    "switchToLegacy": "Eski sürüme geç",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "Hesap Özeti"
+    },
+    "openCard": {
+      "title": "Açık Pozisyonlar",
+      "countSuffix": "açık"
+    },
+    "cols": {
+      "symbol": "Sembol",
+      "side": "Yön",
+      "size": "Miktar",
+      "entry": "Giriş",
+      "unrealized": "Gerçekleşmemiş PnL",
+      "actions": "İşlemler"
+    },
+    "actions": {
+      "close": "Kapat"
+    },
+    "empty": {
+      "noTraders": "Henüz Trader yok",
+      "selectTrader": "Önce bir Trader seçin",
+      "noPositions": "Açık pozisyon yok"
+    },
+    "errors": {
+      "tradersFailed": "Trader yüklenemedi",
+      "accountFailed": "Hesap yüklenemedi",
+      "positionsFailed": "Pozisyonlar yüklenemedi"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

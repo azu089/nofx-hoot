@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "Позиции"
   },
   "airdrop": {
     "register": "Награда за регистрацию",
@@ -2357,6 +2358,170 @@
         "contrarian": "Контрарианский аналитик",
         "risk_manager": "Риск-менеджер"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "Предпросмотр nofx",
+    "subtitle": "Бизнес-слой HOOT проксирует к торговому ядру nofx (предпросмотр для разработки, не официальная точка входа)",
+    "traderSelect": "Выбрать Trader",
+    "accountCard": {
+      "title": "Снимок счёта"
+    },
+    "positionsCard": {
+      "title": "Открытые позиции",
+      "symbol": "Символ",
+      "side": "Сторона",
+      "size": "Размер",
+      "entryPrice": "Цена входа",
+      "unrealized": "Нереализованный PnL"
+    },
+    "decisionsCard": {
+      "title": "Последние решения"
+    },
+    "empty": {
+      "noTraders": "В nofx ещё нет Trader",
+      "selectTrader": "Сначала выберите Trader",
+      "noPositions": "Нет открытых позиций",
+      "noDecisions": "Нет решений"
+    },
+    "errors": {
+      "tradersFailed": "Не удалось загрузить список Trader",
+      "accountFailed": "Не удалось загрузить счёт",
+      "positionsFailed": "Не удалось загрузить позиции",
+      "decisionsFailed": "Не удалось загрузить решения"
+    }
+  },
+  "nofxDashboard": {
+    "title": "Панель nofx",
+    "subtitle": "Живой вид торгового ядра AI",
+    "switchToLegacy": "Старая версия",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "Капитал",
+      "dailyPnl": "PnL за день",
+      "totalPnl": "Общий PnL",
+      "winRate": "Процент побед"
+    },
+    "equity": {
+      "title": "Кривая капитала (7 дней)"
+    },
+    "positions": {
+      "title": "Открытые позиции",
+      "symbol": "Символ",
+      "side": "Сторона",
+      "size": "Размер",
+      "entry": "Цена входа",
+      "unrealized": "Нереализованный PnL"
+    },
+    "empty": {
+      "noTraders": "Trader ещё нет",
+      "selectTrader": "Сначала выберите Trader",
+      "noEquity": "Нет данных капитала",
+      "noPositions": "Нет открытых позиций"
+    },
+    "errors": {
+      "tradersFailed": "Не удалось загрузить Trader",
+      "equityFailed": "Не удалось загрузить кривую капитала",
+      "positionsFailed": "Не удалось загрузить позиции"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI Торговля",
+    "subtitle": "Управление Trader, стратегиями, моделями и биржами в ядре nofx",
+    "readOnlyBadge": "Только чтение (запись в P6b-2)",
+    "switchToLegacy": "Старая версия",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "Стратегия",
+      "model": "Модель AI",
+      "status": "Статус",
+      "actions": "Действия",
+      "running": "Запущен",
+      "stopped": "Остановлен",
+      "empty": "Нет Trader"
+    },
+    "strategies": {
+      "title": "Стратегии",
+      "empty": "Нет стратегий",
+      "active": "Активна"
+    },
+    "models": {
+      "title": "Модели AI",
+      "empty": "Модели AI не настроены"
+    },
+    "exchanges": {
+      "title": "Биржи",
+      "empty": "Нет аккаунтов бирж"
+    },
+    "actions": {
+      "start": "Старт",
+      "stop": "Стоп",
+      "delete": "Удалить",
+      "createTrader": "Создать Trader"
+    },
+    "createCard": {
+      "title": "Создать / Настроить",
+      "body": "Создание Trader, настройка AI Key и привязка бирж появятся в P6b-2 вместе с воротами подписки HOOT и диалогами подтверждения."
+    },
+    "errors": {
+      "tradersFailed": "Не удалось загрузить Trader",
+      "strategiesFailed": "Не удалось загрузить стратегии",
+      "modelsFailed": "Не удалось загрузить модели AI",
+      "exchangesFailed": "Не удалось загрузить биржи"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "Позиции",
+    "subtitle": "Реальные позиции из торгового ядра nofx",
+    "readOnlyBadge": "Только чтение (ручное закрытие в P6b-2)",
+    "switchToLegacy": "Старая версия",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "Сводка счёта"
+    },
+    "openCard": {
+      "title": "Открытые позиции",
+      "countSuffix": "поз."
+    },
+    "cols": {
+      "symbol": "Символ",
+      "side": "Сторона",
+      "size": "Размер",
+      "entry": "Цена входа",
+      "unrealized": "Нереализованный PnL",
+      "actions": "Действия"
+    },
+    "actions": {
+      "close": "Закрыть"
+    },
+    "empty": {
+      "noTraders": "Нет Trader",
+      "selectTrader": "Выберите Trader",
+      "noPositions": "Нет открытых позиций"
+    },
+    "errors": {
+      "tradersFailed": "Не удалось загрузить Trader",
+      "accountFailed": "Не удалось загрузить счёт",
+      "positionsFailed": "Не удалось загрузить позиции"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

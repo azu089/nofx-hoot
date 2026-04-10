@@ -2145,3 +2145,24 @@ model EquitySnapshot {
   @@index([strategyId, timestamp])
   @@map("equity_snapshots")
 }
+
+// ========== nofx 接入：事件回调记录表 (P5) ==========
+//
+// 接收来自 nofx 交易内核的 webhook 事件 (position_closed / ai_usage 等)。
+// 本阶段 (P5) 只存不算 — 不扣钱包、不动 BillingLog、不动订阅状态。
+// 后续业务批次会在 processedAt 流程里加入实际计费/扣费逻辑。
+//
+// 幂等: id == webhook 的 event_id (uuid v4)，主键唯一约束物理保证重放安全。
+
+model NofxEvent {
+  id          String    @id // = webhook event_id
+  userId      String    @map("user_id")
+  type        String
+  payload     Json
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([userId, type, receivedAt])
+  @@index([type, receivedAt])
+  @@map("nofx_events")
+}

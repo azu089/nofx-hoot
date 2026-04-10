@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "สถานะ"
   },
   "airdrop": {
     "register": "รางวัลการสมัคร",
@@ -2357,6 +2358,170 @@
         "contrarian": "นักวิเคราะห์ตรงข้าม",
         "risk_manager": "ผู้จัดการความเสี่ยง"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "ตัวอย่าง nofx",
+    "subtitle": "เลเยอร์เชิงพาณิชย์ HOOT เป็นพร็อกซีไปยังคอร์เทรด nofx (ตัวอย่างเพื่อพัฒนา ไม่ใช่ทางเข้าทางการ)",
+    "traderSelect": "เลือก Trader",
+    "accountCard": {
+      "title": "สแนปชอตบัญชี"
+    },
+    "positionsCard": {
+      "title": "สถานะปัจจุบัน",
+      "symbol": "สัญลักษณ์",
+      "side": "ทิศทาง",
+      "size": "ขนาด",
+      "entryPrice": "ราคาเข้า",
+      "unrealized": "PnL ที่ยังไม่ตระหนัก"
+    },
+    "decisionsCard": {
+      "title": "การตัดสินใจล่าสุด"
+    },
+    "empty": {
+      "noTraders": "ยังไม่มี Trader ใน nofx",
+      "selectTrader": "กรุณาเลือก Trader ก่อน",
+      "noPositions": "ไม่มีสถานะเปิด",
+      "noDecisions": "ยังไม่มีการตัดสินใจ"
+    },
+    "errors": {
+      "tradersFailed": "โหลดรายการ Trader ล้มเหลว",
+      "accountFailed": "โหลดข้อมูลบัญชีล้มเหลว",
+      "positionsFailed": "โหลดสถานะล้มเหลว",
+      "decisionsFailed": "โหลดการตัดสินใจล้มเหลว"
+    }
+  },
+  "nofxDashboard": {
+    "title": "แดชบอร์ด nofx",
+    "subtitle": "มุมมองสดของคอร์เทรด AI",
+    "switchToLegacy": "สลับเป็นรุ่นเก่า",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "ทุนรวม",
+      "dailyPnl": "PnL วันนี้",
+      "totalPnl": "PnL รวม",
+      "winRate": "อัตราชนะ"
+    },
+    "equity": {
+      "title": "เส้นทุน (7 วัน)"
+    },
+    "positions": {
+      "title": "สถานะปัจจุบัน",
+      "symbol": "สัญลักษณ์",
+      "side": "ทิศทาง",
+      "size": "ขนาด",
+      "entry": "ราคาเข้า",
+      "unrealized": "PnL ที่ยังไม่ตระหนัก"
+    },
+    "empty": {
+      "noTraders": "ยังไม่มี Trader",
+      "selectTrader": "กรุณาเลือก Trader",
+      "noEquity": "ไม่มีข้อมูลทุน",
+      "noPositions": "ไม่มีสถานะ"
+    },
+    "errors": {
+      "tradersFailed": "โหลด Trader ล้มเหลว",
+      "equityFailed": "โหลดเส้นทุนล้มเหลว",
+      "positionsFailed": "โหลดสถานะล้มเหลว"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI Trading",
+    "subtitle": "จัดการ Trader กลยุทธ์ โมเดล และตลาดในคอร์ nofx",
+    "readOnlyBadge": "ดูอย่างเดียว (เขียนที่ P6b-2)",
+    "switchToLegacy": "สลับเป็นรุ่นเก่า",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "กลยุทธ์",
+      "model": "โมเดล AI",
+      "status": "สถานะ",
+      "actions": "การดำเนินการ",
+      "running": "กำลังทำงาน",
+      "stopped": "หยุดแล้ว",
+      "empty": "ไม่มี Trader"
+    },
+    "strategies": {
+      "title": "กลยุทธ์",
+      "empty": "ไม่มีกลยุทธ์",
+      "active": "ใช้งาน"
+    },
+    "models": {
+      "title": "โมเดล AI",
+      "empty": "ไม่ได้กำหนดค่าโมเดล AI"
+    },
+    "exchanges": {
+      "title": "ตลาด",
+      "empty": "ไม่มีบัญชีตลาด"
+    },
+    "actions": {
+      "start": "เริ่ม",
+      "stop": "หยุด",
+      "delete": "ลบ",
+      "createTrader": "สร้าง Trader"
+    },
+    "createCard": {
+      "title": "สร้าง / กำหนดค่า",
+      "body": "การสร้าง Trader กำหนดค่า AI Key และผูกตลาดจะมีใน P6b-2 พร้อม HOOT subscription gate และไดอะล็อกยืนยัน"
+    },
+    "errors": {
+      "tradersFailed": "โหลด Trader ล้มเหลว",
+      "strategiesFailed": "โหลดกลยุทธ์ล้มเหลว",
+      "modelsFailed": "โหลดโมเดล AI ล้มเหลว",
+      "exchangesFailed": "โหลดตลาดล้มเหลว"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "สถานะ",
+    "subtitle": "สถานะสดจากคอร์เทรด nofx",
+    "readOnlyBadge": "ดูอย่างเดียว (ปิดด้วยตนเองใน P6b-2)",
+    "switchToLegacy": "สลับเป็นรุ่นเก่า",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "สรุปบัญชี"
+    },
+    "openCard": {
+      "title": "สถานะที่เปิดอยู่",
+      "countSuffix": "รายการ"
+    },
+    "cols": {
+      "symbol": "สัญลักษณ์",
+      "side": "ทิศทาง",
+      "size": "ขนาด",
+      "entry": "ราคาเข้า",
+      "unrealized": "PnL ที่ยังไม่ตระหนัก",
+      "actions": "การดำเนินการ"
+    },
+    "actions": {
+      "close": "ปิด"
+    },
+    "empty": {
+      "noTraders": "ยังไม่มี Trader",
+      "selectTrader": "เลือก Trader ก่อน",
+      "noPositions": "ไม่มีสถานะเปิด"
+    },
+    "errors": {
+      "tradersFailed": "โหลด Trader ล้มเหลว",
+      "accountFailed": "โหลดบัญชีล้มเหลว",
+      "positionsFailed": "โหลดสถานะล้มเหลว"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

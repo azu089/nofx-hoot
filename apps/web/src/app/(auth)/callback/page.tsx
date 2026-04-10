@@ -47,7 +47,7 @@ export default function AuthCallbackPage() {
         localStorage.setItem(USER_KEY, JSON.stringify(response.data));
 
         // 4. 跳转到仪表盘
-        router.replace('/dashboard');
+        router.replace('/profile');
       } catch {
         // token 无效或过期
         localStorage.removeItem(TOKEN_KEY);

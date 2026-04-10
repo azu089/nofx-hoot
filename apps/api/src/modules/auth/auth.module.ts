@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AirdropModule } from '../airdrop/airdrop.module';
 import { ReferralModule } from '../referral/referral.module';
+import { NofxModule } from '../nofx/nofx.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ReferralModule } from '../referral/referral.module';
     }),
     forwardRef(() => AirdropModule),
     forwardRef(() => ReferralModule),
+    NofxModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

@@ -77,11 +77,11 @@ export function MobileWithdrawPage({
   const canSubmit = address.length > 0 && isAddressValid && withdrawAmount > 0 && withdrawAmount <= availableBalance
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
+    <div className="min-h-screen text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
-          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
+          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-base font-semibold text-white">提现 USDT</h1>
@@ -92,7 +92,7 @@ export function MobileWithdrawPage({
       <div className="p-4 space-y-3">
         {/* 网络选择 - 独立层级避免裁剪 */}
         <div className="relative z-30">
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+          <div className="bubble-card relative rounded-2xl">
             <button
               type="button"
               onClick={() => setShowDropdown(!showDropdown)}
@@ -112,7 +112,7 @@ export function MobileWithdrawPage({
           </div>
 
           {showDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-[#0F0F14] border border-[#2A2A3A] rounded-xl overflow-hidden z-[100] shadow-[0_12px_48px_rgba(0,0,0,1)]">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-[#0F0F14] border border-white/10 rounded-xl overflow-hidden z-[100] shadow-[0_12px_48px_rgba(0,0,0,1)]">
               {networks.map((network) => (
                 <button
                   key={network.name}
@@ -123,17 +123,17 @@ export function MobileWithdrawPage({
                     setIsAddressValid(null)
                     setAddress('')
                   }}
-                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0"
+                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#252530] transition-colors border-b border-white/10 last:border-b-0"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
                       <Image src={network.icon} alt={network.name} width={32} height={32} className="object-contain" />
                     </div>
-                    <span className={`font-medium ${network.name === selectedNetwork.name ? 'text-[#06B6D4]' : 'text-white'}`}>{network.name}</span>
+                    <span className={`font-medium ${network.name === selectedNetwork.name ? 'text-emerald-400' : 'text-white'}`}>{network.name}</span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-[#94A3B8]">
                     <span>{network.fee} USDT · {network.time}</span>
-                    {network.name === selectedNetwork.name && <CheckCircle2 className="w-4 h-4 text-[#06B6D4]" />}
+                    {network.name === selectedNetwork.name && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                   </div>
                 </button>
               ))}
@@ -142,7 +142,7 @@ export function MobileWithdrawPage({
         </div>
 
         {/* 提现表单卡片 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+        <div className="bubble-card relative rounded-2xl overflow-hidden p-4 space-y-3">
           {/* 提现地址 */}
           <div className="space-y-2">
             <span className="text-sm text-[#94A3B8]">提现地址</span>
@@ -151,7 +151,7 @@ export function MobileWithdrawPage({
               value={address}
               onChange={(e) => handleAddressChange(e.target.value)}
               placeholder={selectedNetwork.name === 'TRC20' ? '输入 T 开头地址' : '输入 0x 地址'}
-              className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm font-mono placeholder:text-[#94A3B8] focus:outline-none focus:border-[#06B6D4]"
+              className="w-full bg-[#05090E] border border-white/10 rounded-lg px-3 py-2.5 text-sm font-mono placeholder:text-[#94A3B8] focus:outline-none focus:border-emerald-400"
             />
             {isAddressValid === false && (
               <p className="text-xs text-[#EF4444] flex items-center gap-1">
@@ -174,7 +174,7 @@ export function MobileWithdrawPage({
                 value={amount}
                 onChange={(e) => handleAmountChange(e.target.value)}
                 placeholder="0.00"
-                className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 pr-14 text-lg font-semibold placeholder:text-[#94A3B8] focus:outline-none focus:border-[#06B6D4]"
+                className="w-full bg-[#05090E] border border-white/10 rounded-lg px-3 py-2.5 pr-14 text-lg font-semibold placeholder:text-[#94A3B8] focus:outline-none focus:border-emerald-400"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#94A3B8]">USDT</span>
             </div>
@@ -186,7 +186,7 @@ export function MobileWithdrawPage({
                   key={q}
                   type="button"
                   onClick={() => setAmount(q.toString())}
-                  className="flex-1 py-2 text-xs bg-[#1A1A24] rounded-lg text-[#94A3B8] hover:text-white hover:bg-[#2A2A3A] transition-colors"
+                  className="flex-1 py-2 text-xs bg-white/5 rounded-lg text-[#94A3B8] hover:text-white hover:bg-white/10 transition-colors"
                 >
                   {q}
                 </button>
@@ -194,7 +194,7 @@ export function MobileWithdrawPage({
               <button
                 type="button"
                 onClick={() => setAmount(availableBalance.toString())}
-                className="flex-1 py-2 text-xs bg-[#1A1A24] rounded-lg text-[#94A3B8] hover:text-white hover:bg-[#2A2A3A] transition-colors"
+                className="flex-1 py-2 text-xs bg-white/5 rounded-lg text-[#94A3B8] hover:text-white hover:bg-white/10 transition-colors"
               >
                 全部
               </button>
@@ -203,9 +203,9 @@ export function MobileWithdrawPage({
 
           {/* 到账金额 */}
           {withdrawAmount > 0 && (
-            <div className="flex items-center justify-between pt-2 border-t border-[#1E1E2E]">
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
               <span className="text-xs text-[#94A3B8]">到账金额</span>
-              <span className="text-[#06B6D4] font-semibold">
+              <span className="text-emerald-400 font-semibold">
                 {actualAmount > 0 ? actualAmount.toLocaleString() : '0'} USDT
               </span>
             </div>
@@ -218,8 +218,8 @@ export function MobileWithdrawPage({
           disabled={!canSubmit}
           className={`w-full py-3.5 rounded-xl font-medium transition-all ${
             canSubmit
-              ? 'bg-[#06B6D4] hover:bg-[#0891B2] text-white'
-              : 'bg-[#1A1A24] text-[#94A3B8] cursor-not-allowed'
+              ? 'bg-emerald-400 hover:bg-emerald-500 text-white'
+              : 'bg-white/5 text-[#94A3B8] cursor-not-allowed'
           }`}
         >
           确认提现
@@ -227,13 +227,13 @@ export function MobileWithdrawPage({
 
         {/* 提现记录 */}
         {recentWithdrawals.length > 0 && (
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+          <div className="bubble-card relative rounded-2xl overflow-hidden p-4 space-y-3">
             <span className="text-sm text-[#94A3B8]">最近记录</span>
             <div className="space-y-2">
               {recentWithdrawals.map((record) => (
                 <div key={record.id} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center overflow-hidden relative">
                       <Image src="/icons/usdt.svg" alt="USDT" fill className="object-contain p-1.5" />
                     </div>
                     <div>

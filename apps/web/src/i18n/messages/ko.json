@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "포지션"
   },
   "airdrop": {
     "register": "가입 보너스",
@@ -2357,6 +2358,170 @@
         "contrarian": "역발상 분석가",
         "risk_manager": "리스크 매니저"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "nofx 미리보기",
+    "subtitle": "HOOT 비즈니스 계층을 통해 nofx 거래 코어에 프록시 접근 (개발 미리보기, 공식 진입점 아님)",
+    "traderSelect": "Trader 선택",
+    "accountCard": {
+      "title": "계정 스냅샷"
+    },
+    "positionsCard": {
+      "title": "현재 포지션",
+      "symbol": "심볼",
+      "side": "방향",
+      "size": "수량",
+      "entryPrice": "진입가",
+      "unrealized": "미실현 손익"
+    },
+    "decisionsCard": {
+      "title": "최근 결정"
+    },
+    "empty": {
+      "noTraders": "아직 nofx에 Trader가 없습니다",
+      "selectTrader": "먼저 Trader를 선택하세요",
+      "noPositions": "현재 포지션 없음",
+      "noDecisions": "결정 기록 없음"
+    },
+    "errors": {
+      "tradersFailed": "Trader 목록 로드 실패",
+      "accountFailed": "계정 정보 로드 실패",
+      "positionsFailed": "포지션 로드 실패",
+      "decisionsFailed": "결정 기록 로드 실패"
+    }
+  },
+  "nofxDashboard": {
+    "title": "nofx 대시보드",
+    "subtitle": "AI 거래 코어 실시간 뷰",
+    "switchToLegacy": "이전 버전으로",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "총자산",
+      "dailyPnl": "일 손익",
+      "totalPnl": "누적 손익",
+      "winRate": "승률"
+    },
+    "equity": {
+      "title": "자산 곡선 (7일)"
+    },
+    "positions": {
+      "title": "현재 포지션",
+      "symbol": "심볼",
+      "side": "방향",
+      "size": "수량",
+      "entry": "진입가",
+      "unrealized": "미실현 손익"
+    },
+    "empty": {
+      "noTraders": "Trader 없음",
+      "selectTrader": "Trader를 먼저 선택하세요",
+      "noEquity": "자산 데이터 없음",
+      "noPositions": "포지션 없음"
+    },
+    "errors": {
+      "tradersFailed": "Trader 목록 로드 실패",
+      "equityFailed": "자산 곡선 로드 실패",
+      "positionsFailed": "포지션 로드 실패"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI 거래",
+    "subtitle": "nofx 거래 코어의 Trader, 전략, 모델, 거래소 관리",
+    "readOnlyBadge": "읽기 전용 미리보기 (쓰기는 P6b-2)",
+    "switchToLegacy": "이전 버전으로",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "전략",
+      "model": "AI 모델",
+      "status": "상태",
+      "actions": "작업",
+      "running": "실행 중",
+      "stopped": "정지",
+      "empty": "Trader 없음"
+    },
+    "strategies": {
+      "title": "전략",
+      "empty": "전략 없음",
+      "active": "활성"
+    },
+    "models": {
+      "title": "AI 모델",
+      "empty": "AI 모델 미구성"
+    },
+    "exchanges": {
+      "title": "거래소",
+      "empty": "거래소 계정 없음"
+    },
+    "actions": {
+      "start": "시작",
+      "stop": "정지",
+      "delete": "삭제",
+      "createTrader": "Trader 생성"
+    },
+    "createCard": {
+      "title": "생성 / 설정",
+      "body": "Trader 생성, AI Key 설정, 거래소 바인딩은 P6b-2에서 구현되며 HOOT 구독 게이트 및 확인 다이얼로그가 포함됩니다."
+    },
+    "errors": {
+      "tradersFailed": "Trader 로드 실패",
+      "strategiesFailed": "전략 로드 실패",
+      "modelsFailed": "AI 모델 로드 실패",
+      "exchangesFailed": "거래소 로드 실패"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "포지션",
+    "subtitle": "nofx 거래 코어의 실시간 포지션",
+    "readOnlyBadge": "읽기 전용 미리보기 (수동 청산 P6b-2)",
+    "switchToLegacy": "이전 버전으로",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "계정 요약"
+    },
+    "openCard": {
+      "title": "현재 포지션",
+      "countSuffix": "개"
+    },
+    "cols": {
+      "symbol": "심볼",
+      "side": "방향",
+      "size": "수량",
+      "entry": "진입가",
+      "unrealized": "미실현 손익",
+      "actions": "작업"
+    },
+    "actions": {
+      "close": "청산"
+    },
+    "empty": {
+      "noTraders": "Trader 없음",
+      "selectTrader": "Trader 먼저 선택",
+      "noPositions": "포지션 없음"
+    },
+    "errors": {
+      "tradersFailed": "Trader 로드 실패",
+      "accountFailed": "계정 로드 실패",
+      "positionsFailed": "포지션 로드 실패"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

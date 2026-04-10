@@ -19,6 +19,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { AirdropService } from '../airdrop/airdrop.service';
 import { ReferralService } from '../referral/referral.service';
+import { NofxUserSyncService } from '../nofx/nofx-user-sync.service';
 import {
   RegisterDto,
   LoginDto,
@@ -54,6 +55,7 @@ export class AuthService implements OnModuleDestroy {
     private airdropService: AirdropService,
     @Inject(forwardRef(() => ReferralService))
     private referralService: ReferralService,
+    private nofxUserSync: NofxUserSyncService,
   ) {
     // 创建 Redis 连接（用于认证缓存）
     this.redis = new Redis({
@@ -333,6 +335,9 @@ export class AuthService implements OnModuleDestroy {
       await this.sendVerificationCode(user.email);
     }
 
+    // 同步影子用户到 nofx 交易内核（fire-and-forget，不阻塞注册流程）
+    void this.nofxUserSync.ensureShadowUser({ id: user.id, email: user.email });
+
     return user;
   }
 
@@ -505,6 +510,9 @@ export class AuthService implements OnModuleDestroy {
       this.logAudit(user.id, 'user', 'login', 'user', user.id, '邮箱密码登录', ip),
       this.generateTokenPair(user.id, user.email, ip, undefined, dto.rememberMe),
     ]);
+
+    // 同步影子用户到 nofx（lazy 路径：老用户首次登录会触发一次 upsert，之后缓存命中零成本）
+    void this.nofxUserSync.ensureShadowUser({ id: user.id, email: user.email });
 
     return {
       ...tokenPair,
@@ -818,6 +826,9 @@ export class AuthService implements OnModuleDestroy {
     // 生成 Token 对（Access Token 15min + Refresh Token 7天）
     const tokenPair = await this.generateTokenPair(user.id, user.email);
 
+    // 同步影子用户到 nofx
+    void this.nofxUserSync.ensureShadowUser({ id: user.id, email: user.email });
+
     return {
       ...tokenPair,
       user: {
@@ -1011,6 +1022,9 @@ export class AuthService implements OnModuleDestroy {
 
     // 审计日志
     await this.logAudit(user.id, 'user', 'login', 'user', user.id, `钱包登录: ${address}`);
+
+    // 同步影子用户到 nofx
+    void this.nofxUserSync.ensureShadowUser({ id: user.id, email: user.email });
 
     // 生成 Token 对（Access Token 15min + Refresh Token 7天）
     const tokenPair = await this.generateTokenPair(user.id, user.email);

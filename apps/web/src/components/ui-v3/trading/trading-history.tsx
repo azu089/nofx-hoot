@@ -14,7 +14,7 @@ import {
   XCircle,
   RefreshCw
 } from 'lucide-react'
-import { Sidebar } from '../dashboard/sidebar'
+// Sidebar 已随旧 dashboard 组件删除
 
 interface Trade {
   id: string
@@ -179,8 +179,7 @@ export function TradingHistory({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] font-sans">
       <div className="flex">
-        {/* Sidebar */}
-        <Sidebar activeItem="trading" />
+        {/* Sidebar 已删除 */}
 
         {/* Main Content */}
         <main className="flex-1 p-6 ml-60">

@@ -24,7 +24,7 @@ function VerifyEmailContent() {
   // 已登录跳转到仪表盘
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/profile');
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -38,7 +38,7 @@ function VerifyEmailContent() {
 
   const handleSuccess = () => {
     // 验证成功后直接进入仪表盘（verifyEmail 已自动写入登录态）
-    router.replace('/dashboard');
+    router.replace('/profile');
   };
 
   const handleBack = () => {

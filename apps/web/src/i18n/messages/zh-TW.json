@@ -528,7 +528,8 @@
     "activity": "活動",
     "settings": "設置",
     "referral": "邀請返佣",
-    "about": "关于 Hoot"
+    "about": "关于 Hoot",
+    "positions": "持倉管理"
   },
   "airdrop": {
     "register": "註冊獎勵",
@@ -2359,6 +2360,170 @@
         "contrarian": "逆向分析師",
         "risk_manager": "風控管理員"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "nofx 預覽",
+    "subtitle": "透過 HOOT 商業層代理存取 nofx 交易核心（開發預覽頁，非正式入口）",
+    "traderSelect": "選擇 Trader",
+    "accountCard": {
+      "title": "帳戶快照"
+    },
+    "positionsCard": {
+      "title": "目前持倉",
+      "symbol": "標的",
+      "side": "方向",
+      "size": "數量",
+      "entryPrice": "開倉價",
+      "unrealized": "浮動盈虧"
+    },
+    "decisionsCard": {
+      "title": "最近決策"
+    },
+    "empty": {
+      "noTraders": "尚未在 nofx 中建立任何 Trader",
+      "selectTrader": "請先選擇一個 Trader",
+      "noPositions": "目前無持倉",
+      "noDecisions": "暫無決策記錄"
+    },
+    "errors": {
+      "tradersFailed": "載入 Trader 列表失敗",
+      "accountFailed": "載入帳戶資訊失敗",
+      "positionsFailed": "載入持倉失敗",
+      "decisionsFailed": "載入決策失敗"
+    }
+  },
+  "nofxDashboard": {
+    "title": "nofx 首頁",
+    "subtitle": "AI 交易核心即時視圖",
+    "switchToLegacy": "切換到舊版",
+    "traderSelect": "選擇 Trader",
+    "kpi": {
+      "equity": "總權益",
+      "dailyPnl": "日盈虧",
+      "totalPnl": "總盈虧",
+      "winRate": "勝率"
+    },
+    "equity": {
+      "title": "權益曲線（7 天）"
+    },
+    "positions": {
+      "title": "目前持倉",
+      "symbol": "標的",
+      "side": "方向",
+      "size": "數量",
+      "entry": "開倉價",
+      "unrealized": "浮動盈虧"
+    },
+    "empty": {
+      "noTraders": "尚未建立任何 Trader",
+      "selectTrader": "請先選擇 Trader",
+      "noEquity": "暫無權益資料",
+      "noPositions": "目前無持倉"
+    },
+    "errors": {
+      "tradersFailed": "載入 Trader 列表失敗",
+      "equityFailed": "載入權益曲線失敗",
+      "positionsFailed": "載入持倉失敗"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI 交易",
+    "subtitle": "管理 nofx 交易核心中的 Trader、策略、模型與交易所",
+    "readOnlyBadge": "唯讀預覽（寫入待 P6b-2）",
+    "switchToLegacy": "切換到舊版",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "策略",
+      "model": "AI 模型",
+      "status": "狀態",
+      "actions": "操作",
+      "running": "執行中",
+      "stopped": "已停止",
+      "empty": "暫無 Trader"
+    },
+    "strategies": {
+      "title": "策略",
+      "empty": "暫無策略",
+      "active": "已啟用"
+    },
+    "models": {
+      "title": "AI 模型",
+      "empty": "尚未設定 AI 模型"
+    },
+    "exchanges": {
+      "title": "交易所",
+      "empty": "尚未設定交易所帳戶"
+    },
+    "actions": {
+      "start": "啟動",
+      "stop": "停止",
+      "delete": "刪除",
+      "createTrader": "建立 Trader"
+    },
+    "createCard": {
+      "title": "建立 / 設定",
+      "body": "建立 Trader、設定 AI Key、綁定交易所等寫入操作將在 P6b-2 實作，屆時會接入 HOOT 訂閱門檻與確認彈窗。"
+    },
+    "errors": {
+      "tradersFailed": "載入 Trader 失敗",
+      "strategiesFailed": "載入策略失敗",
+      "modelsFailed": "載入 AI 模型失敗",
+      "exchangesFailed": "載入交易所失敗"
+    },
+    "confirm": {
+      "startTitle": "确认启动 Trader",
+      "stopTitle": "确认停止 Trader",
+      "deleteTitle": "确认删除 Trader"
+    },
+    "toast": {
+      "started": "Trader 已启动",
+      "stopped": "Trader 已停止",
+      "deleted": "Trader 已删除",
+      "failed": "操作失败"
+    }
+  },
+  "nofxPositions": {
+    "title": "持倉",
+    "subtitle": "查看 nofx 交易核心中的即時持倉",
+    "readOnlyBadge": "唯讀預覽（手動平倉待 P6b-2）",
+    "switchToLegacy": "切換到舊版",
+    "traderSelect": "選擇 Trader",
+    "accountCard": {
+      "title": "帳戶摘要"
+    },
+    "openCard": {
+      "title": "目前持倉",
+      "countSuffix": "筆"
+    },
+    "cols": {
+      "symbol": "標的",
+      "side": "方向",
+      "size": "數量",
+      "entry": "開倉價",
+      "unrealized": "浮動盈虧",
+      "actions": "操作"
+    },
+    "actions": {
+      "close": "平倉"
+    },
+    "empty": {
+      "noTraders": "尚未建立任何 Trader",
+      "selectTrader": "請先選擇 Trader",
+      "noPositions": "目前無持倉"
+    },
+    "errors": {
+      "tradersFailed": "載入 Trader 失敗",
+      "accountFailed": "載入帳戶失敗",
+      "positionsFailed": "載入持倉失敗"
+    },
+    "confirm": {
+      "closeWarning": "此操作将在交易所执行市价平仓，不可撤销。确认继续？"
+    },
+    "toast": {
+      "closed": "已平仓",
+      "closeFailed": "平仓失败"
     }
   }
 }

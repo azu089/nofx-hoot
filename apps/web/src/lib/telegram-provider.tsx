@@ -50,7 +50,7 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       router.back();
     };
 
-    const isHomePage = pathname === '/dashboard' || pathname === '/';
+    const isHomePage = pathname === '/profile' || pathname === '/';
     if (isHomePage) {
       tg.BackButton.hide();
     } else {

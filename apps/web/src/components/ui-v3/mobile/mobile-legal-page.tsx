@@ -18,14 +18,14 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
 
   if (!document) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] text-white flex items-center justify-center">
+      <div className="min-h-screen text-white flex items-center justify-center">
         <div className="text-center">
           <AlertTriangle className="w-12 h-12 text-[#606070] mx-auto mb-4" />
           <p className="text-[#94A3B8]">文档不存在</p>
           <button
             type="button"
             onClick={onBack}
-            className="mt-4 px-4 py-2 bg-cyan-500 text-white rounded-xl"
+            className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-xl"
           >
             返回
           </button>
@@ -79,9 +79,9 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
             <table className="w-full text-xs border-collapse min-w-[300px]">
               {tableHeaders.length > 0 && (
                 <thead>
-                  <tr className="border-b border-[#1E1E2E]">
+                  <tr className="border-b border-white/10">
                     {tableHeaders.map((header, i) => (
-                      <th key={i} className="px-3 py-2 text-left text-white font-semibold bg-[#1E1E2E]/50">
+                      <th key={i} className="px-3 py-2 text-left text-white font-semibold bg-white/5/50">
                         {header}
                       </th>
                     ))}
@@ -90,7 +90,7 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
               )}
               <tbody>
                 {tableRows.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-b border-[#1E1E2E]/50">
+                  <tr key={rowIndex} className="border-b border-white/10/50">
                     {row.map((cell, cellIndex) => (
                       <td key={cellIndex} className="px-3 py-2 text-[#94A3B8]">
                         {parseInlineMarkdown(cell)}
@@ -139,7 +139,7 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
         return
       } else if (trimmedLine.startsWith('## ')) {
         elements.push(
-          <h2 key={index} className="text-lg font-bold text-white mt-8 mb-3 pb-2 border-b border-[#1E1E2E]">
+          <h2 key={index} className="text-lg font-bold text-white mt-8 mb-3 pb-2 border-b border-white/10">
             {trimmedLine.replace('## ', '')}
           </h2>
         )
@@ -157,14 +157,14 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
         )
       } else if (/^\*\*[^*]+\*\*$/.test(trimmedLine)) {
         elements.push(
-          <p key={index} className="font-bold text-cyan-500 mt-5 mb-2 text-sm">
+          <p key={index} className="font-bold text-emerald-500 mt-5 mb-2 text-sm">
             {trimmedLine.replace(/\*\*/g, '')}
           </p>
         )
       } else if (trimmedLine.startsWith('> ')) {
         // 引用块
         elements.push(
-          <blockquote key={index} className="border-l-3 border-cyan-500 pl-3 py-1.5 my-3 bg-cyan-500/5 rounded-r-lg">
+          <blockquote key={index} className="border-l-3 border-emerald-500 pl-3 py-1.5 my-3 bg-emerald-500/5 rounded-r-lg">
             <p className="text-[#94A3B8] italic text-sm leading-relaxed">
               {parseInlineMarkdown(trimmedLine.replace('> ', ''))}
             </p>
@@ -217,13 +217,13 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
       } else if (trimmedLine.startsWith('□ ')) {
         elements.push(
           <div key={index} className="flex items-start gap-2 ml-3 mb-2">
-            <span className="text-cyan-500 mt-0.5 text-sm">☐</span>
+            <span className="text-emerald-500 mt-0.5 text-sm">☐</span>
             <span className="text-[#94A3B8] text-sm leading-relaxed">{trimmedLine.replace('□ ', '')}</span>
           </div>
         )
       } else if (trimmedLine === '---') {
         elements.push(
-          <hr key={index} className="border-[#1E1E2E] my-6" />
+          <hr key={index} className="border-white/10 my-6" />
         )
       } else if (trimmedLine.startsWith('©')) {
         elements.push(
@@ -251,15 +251,15 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white pb-8">
+    <div className="min-h-screen text-white pb-8">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label="返回"
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
@@ -267,13 +267,13 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
           <h1 className="text-base font-semibold text-white">{title}</h1>
 
           {/* 语言切换 */}
-          <div className="flex items-center gap-0.5 bg-[#12121A] rounded-lg p-0.5">
+          <div className="flex items-center gap-0.5 bg-[#0B1520] rounded-lg p-0.5">
             <button
               type="button"
               onClick={() => setLocale('zh')}
               className={`px-2 py-1 rounded-md text-xs transition-colors ${
                 locale === 'zh'
-                  ? 'bg-cyan-500 text-white'
+                  ? 'bg-emerald-500 text-white'
                   : 'text-[#94A3B8]'
               }`}
             >
@@ -284,7 +284,7 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
               onClick={() => setLocale('en')}
               className={`px-2 py-1 rounded-md text-xs transition-colors ${
                 locale === 'en'
-                  ? 'bg-cyan-500 text-white'
+                  ? 'bg-emerald-500 text-white'
                   : 'text-[#94A3B8]'
               }`}
             >
@@ -296,7 +296,7 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
 
       {/* 内容区域 */}
       <div className="px-4 pt-4">
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+        <div className="bubble-card relative rounded-2xl overflow-hidden p-4">
           {renderContent(content)}
         </div>
       </div>

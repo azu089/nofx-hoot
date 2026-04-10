@@ -1,114 +1,69 @@
-// Hoot UI v3.0 - Web3 原生 · 有活力 · 代币驱动 · 久看不累
-// v0.app API 生成的高保真组件
+// Hoot UI v3.0 — 保留组件索引（首页/AI/策略/交易所/空投 旧组件已于 2026-04-09 删除）
 
 // ========== 公开页面 ==========
 
-// Landing 首页
 export { LandingPage } from './landing/landing-page'
-
-// 认证组件
 export { LoginPage } from './auth/login-page'
 export { RegisterPage } from './auth/register-page'
 export { WalletConnectModal } from './auth/wallet-connect-modal'
 
 // ========== 用户页面 ==========
 
-// Dashboard 仪表盘
-export { DashboardV3 } from './dashboard/dashboard-v3'
-export { Sidebar } from './dashboard/sidebar'
-
-// 策略市场
-export { StrategyMarketplaceV3 } from './strategies/strategy-marketplace-v3'
-export { StrategyDetailPage } from './strategies/strategy-detail-page'
-export { StrategyConfigModal } from './strategies/strategy-config-modal'
-export { CreateStrategyModal } from './strategies/create-strategy-modal'
-export { MyStrategiesPage } from './strategies/my-strategies-page'
-
-// 策略编辑组件
-export { StrategyEditPage } from './strategies/strategy-edit-page'
-export { StrategyConfigPage } from './strategies/strategy-config-page'
-
-// 用户自定义策略组件
-export { VisualStrategyBuilder } from './strategies/visual-strategy-builder'
-export { TradingViewWebhookConfig } from './strategies/tradingview-webhook-config'
-export { CodeEditor } from './strategies/code-editor'
-
-// 持仓/交易中心
+// 持仓/交易中心（保留）
 export { PositionsPageV3 } from './positions/positions-page-v3'
-
-// 交易相关
 export { TradingHistory } from './trading/trading-history'
 
-// 生态页面
+// 生态
 export { EcosystemPageV3 } from './ecosystem/ecosystem-page-v3'
 
 // 个人中心
 export { ProfilePageV3 } from './me/profile-page-v3'
 
-// 钱包页面
+// 钱包
 export { WalletPageV3 } from './wallet/wallet-page-v3'
 export { ApiKeysPage } from './wallet/api-keys-page'
 export { DepositPage } from './wallet/deposit-page'
 export { WithdrawPage } from './wallet/withdraw-page'
 export { ExchangePage } from './wallet/exchange-page'
 
-// 邀请页面
+// 邀请
 export { ReferralPageV3 } from './referral/referral-page-v3'
 
-// 设置页面
+// 设置
 export { SettingsPage } from './settings/settings-page'
 
 // 会员订阅
 export { SubscriptionPage } from './subscription/subscription-page'
 
-// 通知公告
+// 通知
 export { NotificationsPage } from './notifications/notifications-page'
 
-// 帮助中心
+// 帮助
 export { HelpCenterPage } from './help/help-center-page'
 
-// 关于页面
+// 关于
 export { AboutPage } from './about/about-page'
-
-// 策略创建器
-export { StrategyCreatorPage } from './strategies/strategy-creator-page'
 
 // ========== 移动端组件 ==========
 
-// 移动端导航
 export { MobileNav } from './mobile/mobile-nav'
-
-// 移动端页面
-export { MobileDashboardV3 } from './mobile/mobile-dashboard-v3'
-export { MobileStrategiesV3 } from './mobile/mobile-strategies-v3'
-export { MobileStrategyDetail } from './mobile/mobile-strategy-detail'
-export { MobileStrategyEdit } from './mobile/mobile-strategy-edit'
 export { MobileEcosystemV3 } from './mobile/mobile-ecosystem-v3'
 export { MobileWalletConnectModal } from './mobile/mobile-wallet-connect-modal'
 
-// V0 生成的新版移动端组件
 export { MobileProfilePage } from './mobile/mobile-profile-page'
 export { MobileWalletPage } from './mobile/mobile-wallet-page'
 export { MobileReferralPage } from './mobile/mobile-referral-page'
 export { MobileSettingsPage } from './mobile/mobile-settings-page'
 export { MobileTradingCenter } from './mobile/mobile-trading-center'
 
-// 移动端认证页面
 export { MobileLoginPage } from './mobile/mobile-login-page'
 export { MobileRegisterPage } from './mobile/mobile-register-page'
 export { MobileVerifyEmailPage } from './mobile/mobile-verify-email-page'
 
-// 移动端功能页面
-export { MobileAirdropPage } from './mobile/mobile-airdrop-page'
-export { MobileExchangesPage } from './mobile/mobile-exchanges-page'
 export { MobileNotificationsPage } from './mobile/mobile-notifications-page'
 export { MobileDepositPage } from './mobile/mobile-deposit-page'
 export { MobileWithdrawPage } from './mobile/mobile-withdraw-page'
-export { MobileExchangePage } from './mobile/mobile-exchange-page'
 export { MobileSubscriptionPage } from './mobile/mobile-subscription-page'
-export { MobileStrategyCreator } from './mobile/mobile-strategy-creator'
-export { MobileStrategyConfig } from './mobile/mobile-strategy-config'
-export { MobileVisualBuilder } from './mobile/mobile-visual-builder'
 export { MobileHelpPage } from './mobile/mobile-help-page'
 export { MobileHelpArticlePage } from './mobile/mobile-help-article-page'
 export { MobileAboutPage } from './mobile/mobile-about-page'

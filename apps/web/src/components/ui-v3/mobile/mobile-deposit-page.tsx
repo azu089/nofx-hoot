@@ -67,11 +67,11 @@ export function MobileDepositPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
+    <div className="min-h-screen text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
-          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
+          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-base font-semibold text-white">充值 USDT</h1>
@@ -82,7 +82,7 @@ export function MobileDepositPage({
       <div className="p-4 space-y-3">
         {/* 网络选择 - 独立层级避免裁剪 */}
         <div className="relative z-30">
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+          <div className="bubble-card relative rounded-2xl">
             <button
               type="button"
               onClick={() => setShowDropdown(!showDropdown)}
@@ -102,7 +102,7 @@ export function MobileDepositPage({
           </div>
 
           {showDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-[#0F0F14] border border-[#2A2A3A] rounded-xl overflow-hidden z-[100] shadow-[0_12px_48px_rgba(0,0,0,1)]">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-[#0F0F14] border border-white/10 rounded-xl overflow-hidden z-[100] shadow-[0_12px_48px_rgba(0,0,0,1)]">
               {networks.map((network) => (
                 <button
                   key={network.name}
@@ -114,11 +114,11 @@ export function MobileDepositPage({
                     <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
                       <Image src={network.icon} alt={network.name} width={32} height={32} className="object-contain" />
                     </div>
-                    <span className={`font-medium ${network.name === selectedNetwork ? 'text-[#06B6D4]' : 'text-white'}`}>{network.name}</span>
+                    <span className={`font-medium ${network.name === selectedNetwork ? 'text-emerald-400' : 'text-white'}`}>{network.name}</span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-[#94A3B8]">
                     <span>{network.time}</span>
-                    {network.name === selectedNetwork && <CheckCircle2 className="w-4 h-4 text-[#06B6D4]" />}
+                    {network.name === selectedNetwork && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                   </div>
                 </button>
               ))}
@@ -127,13 +127,13 @@ export function MobileDepositPage({
         </div>
 
         {/* 地址卡片 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+        <div className="bubble-card relative rounded-xl overflow-hidden p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[#94A3B8]">充值地址</span>
-            <span className="text-xs text-[#06B6D4]">{selectedNetwork}</span>
+            <span className="text-xs text-emerald-400">{selectedNetwork}</span>
           </div>
 
-          <div className="bg-[#0A0A0F] rounded-lg p-3 font-mono text-sm text-[#94A3B8] break-all">
+          <div className="bg-[#05090E] rounded-lg p-3 font-mono text-sm text-[#94A3B8] break-all">
             {walletAddress}
           </div>
 
@@ -141,7 +141,7 @@ export function MobileDepositPage({
             <button
               type="button"
               onClick={handleCopy}
-              className="flex-1 bg-[#06B6D4] rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2"
+              className="flex-1 bg-emerald-400 rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2"
             >
               <Copy className="w-4 h-4" />
               {copied ? '已复制' : '复制'}
@@ -150,14 +150,14 @@ export function MobileDepositPage({
               type="button"
               onClick={() => setShowQR(!showQR)}
               aria-label="二维码"
-              className={`px-4 rounded-lg border ${showQR ? 'bg-[#06B6D4]/10 border-[#06B6D4]' : 'bg-[#1A1A24] border-[#1E1E2E]'}`}
+              className={`px-4 rounded-lg border ${showQR ? 'bg-emerald-400/10 border-emerald-400' : 'bg-white/5 border-white/10'}`}
             >
-              <QrCode className="w-5 h-5 text-[#06B6D4]" />
+              <QrCode className="w-5 h-5 text-emerald-400" />
             </button>
           </div>
 
           {showQR && walletAddress && (
-            <div className="pt-3 border-t border-[#1E1E2E]">
+            <div className="pt-3 border-t border-white/10">
               <div className="bg-white rounded-lg p-3 w-40 h-40 mx-auto flex items-center justify-center">
                 <QRCodeSVG
                   value={walletAddress}
@@ -186,14 +186,14 @@ export function MobileDepositPage({
 
         {/* 账户余额 + 安全提示 */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-3">
+          <div className="bubble-card relative rounded-xl p-3">
             <div className="text-xs text-[#94A3B8] mb-1">账户余额</div>
             <div className="text-lg font-bold">${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className="text-xs text-[#606070]">USDT</div>
           </div>
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-3">
+          <div className="bubble-card relative rounded-xl p-3">
             <div className="flex items-center gap-1 mb-1">
-              <Shield className="w-3.5 h-3.5 text-[#06B6D4]" />
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
               <span className="text-xs text-[#94A3B8]">安全提示</span>
             </div>
             <ul className="text-xs text-[#9090A0] space-y-0.5">
@@ -211,13 +211,13 @@ export function MobileDepositPage({
 
         {/* 充值记录 */}
         {recentDeposits.length > 0 && (
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+          <div className="bubble-card relative rounded-xl overflow-hidden p-4 space-y-3">
             <span className="text-sm text-[#94A3B8]">最近记录</span>
             <div className="space-y-2">
               {recentDeposits.map((record) => (
                 <div key={record.id} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center overflow-hidden relative">
                       <Image src="/icons/usdt.svg" alt="USDT" fill className="object-contain p-1.5" />
                     </div>
                     <div>

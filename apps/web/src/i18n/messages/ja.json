@@ -526,7 +526,8 @@
     "activity": "Activity",
     "settings": "Settings",
     "referral": "Referral Rewards",
-    "about": "About Hoot"
+    "about": "About Hoot",
+    "positions": "ポジション"
   },
   "airdrop": {
     "register": "登録ボーナス",
@@ -2357,6 +2358,170 @@
         "contrarian": "逆張りアナリスト",
         "risk_manager": "リスクマネージャー"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "nofx プレビュー",
+    "subtitle": "HOOT商用層からnofx取引コアへのプロキシ（開発プレビュー、正式エントリではありません）",
+    "traderSelect": "Traderを選択",
+    "accountCard": {
+      "title": "アカウントスナップショット"
+    },
+    "positionsCard": {
+      "title": "現在のポジション",
+      "symbol": "シンボル",
+      "side": "方向",
+      "size": "数量",
+      "entryPrice": "建値",
+      "unrealized": "未実現損益"
+    },
+    "decisionsCard": {
+      "title": "最近の判断"
+    },
+    "empty": {
+      "noTraders": "まだTraderが作成されていません",
+      "selectTrader": "Traderを選択してください",
+      "noPositions": "現在ポジションはありません",
+      "noDecisions": "判断履歴はまだありません"
+    },
+    "errors": {
+      "tradersFailed": "Trader一覧の読み込みに失敗",
+      "accountFailed": "アカウント情報の読み込みに失敗",
+      "positionsFailed": "ポジションの読み込みに失敗",
+      "decisionsFailed": "判断履歴の読み込みに失敗"
+    }
+  },
+  "nofxDashboard": {
+    "title": "nofx ダッシュボード",
+    "subtitle": "AI取引コアのライブビュー",
+    "switchToLegacy": "旧版に切替",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "総資産",
+      "dailyPnl": "日次損益",
+      "totalPnl": "累積損益",
+      "winRate": "勝率"
+    },
+    "equity": {
+      "title": "資産推移（7日間）"
+    },
+    "positions": {
+      "title": "現在のポジション",
+      "symbol": "シンボル",
+      "side": "方向",
+      "size": "数量",
+      "entry": "建値",
+      "unrealized": "未実現損益"
+    },
+    "empty": {
+      "noTraders": "Traderはまだありません",
+      "selectTrader": "Traderを選択してください",
+      "noEquity": "資産データなし",
+      "noPositions": "ポジションなし"
+    },
+    "errors": {
+      "tradersFailed": "Trader一覧の読み込みに失敗",
+      "equityFailed": "資産推移の読み込みに失敗",
+      "positionsFailed": "ポジションの読み込みに失敗"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "AI 取引",
+    "subtitle": "nofx 取引コアの Trader、戦略、モデル、取引所を管理",
+    "readOnlyBadge": "読み取り専用プレビュー (書き込みは P6b-2)",
+    "switchToLegacy": "旧版に切替",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "戦略",
+      "model": "AI モデル",
+      "status": "状態",
+      "actions": "操作",
+      "running": "実行中",
+      "stopped": "停止",
+      "empty": "Trader なし"
+    },
+    "strategies": {
+      "title": "戦略",
+      "empty": "戦略なし",
+      "active": "有効"
+    },
+    "models": {
+      "title": "AI モデル",
+      "empty": "AI モデル未設定"
+    },
+    "exchanges": {
+      "title": "取引所",
+      "empty": "取引所アカウント未設定"
+    },
+    "actions": {
+      "start": "開始",
+      "stop": "停止",
+      "delete": "削除",
+      "createTrader": "Trader を作成"
+    },
+    "createCard": {
+      "title": "作成 / 設定",
+      "body": "Trader 作成、AI Key 設定、取引所バインドは P6b-2 で実装され、HOOT サブスクリプションゲートと確認ダイアログを伴います。"
+    },
+    "errors": {
+      "tradersFailed": "Trader の読み込みに失敗",
+      "strategiesFailed": "戦略の読み込みに失敗",
+      "modelsFailed": "AI モデルの読み込みに失敗",
+      "exchangesFailed": "取引所の読み込みに失敗"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "ポジション",
+    "subtitle": "nofx 取引コアのライブポジション",
+    "readOnlyBadge": "読み取り専用プレビュー (手動決済は P6b-2)",
+    "switchToLegacy": "旧版に切替",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "アカウント概要"
+    },
+    "openCard": {
+      "title": "現在のポジション",
+      "countSuffix": "件"
+    },
+    "cols": {
+      "symbol": "シンボル",
+      "side": "方向",
+      "size": "数量",
+      "entry": "建値",
+      "unrealized": "未実現損益",
+      "actions": "操作"
+    },
+    "actions": {
+      "close": "決済"
+    },
+    "empty": {
+      "noTraders": "Trader がありません",
+      "selectTrader": "Trader を選択",
+      "noPositions": "ポジションなし"
+    },
+    "errors": {
+      "tradersFailed": "Trader 読み込み失敗",
+      "accountFailed": "アカウント読み込み失敗",
+      "positionsFailed": "ポジション読み込み失敗"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

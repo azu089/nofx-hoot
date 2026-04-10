@@ -13,8 +13,9 @@ import {
   Copy,
   Check,
   ChevronRight,
-  Brain,
-  Download
+  Download,
+  Users,
+  BarChart3
 } from 'lucide-react'
 
 interface MobileProfilePageProps {
@@ -41,6 +42,7 @@ export function MobileProfilePage({
 }: MobileProfilePageProps) {
   const t = useTranslations('profile')
   const tCommon = useTranslations('common')
+  const tDashboard = useTranslations('dashboard')
   const [copied, setCopied] = useState(false)
 
   // user 未加载时不渲染
@@ -73,20 +75,36 @@ export function MobileProfilePage({
 
   const getTierColor = (tier: string) => {
     switch (tier) {
-      case 'pro': return 'from-amber-400 to-orange-500'
-      case 'premium': return 'from-cyan-400 to-blue-500'
+      case 'pro': return 'from-emerald-300 to-emerald-500'
+      case 'premium': return 'from-emerald-400/70 to-emerald-500/70'
       default: return 'from-gray-400 to-gray-500'
     }
   }
 
-  // 菜单项配置 - 与桌面端对齐
+  // 菜单项配置
   const menuItems = [
+    {
+      icon: BarChart3,
+      label: t('positions'),
+      path: '/trading',
+      iconColor: 'text-cyan-400',
+      iconBg: 'bg-cyan-400/10',
+      rightContent: null
+    },
+    {
+      icon: Users,
+      label: tDashboard('quickAccess.inviteFriends'),
+      path: '/referral',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
+      rightContent: null
+    },
     {
       icon: Crown,
       label: t('subscription'),
       path: '/subscription',
-      iconColor: 'text-[#F59E0B]',
-      iconBg: 'bg-[#F59E0B]/10',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
       rightContent: (
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r ${getTierColor(user.subscriptionTier)} text-white`}>
           {getTierLabel(user.subscriptionTier)}
@@ -97,68 +115,53 @@ export function MobileProfilePage({
       icon: Bell,
       label: t('notifications'),
       path: '/notifications',
-      iconColor: 'text-[#06B6D4]',
-      iconBg: 'bg-[#06B6D4]/10',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
       rightContent: unreadNotifications > 0 ? (
-        <span className="bg-[#06B6D4] text-[#0A0A0F] text-xs font-semibold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+        <span className="bg-emerald-400 text-[#052015] text-xs font-semibold px-2 py-0.5 rounded-full min-w-[20px] text-center">
           {unreadNotifications}
         </span>
       ) : null
     },
     {
-      icon: Brain,
-      label: t('aiSettings'),
-      path: '/settings/ai',
-      iconColor: 'text-[#06B6D4]',
-      iconBg: 'bg-[#06B6D4]/10',
-      rightContent: null
-    },
-    {
       icon: Download,
       label: t('installApp'),
       path: 'pwa-install',
-      iconColor: 'text-[#10B981]',
-      iconBg: 'bg-[#10B981]/10',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
       rightContent: null
     },
     {
       icon: Settings,
       label: t('settings'),
       path: '/settings',
-      iconColor: 'text-[#8B5CF6]',
-      iconBg: 'bg-[#8B5CF6]/10',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
       rightContent: null
     },
     {
       icon: HelpCircle,
       label: t('helpCenter'),
       path: '/help',
-      iconColor: 'text-[#10B981]',
-      iconBg: 'bg-[#10B981]/10',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
       rightContent: null
     },
     {
       icon: Info,
       label: t('about'),
       path: '/about',
-      iconColor: 'text-[#3B82F6]',
-      iconBg: 'bg-[#3B82F6]/10',
+      iconColor: 'text-emerald-400',
+      iconBg: 'bg-emerald-400/10',
       rightContent: <span className="text-[#606070] text-sm">{appVersion}</span>
     }
   ]
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-20">
-      {/* Header - 标题 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-center px-4 h-14">
-          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
-        </div>
-      </div>
-
+    <div className="min-h-screen pb-20">
       {/* 用户信息卡片 */}
-      <div className="px-4 pt-4 pb-4">
-        <div className="glass-border-glow relative overflow-hidden rounded-2xl border border-cyan-500/[0.08] bg-[#12121A]/30 backdrop-blur-[72px] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+      <div className="px-3 pt-3 pb-3">
+        <div className="bubble-card p-5">
           <div className="flex items-center gap-4">
             {/* 头像 */}
             <div className="relative flex-shrink-0">
@@ -194,8 +197,8 @@ export function MobileProfilePage({
                 <span>ID: {displayId}</span>
                 {copied ? (
                   <>
-                    <Check className="w-3 h-3 text-[#10B981]" />
-                    <span className="text-[#10B981]">{tCommon('copied')}</span>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400">{tCommon('copied')}</span>
                   </>
                 ) : (
                   <Copy className="w-3 h-3" />
@@ -206,38 +209,33 @@ export function MobileProfilePage({
         </div>
       </div>
 
-      {/* 功能菜单列表 - 与桌面端对齐 */}
-      <div className="px-4">
-        <div className="glass-border-glow relative overflow-hidden rounded-2xl border border-cyan-500/[0.08] bg-[#12121A]/30 backdrop-blur-[72px] shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-          <div>
-            {menuItems.map((item, index) => {
-              const Icon = item.icon
-              const isLast = index === menuItems.length - 1
-              return (
-                <button
-                  key={item.path}
-                  type="button"
-                  onClick={() => onNavigate?.(item.path)}
-                  className={`w-full flex items-center gap-4 px-4 py-4 hover:bg-[#1E1E2E]/50 active:bg-[#1E1E2E]/70 transition-colors ${
-                    !isLast ? 'border-b border-[#1E1E2E]/50' : ''
-                  }`}
-                  aria-label={item.label}
-                >
-                  <div className={`w-10 h-10 rounded-xl ${item.iconBg} flex items-center justify-center flex-shrink-0`}>
-                    <Icon className={`w-5 h-5 ${item.iconColor}`} />
-                  </div>
-                  <span className="flex-1 text-left text-white font-medium">{item.label}</span>
-                  {item.rightContent}
-                  <ChevronRight className="w-4 h-4 text-[#404050] ml-1" />
-                </button>
-              )
-            })}
-          </div>
+      {/* 功能菜单列表 - nofx bubble-card 风格 */}
+      <div className="px-3">
+        <div className="bubble-card p-3">
+          {menuItems.map((item) => {
+            const Icon = item.icon
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => onNavigate?.(item.path)}
+                className="row-divider group w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-emerald-400/5 active:bg-emerald-400/10 transition-all"
+                aria-label={item.label}
+              >
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/40 border border-white/10 flex-shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <Icon className={`w-[18px] h-[18px] ${item.iconColor}`} />
+                </div>
+                <span className="flex-1 text-left text-sm font-medium text-white truncate">{item.label}</span>
+                {item.rightContent}
+                <ChevronRight className="w-4 h-4 text-zinc-600 ml-1" />
+              </button>
+            )
+          })}
         </div>
       </div>
 
       {/* 退出登录按钮 - 与桌面端对齐 */}
-      <div className="px-4 mt-4">
+      <div className="px-3 mt-3">
         <button
           type="button"
           onClick={onLogout}

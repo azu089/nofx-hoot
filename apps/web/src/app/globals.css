@@ -658,3 +658,131 @@ input:-webkit-autofill:active {
     animation: none !important;
   }
 }
+
+/* ============================================================
+ * Bubble Card —— 玻璃气泡卡片
+ * 雾蒙背景 + 左上角最亮的渐变描边（顺圆角衰减）
+ * ============================================================ */
+.bubble-card {
+  position: relative;
+  background: rgba(180, 200, 220, 0.03);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-radius: 1.25rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+.bubble-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.405) 0%,
+    rgba(255, 255, 255, 0.216) 4%,
+    rgba(255, 255, 255, 0.117) 12%,
+    rgba(255, 255, 255, 0.072) 35%,
+    rgba(255, 255, 255, 0.05) 70%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Row divider —— 两端渐隐的 1px 细线，用于气泡内相邻行之间 */
+.row-divider {
+  position: relative;
+}
+.row-divider + .row-divider {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+.row-divider + .row-divider::before {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.22),
+    transparent
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 主 CTA 按钮（春绿，一比一对齐 nofx index.css .btn-emerald） */
+.btn-emerald {
+  background: linear-gradient(180deg, #52E5A6 0%, #3BDD95 60%, #28C57A 100%);
+  color: #052015;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 3px 12px rgba(59, 221, 149, 0.22),
+    0 0 18px rgba(59, 221, 149, 0.14);
+  transition: all 0.2s ease;
+}
+.btn-emerald:hover:not(:disabled) {
+  background: linear-gradient(180deg, #62E9B1 0%, #49E19F 60%, #32CE83 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 5px 16px rgba(59, 221, 149, 0.32),
+    0 0 24px rgba(59, 221, 149, 0.22);
+}
+.btn-emerald:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ======== nofx 看板呼吸效果复用（一比一对齐）========
+ * 实现分层：
+ *   1) body 底色（nofx-body-bg）：固定不动的深蓝黑线性渐变
+ *   2) 全局呼吸光（nofx-ambient-glow）：fixed 覆盖 viewport 的 radial + pulse 动画
+ * 参考来源：
+ *   - nofx/web/src/App.tsx L346-361
+ *   - nofx/web/src/index.css body 规则
+ */
+.nofx-body-bg {
+  background-color: #04080D;
+  background-image: linear-gradient(180deg, #0A1018 0%, #04080D 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* nofx-ambient 只负责占位，不再自带背景（背景由 body 提供，呼吸光由独立层提供） */
+.nofx-ambient {
+  position: relative;
+  min-height: 100vh;
+  color: #EAECEF;
+}
+
+/* opacity 相比 nofx 原版放大 ~2.5x：HOOT 卡片为实色 #12121A，
+ * 不像 nofx 的透明 bubble-card 能让底层光晕穿透显示，需要增强光强度 */
+.nofx-ambient-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse 120% 100% at 100% 50%,
+    rgba(215, 228, 245, 0.16) 0%,
+    rgba(215, 228, 245, 0.09) 25%,
+    rgba(215, 228, 245, 0.045) 50%,
+    rgba(215, 228, 245, 0.015) 75%,
+    transparent 100%
+  );
+  animation: nofx-pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes nofx-pulse-slow {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}

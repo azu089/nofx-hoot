@@ -5,7 +5,7 @@ import { useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Brain, BarChart3, Wallet, User } from 'lucide-react';
+import { Wallet, User } from 'lucide-react';
 import { AuthGuard } from '@/components/auth-guard';
 import { useTranslations } from '@/i18n/provider';
 import { useAuth } from '@/lib/auth';
@@ -17,15 +17,25 @@ import {
   type BudgetAlertEvent,
 } from '@/hooks/useSocket';
 
-type NavLabelKey = 'home' | 'ai' | 'trading' | 'wallet' | 'profile';
+type NavLabelKey = 'wallet' | 'profile';
 
 const navItemsConfig: Array<{ id: string; labelKey: NavLabelKey; icon: React.ElementType; href: string }> = [
-  { id: 'dashboard', labelKey: 'home', icon: Home, href: '/dashboard' },
-  { id: 'ai', labelKey: 'ai', icon: Brain, href: '/ai' },
-  { id: 'trading', labelKey: 'trading', icon: BarChart3, href: '/trading' },
   { id: 'wallet', labelKey: 'wallet', icon: Wallet, href: '/wallet' },
   { id: 'profile', labelKey: 'profile', icon: User, href: '/profile' },
 ];
+
+// 路径 → 页面标题映射（用于顶部栏显示）
+const pageTitleMap: Record<string, string> = {
+  '/wallet': 'wallet',
+  '/profile': 'profile',
+  '/trading': 'trading',
+  '/settings': 'settings',
+  '/referral': 'referral',
+  '/subscription': 'subscription',
+  '/notifications': 'notifications',
+  '/help': 'help',
+  '/about': 'about',
+};
 
 export default function DashboardLayout({
   children,
@@ -62,25 +72,90 @@ export default function DashboardLayout({
     label: t(item.labelKey)
   }));
 
+  // 当前页面标题
+  const currentTitleKey = Object.entries(pageTitleMap).find(
+    ([prefix]) => pathname.startsWith(prefix)
+  )?.[1];
+
   return (
     <AuthGuard>
-      <div className="flex min-h-screen bg-[#0A0A0F]">
-        {/* Desktop Sidebar - 隐藏在移动端 */}
-        <div className="hidden md:block fixed left-0 top-0 h-screen w-60 bg-[#12121A] border-r border-[#1E1E2E] z-40">
+      <div className="min-h-screen bg-[#0A0A0F] relative">
+        {/* ====== 移动端：nofx 风格透明顶部栏 ====== */}
+        <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4"
+          style={{
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            background: 'rgba(10, 10, 15, 0.6)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }}
+        >
           {/* Logo */}
+          <Link href="/profile" className="flex items-center gap-2">
+            <Image src="/icons/hoot/token.png" alt="Hoot" width={28} height={28} className="rounded-full" priority />
+            <span className="text-base font-semibold text-[#06B6D4]">HOOT</span>
+          </Link>
+
+          {/* 页面标题（居中感） */}
+          {currentTitleKey && (
+            <span className="text-sm font-medium text-[#9090A0]">
+              {t(currentTitleKey)}
+            </span>
+          )}
+
+          {/* 右侧占位（保持标题居中） */}
+          <div className="w-[68px]" />
+        </header>
+
+        {/* ====== 移动端内容区 ====== */}
+        <main
+          className="md:hidden w-full min-h-screen"
+          style={{
+            paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
+            paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          {children}
+        </main>
+
+        {/* ====== 移动端底部导航 ====== */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-[#1E1E2E] pb-[env(safe-area-inset-bottom,0px)]"
+          style={{
+            background: 'rgba(18, 18, 26, 0.85)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }}
+        >
+          <nav className="flex items-center justify-around h-14 select-none">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname.startsWith(item.href);
+
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-100 active:opacity-50 active:scale-90 ${
+                    isActive ? 'text-[#06B6D4]' : 'text-[#9090A0]'
+                  }`}
+                >
+                  <Icon size={20} />
+                  <span className="text-[11px] mt-0.5 font-medium">{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* ====== 桌面端：侧边栏 + 内容 ====== */}
+        <div className="hidden md:block fixed left-0 top-0 h-screen w-60 bg-[#12121A] border-r border-[#1E1E2E] z-40">
           <div className="flex h-16 items-center justify-center gap-2 border-b border-[#1E1E2E]">
             <Image src="/icons/hoot/token.png" alt="Hoot" width={32} height={32} className="object-contain" priority />
             <h1 className="text-2xl font-bold text-[#F8F8FC]">Hoot</h1>
           </div>
-
-          {/* Navigation */}
           <nav className="flex flex-col gap-2 p-4">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = item.id === 'ai'
-                ? pathname.startsWith('/ai')
-                : pathname.startsWith(item.href);
-
+              const isActive = pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.id}
@@ -91,71 +166,18 @@ export default function DashboardLayout({
                       : 'hover:bg-[#1E1E2E]/50'
                   }`}
                 >
-                  <Icon
-                    size={20}
-                    className={`transition-colors duration-200 ${
-                      isActive
-                        ? 'text-cyan-400'
-                        : 'text-[#9090A0] group-hover:text-[#F8F8FC]'
-                    }`}
-                  />
-                  <span
-                    className={`font-medium transition-colors duration-200 ${
-                      isActive
-                        ? 'text-white'
-                        : 'text-[#F8F8FC] group-hover:text-white'
-                    }`}
-                  >
-                    {item.label}
-                  </span>
+                  <Icon size={20} className={`transition-colors duration-200 ${isActive ? 'text-cyan-400' : 'text-[#9090A0] group-hover:text-[#F8F8FC]'}`} />
+                  <span className={`font-medium transition-colors duration-200 ${isActive ? 'text-white' : 'text-[#F8F8FC] group-hover:text-white'}`}>{item.label}</span>
                 </Link>
               );
             })}
           </nav>
-
-          {/* Footer */}
           <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-[#1E1E2E]">
-            <div className="text-xs text-center text-[#9090A0]">
-              © 2026 Hoot
-            </div>
+            <div className="text-xs text-center text-[#9090A0]">© 2026 Hoot</div>
           </div>
         </div>
-
-        {/* Main Content - 响应式 margin */}
-        {/* 桌面端：左侧留出侧边栏空间 */}
         <div className="hidden md:block md:ml-60 flex-1">
           {children}
-        </div>
-        {/* 移动端：状态栏背景色块（防止滚动内容穿透状态栏） */}
-        <div className="md:hidden fixed top-0 left-0 right-0 z-[60] bg-[#0A0A0F] h-[env(safe-area-inset-top,0px)] [transform:translateZ(0)]" />
-        {/* 移动端：底部留出导航栏空间（56px nav + safe-area-inset-bottom） */}
-        <div className="md:hidden w-full h-[calc(100vh-56px)] overflow-y-auto pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
-          {children}
-        </div>
-
-        {/* Mobile Bottom Navigation - 仅在移动端显示（行业标准 56px 高度） */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A] border-t border-[#1E1E2E] z-50 pb-[env(safe-area-inset-bottom,0px)] [transform:translateZ(0)]">
-          <nav className="flex items-center justify-around h-14 select-none">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = item.id === 'ai'
-                ? pathname.startsWith('/ai')
-                : pathname.startsWith(item.href);
-
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-100 active:opacity-50 active:scale-90 ${
-                    isActive ? 'text-cyan-400' : 'text-[#9090A0]'
-                  }`}
-                >
-                  <Icon size={20} />
-                  <span className="text-[11px] mt-0.5 font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
         </div>
       </div>
     </AuthGuard>

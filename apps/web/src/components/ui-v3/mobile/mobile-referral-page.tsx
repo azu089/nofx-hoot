@@ -123,15 +123,15 @@ export function MobileReferralPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white pb-8">
+    <div className="min-h-screen text-white pb-8">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label={t('back')}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
@@ -145,16 +145,16 @@ export function MobileReferralPage({
         {bindSection}
 
         {/* 统计卡片 - 合并为一个卡片 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
-          <div className="grid grid-cols-3 divide-x divide-[#1E1E2E]/50">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/15 to-transparent" />
+          <div className="grid grid-cols-3 divide-x divide-white/10/50">
             {/* 累计收益 */}
             <div className="p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-2">
-                <Wallet className="w-4 h-4 text-cyan-400" />
+                <Wallet className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs text-[#94A3B8]">{t('totalEarnings')}</span>
               </div>
-              <div className="text-lg font-bold text-cyan-400">
+              <div className="text-lg font-bold text-emerald-400">
                 ${earnings.total.toLocaleString()}
               </div>
             </div>
@@ -162,10 +162,10 @@ export function MobileReferralPage({
             {/* 邀请人数 */}
             <div className="p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-2">
-                <Users className="w-4 h-4 text-[#10B981]" />
+                <Users className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs text-[#94A3B8]">{t('referralCount')}</span>
               </div>
-              <div className="text-lg font-bold text-[#10B981]">
+              <div className="text-lg font-bold text-emerald-400">
                 {earnings.activeReferrals}
               </div>
             </div>
@@ -184,8 +184,8 @@ export function MobileReferralPage({
         </div>
 
         {/* 邀请码卡片 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/15 to-transparent" />
 
           <div className="p-5">
             {/* 邀请码 + 二维码 */}
@@ -193,7 +193,7 @@ export function MobileReferralPage({
               {/* 左侧信息 */}
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-[#94A3B8] mb-1">{t('inviteCode')}</div>
-                <div className="text-2xl font-mono font-bold text-cyan-400 tracking-wider mb-4">
+                <div className="text-2xl font-mono font-bold text-emerald-400 tracking-wider mb-4">
                   {referralCode}
                 </div>
 
@@ -206,7 +206,7 @@ export function MobileReferralPage({
               {/* 右侧二维码 */}
               <div className="flex-shrink-0">
                 <div className="bg-white rounded-xl p-2">
-                  <QrCode className="w-16 h-16 text-[#0A0A0F]" />
+                  <QrCode className="w-16 h-16 text-[#05090E]" />
                 </div>
               </div>
             </div>
@@ -216,7 +216,7 @@ export function MobileReferralPage({
               <button
                 type="button"
                 onClick={handleCopy}
-                className="flex-1 flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-600 text-white py-3 rounded-xl font-medium transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-medium transition-colors"
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 {copied ? t('copied') : t('copyLink')}
@@ -226,7 +226,7 @@ export function MobileReferralPage({
                 type="button"
                 onClick={() => handleShare('twitter')}
                 aria-label={t('shareToTwitter')}
-                className="flex items-center justify-center w-12 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl hover:border-cyan-500/30 transition-colors"
+                className="flex items-center justify-center w-12 bg-white/5 border border-white/10 rounded-xl hover:border-emerald-500/30 transition-colors"
               >
                 <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
@@ -237,7 +237,7 @@ export function MobileReferralPage({
                 type="button"
                 onClick={() => handleShare('telegram')}
                 aria-label={t('shareToTelegram')}
-                className="flex items-center justify-center w-12 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl hover:border-cyan-500/30 transition-colors"
+                className="flex items-center justify-center w-12 bg-white/5 border border-white/10 rounded-xl hover:border-emerald-500/30 transition-colors"
               >
                 <Send className="w-5 h-5 text-white" />
               </button>
@@ -246,14 +246,14 @@ export function MobileReferralPage({
         </div>
 
         {/* 我的邀请列表 - 带筛选功能 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/15 to-transparent" />
 
           {/* 标题栏 */}
-          <div className="p-4 border-b border-[#1E1E2E]">
+          <div className="p-4 border-b border-white/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-cyan-400" />
+                <Users className="w-5 h-5 text-emerald-400" />
                 <span className="font-semibold">{t('myReferrals')}</span>
                 <span className="text-[#94A3B8] text-sm">
                   {filteredReferrals.length}
@@ -276,7 +276,7 @@ export function MobileReferralPage({
                   onClick={() => setShowFilters(!showFilters)}
                   className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors ${
                     showFilters || hasActiveFilters
-                      ? 'bg-cyan-500/20 text-cyan-400'
+                      ? 'bg-emerald-500/20 text-emerald-400'
                       : 'text-[#94A3B8] hover:text-white'
                   }`}
                 >
@@ -288,7 +288,7 @@ export function MobileReferralPage({
 
             {/* 筛选面板 */}
             {showFilters && (
-              <div className="mt-3 pt-3 border-t border-[#1E1E2E]/50 space-y-3">
+              <div className="mt-3 pt-3 border-t border-white/10/50 space-y-3">
                 {/* 级别筛选 */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#94A3B8] w-12">{t('level')}</span>
@@ -304,8 +304,8 @@ export function MobileReferralPage({
                         onClick={() => setLevelFilter(opt.value)}
                         className={`px-3 py-1 rounded-lg text-xs transition-colors ${
                           levelFilter === opt.value
-                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                            : 'bg-[#1A1A24] text-[#94A3B8] border border-transparent hover:border-[#1E1E2E]'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-white/5 text-[#94A3B8] border border-transparent hover:border-white/10'
                         }`}
                       >
                         {opt.label}
@@ -329,8 +329,8 @@ export function MobileReferralPage({
                         onClick={() => setStatusFilter(opt.value)}
                         className={`px-3 py-1 rounded-lg text-xs transition-colors ${
                           statusFilter === opt.value
-                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                            : 'bg-[#1A1A24] text-[#94A3B8] border border-transparent hover:border-[#1E1E2E]'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-white/5 text-[#94A3B8] border border-transparent hover:border-white/10'
                         }`}
                       >
                         {opt.label}
@@ -351,7 +351,7 @@ export function MobileReferralPage({
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="text-cyan-400 text-sm mt-2 hover:underline"
+                    className="text-emerald-400 text-sm mt-2 hover:underline"
                   >
                     {t('clearFilterConditions')}
                   </button>
@@ -361,7 +361,7 @@ export function MobileReferralPage({
               )}
             </div>
           ) : (
-            <div className="divide-y divide-[#1E1E2E]/50">
+            <div className="divide-y divide-white/10/50">
               {filteredReferrals.map((referral) => (
                 <div key={referral.id} className="p-4 flex items-center gap-3">
                   {/* 用户信息 */}
@@ -370,7 +370,7 @@ export function MobileReferralPage({
                       <span className="font-medium text-sm">{referral.username}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                         referral.level === 1
-                          ? 'bg-cyan-500/20 text-cyan-400'
+                          ? 'bg-emerald-500/20 text-emerald-400'
                           : 'bg-purple-500/20 text-purple-400'
                       }`}>
                         {referral.level === 1 ? t('level1') : t('level2')}
@@ -379,10 +379,10 @@ export function MobileReferralPage({
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-[#94A3B8]">{referral.joinDate}</span>
                       <span className={`inline-flex items-center gap-1 text-xs ${
-                        referral.status === 'Active' ? 'text-[#10B981]' : 'text-[#94A3B8]'
+                        referral.status === 'Active' ? 'text-emerald-400' : 'text-[#94A3B8]'
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${
-                          referral.status === 'Active' ? 'bg-[#10B981]' : 'bg-[#94A3B8]'
+                          referral.status === 'Active' ? 'bg-emerald-400' : 'bg-[#94A3B8]'
                         }`} />
                         {referral.status === 'Active' ? t('active') : t('inactive')}
                       </span>
@@ -391,7 +391,7 @@ export function MobileReferralPage({
 
                   {/* 收益 */}
                   <div className="text-right">
-                    <div className="font-mono font-semibold text-cyan-400">
+                    <div className="font-mono font-semibold text-emerald-400">
                       +${referral.earnings.toFixed(2)}
                     </div>
                   </div>
@@ -402,8 +402,8 @@ export function MobileReferralPage({
         </div>
 
         {/* 返佣规则 - 可折叠 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/15 to-transparent" />
 
           <button
             type="button"
@@ -411,7 +411,7 @@ export function MobileReferralPage({
             className="w-full p-4 flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-cyan-400" />
+              <Trophy className="w-5 h-5 text-emerald-400" />
               <span className="font-semibold">{t('commissionRules')}</span>
               <span className="text-[#94A3B8] text-xs">{t('commissionRateDesc')}</span>
             </div>
@@ -423,17 +423,17 @@ export function MobileReferralPage({
           </button>
 
           {rulesExpanded && (
-            <div className="px-4 pb-4 space-y-3 border-t border-[#1E1E2E]">
+            <div className="px-4 pb-4 space-y-3 border-t border-white/10">
               {/* 返佣比例 */}
               <div className="grid grid-cols-2 gap-3 mt-3">
-                <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-3">
+                <div className="bg-[#05090E] border border-white/10 rounded-xl p-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">1</div>
+                    <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold">1</div>
                     <span className="text-sm font-medium">{t('level1Commission')}</span>
                   </div>
-                  <div className="text-2xl font-bold text-cyan-400">30%</div>
+                  <div className="text-2xl font-bold text-emerald-400">30%</div>
                 </div>
-                <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-3">
+                <div className="bg-[#05090E] border border-white/10 rounded-xl p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">2</div>
                     <span className="text-sm font-medium">{t('level2Commission')}</span>
@@ -445,7 +445,7 @@ export function MobileReferralPage({
               {/* 规则说明 */}
               <div className="flex flex-wrap gap-2">
                 {[t('realTimeSettlement'), t('autoCredit'), t('lifetimeValid'), t('noLimit')].map((item) => (
-                  <span key={item} className="px-2 py-1 bg-[#1A1A24] rounded text-xs text-[#94A3B8]">
+                  <span key={item} className="px-2 py-1 bg-white/5 rounded text-xs text-[#94A3B8]">
                     {item}
                   </span>
                 ))}
@@ -455,8 +455,8 @@ export function MobileReferralPage({
         </div>
 
         {/* 排行榜 - 可折叠 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/15 to-transparent" />
 
           <button
             type="button"
@@ -476,14 +476,14 @@ export function MobileReferralPage({
           </button>
 
           {leaderboardExpanded && (
-            <div className="px-4 pb-4 space-y-2 border-t border-[#1E1E2E] mt-0 pt-3">
+            <div className="px-4 pb-4 space-y-2 border-t border-white/10 mt-0 pt-3">
               {leaderboard.map((user) => (
                 <div
                   key={user.rank}
                   className={`flex items-center justify-between p-3 rounded-xl ${
                     user.rank <= 3
                       ? 'bg-gradient-to-r from-[#F59E0B]/10 to-transparent border border-[#F59E0B]/20'
-                      : 'bg-[#0A0A0F] border border-[#1E1E2E]'
+                      : 'bg-[#05090E] border border-white/10'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -491,7 +491,7 @@ export function MobileReferralPage({
                       user.rank === 1 ? 'bg-yellow-500 text-black' :
                       user.rank === 2 ? 'bg-gray-400 text-black' :
                       user.rank === 3 ? 'bg-orange-500 text-black' :
-                      'bg-[#2A2A3A] text-[#94A3B8]'
+                      'bg-white/10 text-[#94A3B8]'
                     }`}>
                       {user.rank}
                     </div>
@@ -500,7 +500,7 @@ export function MobileReferralPage({
                       <div className="text-[#94A3B8] text-xs">{user.referrals} {t('referrals')}</div>
                     </div>
                   </div>
-                  <div className="font-mono font-semibold text-cyan-400">
+                  <div className="font-mono font-semibold text-emerald-400">
                     ${user.earnings.toLocaleString()}
                   </div>
                 </div>

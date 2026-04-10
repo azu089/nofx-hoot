@@ -24,7 +24,7 @@ export default function LoginPage() {
   // 已登录跳转到仪表盘
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.push('/dashboard');
+      router.push('/profile');
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -38,7 +38,7 @@ export default function LoginPage() {
   const handleLogin = async (email: string, password: string, rememberMe?: boolean) => {
     try {
       await login(email, password, rememberMe);
-      router.push('/dashboard');
+      router.push('/profile');
     } catch (err) {
       // 错误由 UI 组件内部处理
       toast.error(err instanceof Error ? err.message : '登录失败');
@@ -55,7 +55,7 @@ export default function LoginPage() {
     try {
       const result = await walletLoginHook(address);
       walletLogin(result.accessToken, result.user, result.refreshToken);
-      router.push('/dashboard');
+      router.push('/profile');
     } catch (err) {
       const message = err instanceof Error ? err.message : '钱包登录失败，请重试';
       setWalletError(message);
@@ -84,7 +84,7 @@ export default function LoginPage() {
     if (tgWebApp?.initData) {
       try {
         await telegramWebAppLogin(tgWebApp.initData);
-        router.push('/dashboard');
+        router.push('/profile');
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Telegram 登录失败，请重试');
       }

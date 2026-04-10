@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ExchangePage } from '@/components/ui-v3/wallet/exchange-page';
-import { MobileExchangePage } from '@/components/ui-v3/mobile/mobile-exchange-page';
 import { toast } from 'sonner';
 
 export default function WalletExchangePage() {
@@ -72,15 +71,14 @@ export default function WalletExchangePage() {
         />
       </div>
 
-      {/* 移动端 */}
+      {/* 移动端：复用桌面端组件 */}
       <div className="block md:hidden">
-        <MobileExchangePage
+        <ExchangePage
           balance={{
             usdt: parseFloat(balance?.usdt || '0'),
             hoot: parseFloat(balance?.hoot || '0'),
             point: parseFloat(balance?.point || '0'),
           }}
-          onBack={() => router.back()}
           onExchange={handleExchange}
           isLoading={exchangeMutation.isPending}
         />

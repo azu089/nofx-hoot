@@ -521,7 +521,8 @@
     "aiResearch": "بحث ذكي",
     "aiTrading": "تداول ذكي",
     "aiSettings": "مفتاح LLM API",
-    "installApp": "تثبيت التطبيق"
+    "installApp": "تثبيت التطبيق",
+    "positions": "المراكز"
   },
   "airdrop": {
     "register": "مكافأة التسجيل",
@@ -2338,6 +2339,170 @@
         "contrarian": "محلل معاكس",
         "risk_manager": "مدير المخاطر"
       }
+    }
+  },
+  "nofxPreview": {
+    "title": "معاينة nofx",
+    "subtitle": "طبقة HOOT التجارية تقوم بالوكالة إلى نواة تداول nofx (معاينة تطوير، ليست بوابة رسمية)",
+    "traderSelect": "اختر Trader",
+    "accountCard": {
+      "title": "لقطة الحساب"
+    },
+    "positionsCard": {
+      "title": "المراكز المفتوحة",
+      "symbol": "الرمز",
+      "side": "الاتجاه",
+      "size": "الحجم",
+      "entryPrice": "سعر الدخول",
+      "unrealized": "PnL غير المحقق"
+    },
+    "decisionsCard": {
+      "title": "أحدث القرارات"
+    },
+    "empty": {
+      "noTraders": "لا يوجد Trader في nofx بعد",
+      "selectTrader": "اختر Trader أولاً",
+      "noPositions": "لا توجد مراكز مفتوحة",
+      "noDecisions": "لا توجد قرارات"
+    },
+    "errors": {
+      "tradersFailed": "فشل تحميل قائمة Trader",
+      "accountFailed": "فشل تحميل الحساب",
+      "positionsFailed": "فشل تحميل المراكز",
+      "decisionsFailed": "فشل تحميل القرارات"
+    }
+  },
+  "nofxDashboard": {
+    "title": "لوحة nofx",
+    "subtitle": "عرض مباشر لنواة تداول الذكاء الاصطناعي",
+    "switchToLegacy": "التبديل إلى الإصدار القديم",
+    "traderSelect": "Trader",
+    "kpi": {
+      "equity": "حقوق الملكية",
+      "dailyPnl": "PnL اليومي",
+      "totalPnl": "PnL الإجمالي",
+      "winRate": "معدل الفوز"
+    },
+    "equity": {
+      "title": "منحنى حقوق الملكية (7 أيام)"
+    },
+    "positions": {
+      "title": "المراكز المفتوحة",
+      "symbol": "الرمز",
+      "side": "الاتجاه",
+      "size": "الحجم",
+      "entry": "سعر الدخول",
+      "unrealized": "PnL غير المحقق"
+    },
+    "empty": {
+      "noTraders": "لا يوجد Trader بعد",
+      "selectTrader": "اختر Trader أولاً",
+      "noEquity": "لا توجد بيانات حقوق ملكية",
+      "noPositions": "لا توجد مراكز مفتوحة"
+    },
+    "errors": {
+      "tradersFailed": "فشل تحميل Trader",
+      "equityFailed": "فشل تحميل منحنى حقوق الملكية",
+      "positionsFailed": "فشل تحميل المراكز"
+    }
+  },
+  "nofxAiTrading": {
+    "title": "تداول الذكاء الاصطناعي",
+    "subtitle": "إدارة Trader والاستراتيجيات والنماذج والبورصات في نواة nofx",
+    "readOnlyBadge": "معاينة للقراءة فقط (الكتابة في P6b-2)",
+    "switchToLegacy": "التبديل إلى الإصدار القديم",
+    "traders": {
+      "title": "Traders",
+      "name": "ID",
+      "strategy": "الاستراتيجية",
+      "model": "نموذج AI",
+      "status": "الحالة",
+      "actions": "الإجراءات",
+      "running": "قيد التشغيل",
+      "stopped": "متوقف",
+      "empty": "لا يوجد Trader"
+    },
+    "strategies": {
+      "title": "الاستراتيجيات",
+      "empty": "لا توجد استراتيجيات",
+      "active": "نشط"
+    },
+    "models": {
+      "title": "نماذج AI",
+      "empty": "لم يتم تكوين نماذج AI"
+    },
+    "exchanges": {
+      "title": "البورصات",
+      "empty": "لا توجد حسابات بورصة"
+    },
+    "actions": {
+      "start": "بدء",
+      "stop": "إيقاف",
+      "delete": "حذف",
+      "createTrader": "إنشاء Trader"
+    },
+    "createCard": {
+      "title": "إنشاء / تكوين",
+      "body": "إنشاء Trader وتكوين مفتاح AI وربط البورصات سيأتي في P6b-2 مع بوابة اشتراك HOOT ومربعات حوار التأكيد."
+    },
+    "errors": {
+      "tradersFailed": "فشل تحميل Trader",
+      "strategiesFailed": "فشل تحميل الاستراتيجيات",
+      "modelsFailed": "فشل تحميل نماذج AI",
+      "exchangesFailed": "فشل تحميل البورصات"
+    },
+    "confirm": {
+      "startTitle": "Confirm Start Trader",
+      "stopTitle": "Confirm Stop Trader",
+      "deleteTitle": "Confirm Delete Trader"
+    },
+    "toast": {
+      "started": "Trader started",
+      "stopped": "Trader stopped",
+      "deleted": "Trader deleted",
+      "failed": "Operation failed"
+    }
+  },
+  "nofxPositions": {
+    "title": "المراكز",
+    "subtitle": "المراكز المباشرة من نواة تداول nofx",
+    "readOnlyBadge": "معاينة للقراءة فقط (إغلاق يدوي في P6b-2)",
+    "switchToLegacy": "التبديل إلى الإصدار القديم",
+    "traderSelect": "Trader",
+    "accountCard": {
+      "title": "ملخص الحساب"
+    },
+    "openCard": {
+      "title": "المراكز المفتوحة",
+      "countSuffix": "مفتوح"
+    },
+    "cols": {
+      "symbol": "الرمز",
+      "side": "الاتجاه",
+      "size": "الحجم",
+      "entry": "سعر الدخول",
+      "unrealized": "PnL غير المحقق",
+      "actions": "الإجراءات"
+    },
+    "actions": {
+      "close": "إغلاق"
+    },
+    "empty": {
+      "noTraders": "لا يوجد Trader",
+      "selectTrader": "اختر Trader أولاً",
+      "noPositions": "لا توجد مراكز مفتوحة"
+    },
+    "errors": {
+      "tradersFailed": "فشل تحميل Trader",
+      "accountFailed": "فشل تحميل الحساب",
+      "positionsFailed": "فشل تحميل المراكز"
+    },
+    "confirm": {
+      "closeWarning": "This will execute a market close on the exchange. This cannot be undone. Continue?"
+    },
+    "toast": {
+      "closed": "Position closed",
+      "closeFailed": "Close failed"
     }
   }
 }

@@ -72,15 +72,15 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
   )
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-8">
+    <div className="min-h-screen pb-8">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#05070A]/60 backdrop-blur-xl [transform:translateZ(0)] border-b border-white/5">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label="返回"
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#0B1520] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
@@ -98,12 +98,12 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
             placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-11 pr-4 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-cyan-500/50"
+            className="w-full h-11 pl-11 pr-4 bg-[#0B1520] border border-white/10 rounded-xl text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-emerald-500/50"
           />
         </div>
 
         {/* 快速入口 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
           <div className="grid grid-cols-4">
             {quickAccessConfig.map((item) => {
               const Icon = item.icon
@@ -114,8 +114,8 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
                   onClick={() => onNavigate?.(`/help/${item.slug}`)}
                   className="flex flex-col items-center py-4 hover:bg-white/5 transition-colors"
                 >
-                  <div className="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-2">
-                    <Icon className="w-5 h-5 text-cyan-500" />
+                  <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center mb-2">
+                    <Icon className="w-5 h-5 text-emerald-500" />
                   </div>
                   <span className="text-xs text-[#94A3B8]">{t(item.titleKey)}</span>
                 </button>
@@ -125,11 +125,11 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
         </div>
 
         {/* 常见问题 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#1E1E2E]/50">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/10/50">
             <span className="text-sm font-medium text-white">{t('faq')}</span>
           </div>
-          <div className="divide-y divide-[#1E1E2E]/50">
+          <div className="divide-y divide-white/10/50">
             {filteredFAQs.map((item, index) => {
               const isExpanded = expandedFAQ === index
               return (
@@ -157,14 +157,14 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
         </div>
 
         {/* 联系客服 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="grid grid-cols-2 divide-x divide-[#1E1E2E]/50">
+        <div className="bubble-card relative rounded-2xl overflow-hidden">
+          <div className="grid grid-cols-2 divide-x divide-white/10/50">
             <a
               href="mailto:support@hoot.trade"
               className="flex items-center gap-3 p-4 hover:bg-white/5 transition-colors"
             >
-              <div className="w-9 h-9 bg-cyan-500/10 rounded-xl flex items-center justify-center">
-                <Mail className="w-4 h-4 text-cyan-500" />
+              <div className="w-9 h-9 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                <Mail className="w-4 h-4 text-emerald-500" />
               </div>
               <div>
                 <div className="text-sm font-medium text-white">{t('emailSupport')}</div>
@@ -175,8 +175,8 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
               type="button"
               className="flex items-center gap-3 p-4 hover:bg-white/5 transition-colors"
             >
-              <div className="w-9 h-9 bg-cyan-500/10 rounded-xl flex items-center justify-center relative">
-                <MessageCircle className="w-4 h-4 text-cyan-500" />
+              <div className="w-9 h-9 bg-emerald-500/10 rounded-xl flex items-center justify-center relative">
+                <MessageCircle className="w-4 h-4 text-emerald-500" />
                 <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#22C55E] rounded-full" />
               </div>
               <div>
