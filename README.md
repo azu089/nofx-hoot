@@ -30,7 +30,50 @@
 </p>
 
 
-> **Enhanced Fork** — Improved risk control, AI management, and multi-strategy support. Based on [nofx](https://github.com/NoFxAiOS/nofx) (AGPL-3.0).
+> **Enhanced Fork** — Based on [nofx](https://github.com/NoFxAiOS/nofx) (AGPL-3.0). 77 new Go files, 9-layer trade gatekeeper, multi-AI arena, and position lifecycle management.
+
+### What's New in This Fork
+
+**Arena — Multi-AI Consensus Trading**
+- 13-role structured debate system (4 analysts → 3 researchers → 3 risk officers → portfolio manager → signal processor)
+- Each analyst runs independent tool-calling loops with 10 market data tools
+- BM25-based financial memory for historical situation matching
+- Produces structured decisions with entry/SL/TP/leverage/confidence
+
+**9-Layer Trade Gatekeeper**
+- G1 Funding-rate crowding · G2 Long/short ratio · G3 OI divergence · G4 ATR volatility · G5 Liquidation spike direction · G6 Symbol blacklist · G7 Consecutive-loss cooldown · G8 Risk:Reward ratio · G9 Confidence floor
+- 3 exit gates: OI expansion hold · HTF EMA alignment · Minimum hold time
+- Strategy mode overrides: aggressive / balanced / high_win_rate / institutional
+
+**Position Lifecycle & Risk Control**
+- 5-state position machine: New → Maturing → TrendConfirmed → TrendExhaustion → Exiting
+- Alpha decay scoring from 6 sub-signals (trend, momentum, OI, volume, ATR, liquidation)
+- 3 exit philosophy templates: mechanical / signal-driven / hybrid
+- ATR-adaptive take profit thresholds
+- Real-time WebSocket risk guard (stop-loss, liquidation warning, exposure limit)
+- Pre-trade simulation (margin, min order size, leverage validation)
+
+**Market Intelligence**
+- CoinGlass integration: 5-dimensional signal pipeline (OI trend, funding extreme, long ratio, liquidation pressure, ATR state)
+- Market regime detection: Trending / Ranging / High Volatility / Low Liquidity
+- Event intelligence engine with RSS/manual providers and severity-gated filtering
+- Binance real-time user stream (order/balance/position updates via WebSocket)
+
+**AI Management**
+- Per-strategy AI call budget (daily cap + idle cooldown)
+- Prompt token budget guard (soft 80% warning, hard 100% block)
+- Candidate ranking by composite score (confidence + R:R + win rate)
+- Sized adjust actions: reduce_long / reduce_short / scale_long / scale_short
+- Institutional pipeline with PM authority modes (off / shadow / partial / full)
+
+**Infrastructure**
+- Feature flag framework: per-strategy / per-trader / percentage-based gradual rollout
+- Structured audit pipeline with pluggable sinks
+- Global symbol blacklist with expiry and per-strategy exemptions
+- Strategy orchestrator: market regime → strategy weight mapping
+- Upstream platform webhook integration (fire-and-forget, idempotent)
+
+*See [CHANGELOG-HOOT.md](./CHANGELOG-HOOT.md) for the full list.*
 
 ---
 
